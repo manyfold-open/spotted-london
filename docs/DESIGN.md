@@ -1,0 +1,91 @@
+# Design system: "Sketchbook" for Spotted
+
+A hand-drawn notebook look: dotted paper, ink outlines, hard offset shadows, one orange accent, hand-drawn icons.
+Source of truth is `web/src/styles.css` (tokens in `:root`). If this doc and the CSS disagree, the CSS wins.
+Adapted from Zack's Sketchbook system used in another project.
+
+## Principles
+
+1. **Paper and ink.** Warm off-white paper, near-black ink. No gradients (except skeleton shimmer), no blurred shadows.
+2. **One accent.** Orange `#e8622c` is the only brand colour. Other colours carry meaning (status, AI, category tint).
+3. **Colour means state.** Ink = admin verified, green = community verified, dashed yellow = being checked, red = hidden or error, blue = filled by AI, purple = Example.
+4. **Outlined, not filled.** Surfaces are separated by 1.5px ink borders and hard shadows.
+5. **Phone first.** Every screen is designed at 375 px first, then widened.
+
+## Colour tokens
+
+| Token | Value | Use |
+|---|---|---|
+| `--paper` | `#f4efe6` | Page background with a 22px dot grid |
+| `--paper2` | `#efe8db` | Desktop sidebar |
+| `--dot` / `--hair` | `#d6cbb9` | Dot grid, dashed dividers |
+| `--card` | `#fffdf8` | Cards, inputs, buttons |
+| `--soft` | `#e8e1d5` | Muted tags, skeletons, code |
+| `--ink` | `#1d1b18` | Text, borders, hard shadows |
+| `--ink2` | `#48423a` | Secondary text |
+| `--ink3` | `#5e574c` | Tertiary text, eyebrows |
+| `--accent` | `#e8622c` | Primary accent, focus ring, "On now", Add button |
+| `--accent-soft` | `#fff1e2` | Hover tint |
+
+State pairs (text on background):
+
+| Meaning | Tag class | Text | Background |
+|---|---|---|---|
+| Admin verified | `.t-ink` | `--card` | `--ink` |
+| Community verified | `.t-eng` | `#155e3a` | `#d8efe0` |
+| Being checked | `.t-watch` | `#6b5200` | `#fff3c4`, dashed border |
+| Hidden, errors | `.t-err` | `#a8200d` | `#fde8e6` |
+| Filled by AI | `.t-ai` | `#1b45ad` | `#dce6fc` |
+| Example data | `.t-sim` | `#553095` | `#ebe0fa` |
+| On now | `.t-new` | `--card` | `--accent` |
+
+Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top.
+
+## Typography
+
+| Role | Font | Notes |
+|---|---|---|
+| Display | Bricolage Grotesque 800 | Page titles, card titles, big numbers |
+| Body | Instrument Sans 400 to 700 | UI and text, 14px / 1.5 |
+| Mono | ui-monospace | Formulas on the Me page |
+
+- `h1` 40px (28px on phones), letter-spacing -0.8px. `h2` 20px. Card titles 18px (16px on phones).
+- `.eyebrow`: 12px, 700, uppercase, 0.08em tracking, `--ink3`.
+- Numbers that line up use `font-variant-numeric: tabular-nums` (`.num`).
+
+## Shape and shadow
+
+- Borders 1.5px ink. Avatars and the Add button 2px.
+- Radius: cards and panels 16px, inputs and notices 12px, buttons, chips and tags are pills.
+- Shadows are hard offsets only: `4px 4px 0 ink` (panels, hover), `3px 3px 0 ink` (small). Primary buttons and active nav use an orange offset `3px 3px 0 accent`.
+- Hover lifts with `translate: -1px -1px` plus a shadow; active presses `translate: 2px 2px`.
+
+## Layout
+
+- Desktop (900px and up): 232px sticky sidebar, sticky 60px top bar with search, page max width 1180px, pop-up details in a 520px right drawer.
+- Phone (under 900px): top bar with logo, karma pill and full-width search; bottom tab bar Explore, Map, **Add (raised orange circle)**, Saved, Me; details in a bottom sheet (92% height, handle, sticky Save and Directions footer). Filter chips scroll sideways.
+- No hamburger menu. Less used things (review queue, newsletter, reminders, sign out) live on Me.
+
+## Components
+
+- **Cards**: cover (photo or pattern), status and category tags, title, place and dates, footer with "% real", confidence meter and up/down score. On phones they become rows with a 100px cover on the left. The title is a stretched link; buttons sit above it.
+- **Confidence meter**: green at 75% and up, yellow from 40%, red below.
+- **Pop-up sheet**: facts list, "Is this real?" panel with the verification checklist, It's real / Fake, check-in, vote weight note.
+- **Add form**: AI box first (blue border and blue offset shadow), fields turn blue when AI filled them and get a dashed "Check this" tag when unsure, address search with a draggable pin map, trust score panel.
+- **Map pins**: 30px circles in the status colour with the category icon; live pop-ups get an orange dot; the highlighted pin scales up with an orange ring.
+- **Toasts**: ink pill with orange offset shadow, above the tab bar on phones.
+
+## Icons
+
+Koboyo hand-drawn icons (koboyo.com/icons), stored as an SVG sprite in `web/src/components/Icon.tsx`. They are filled paths: style them with `fill: currentColor`, never stroke. 18px by default, 22px in the tab bar. Free for commercial use; do not let users browse, pick or download them.
+
+## Motion
+
+Short and functional: sheet slides up, drawer slides in, toasts rise, skeletons shimmer, spinners turn. `prefers-reduced-motion` turns all of it off.
+
+## Copy
+
+- English UI, plain and specific. Buttons say what happens ("Email me a link", "Submit pop-up").
+- No em dashes, en dashes or spaced hyphens in anything users see. Use "to" for ranges ("Sat 3 Oct to Sun 4 Oct").
+- Errors explain what went wrong and what to do next, without apologising.
+- Examples are always labelled: "This is an example pop-up that shows how Spotted works. It is not a real event."

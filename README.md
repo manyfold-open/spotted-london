@@ -3,7 +3,25 @@
 London pop-ups, added by locals and verified by the community. Cloudflare Workers + D1 + R2 + KV, all on the free tier.
 
 - Product and technical spec: [SPEC.md](SPEC.md)
+- Design system: [docs/DESIGN.md](docs/DESIGN.md)
+- Notes for AI coding agents: [CLAUDE.md](CLAUDE.md)
 - Clickable UI prototype: [prototype/index.html](prototype/index.html)
+
+## Set up on a new computer
+
+You need Node.js 22+, git and the GitHub CLI (`gh`).
+
+```bash
+gh auth login                                   # the GitHub account that can see tldr0810/spotted-london
+gh repo clone tldr0810/spotted-london
+cd spotted-london
+npm install
+cp .dev.vars.example .dev.vars
+npm run db:reset
+npm run build:web
+```
+
+Then `npm run dev` and `npm run dev:web` in two terminals, as below. Local development needs no Cloudflare account. To deploy or touch production, also run `npx wrangler login` and sign in as zack11712@gmail.com, then check with `npx wrangler whoami`.
 
 ## Run it locally
 

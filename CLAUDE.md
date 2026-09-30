@@ -1,0 +1,100 @@
+# Spotted London
+
+London pop-up discovery platform: anyone adds a pop-up, the community verifies it with weighted votes and check-ins (Reddit-style), admins can override. Mobile first.
+
+- Product and technical spec (Chinese): [SPEC.md](SPEC.md). Decisions are logged in SPEC §12.
+- Design system: [docs/DESIGN.md](docs/DESIGN.md). Source of truth is `web/src/styles.css`.
+- Setup, commands and production facts: [README.md](README.md).
+- Original clickable prototype: `prototype/index.html` (published as a claude.ai artifact).
+
+## Working with Zack
+
+- Zack writes in casual Traditional Chinese (Taiwan). Reply in Traditional Chinese. Code, commits, UI copy and docs other than SPEC.md are in English.
+- Zack is the product owner, not a Cloudflare or Google Console expert. When a step needs their account (dashboards, billing, OAuth consoles), give numbered click-by-click steps.
+- Never ask Zack to paste secrets into chat. Secrets go in with `npx wrangler secret put NAME` or the Cloudflare dashboard (Workers → spotted-london → Settings → Variables and Secrets, type Secret).
+- Confirm before anything outward-facing or hard to undo: production DB writes, deleting resources, changing Google OAuth publishing status.
+
+## Stack
+
+- One Cloudflare Worker (`src/`, Hono) serves the API under `/api/v1`, a few server pages, and the SPA from `web/dist` as static assets.
+- D1 (SQLite) for data, KV for autofill cache and rate limits, R2 for photos (see status), Cron Triggers for background jobs, Turnstile for bot checks.
+- Web app in `web/`: Vite + React 19, React Router 8 (library mode), TanStack Query, MapLibre + OpenFreeMap tiles. No SSR: `/p/:slug` gets SEO/Open Graph/schema.org tags injected by the Worker with HTMLRewriter.
+- Free tier only. Workers Free has about 10 ms CPU per request, so keep request handlers light and push heavy work into cron.
+
+## Commands
+
+```bash
+npm install                  # root + web/ (postinstall)
+npm run db:reset             # local D1: migrate + seed
+npm run build:web            # needed once before `npm run dev`; the Worker serves web/dist
+npm run dev                  # Worker on :8787
+npm run dev:web              # Vite on :5173, proxies /api and /login to :8787
+npm test                     # builds web, then vitest inside workerd (unit + API tests)
+npm run typecheck && (cd web && npx tsc --noEmit)
+npm run deploy               # build web + wrangler deploy (production)
+python3 scripts/seed.py      # regenerate seed/*.sql
+```
+
+Local dev signs you in through the page at `/signin` (the magic link is shown on screen when no email provider is set) or with the `x-dev-user: dev_zack` header. Dev-only headers (`x-dev-user`, `x-now`, `x-dev-ip`) work only when `ENVIRONMENT=development`, which only `.dev.vars` sets.
+
+## Code map
+
+```
+src/index.ts            Hono app, error format { error: { code, message } }, cron entry
+src/middleware.ts       session cookie (sha256 stored), CSRF origin check, Turnstile, IP hash
+src/lib/scoring.ts      ALL verification rules: vote weight, Wilson, status transitions, trust, hot, karma table
+src/lib/extract.ts      paste-a-link autofill parsing (JSON-LD, Open Graph, LLM prompt/schema)
+src/lib/time.ts         Europe/London calendar maths (BST safe)
+src/db/popups.ts        recompute(): aggregates + status after every vote/check-in/report
+src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
+src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
+src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
+src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub)
+migrations/             D1 schema, applied in order
+test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
+web/src/components/     Shell (sidebar, top bar, bottom tabs), PopupSheet, PopupBits, maps, Icon, Turnstile
+web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue)
+```
+
+## Rules that are easy to break
+
+- Scoring thresholds live in `src/lib/scoring.ts`. `web/src/components/PopupSheet.tsx` mirrors two of them for the checklist UI; change both.
+- Never do maths in SQL (no log/sqrt in D1). Compute in JS, store in cached columns.
+- Every karma change goes through `awardKarma` so it stays idempotent and capped.
+- Times are Unix ms. "Today" and "weekend" are London days: use `src/lib/time.ts` / `web/src/lib/format.ts`.
+- The dev fallback that returns sign-in links in the response must stay development only.
+- Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
+- UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
+- Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx`. Licence forbids letting users pick or download icons.
+- Phone layout is under 900 px (`@media (max-width: 899px)`): bottom tabs, bottom sheets. Check every screen at 375 px.
+
+## Gotchas
+
+- npm 10 crashes resolving vitest peers: `.npmrc` sets `legacy-peer-deps=true` (root and web/).
+- `compatibility_date` is 2026-08-20 because `@cloudflare/vitest-pool-workers` bundles an older workerd. Raise it only together with that package.
+- MapLibre v6 must get its worker via `setWorkerUrl` from `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (see `web/src/components/maps.tsx`), or the map stays blank.
+- Map pins are plain DOM, not React roots (unmounting roots during render caused races).
+- Tests share one D1 per file, so give each test its own titles and coordinates or the duplicate check (same place, similar title) returns 409.
+- Address search uses Photon (photon.komoot.io), a free fair-use service. Move to Mapbox's free tier if traffic grows.
+- On Zack's first Mac, `~/.zshrc` exports a `CLOUDFLARE_API_TOKEN` for a different (work) Cloudflare account. If `npx wrangler whoami` does not say zack11712@gmail.com, run `unset CLOUDFLARE_API_TOKEN` in that shell first.
+
+## Production
+
+- https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
+- Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
+- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+- Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
+- Live data is fictional examples (`is_example = 1`, labelled, noindex). Clear before launch with `seed/clear-examples.sql`.
+
+## Status and next steps
+
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples.
+
+Not done yet, roughly in priority order:
+1. Photos: R2 must be enabled on the account first (see README "Still to switch on").
+2. Workers AI for autofill from pasted text and screenshots (`ai` binding is commented out in `wrangler.jsonc`; `/extract/image` returns 501).
+3. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
+4. Hide quality votes on your own posts in the UI (the API already rejects them).
+5. Vote ring detection in the daily abuse scan.
+6. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
+7. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).
