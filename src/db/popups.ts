@@ -74,7 +74,7 @@ async function alreadyAwarded(db: D1Database, userId: string, reason: string, re
 }
 
 /** Public JSON shape for a pop-up. */
-export function toPublic(p: PopupRow, extra: Record<string, unknown> = {}) {
+export function toPublic(p: PopupRow & { cover_key?: string | null }, extra: Record<string, unknown> = {}) {
   return {
     id: p.id,
     slug: p.slug,
@@ -97,6 +97,7 @@ export function toPublic(p: PopupRow, extra: Record<string, unknown> = {}) {
     },
     score: p.quality_pos - p.quality_neg,
     hot: p.hot,
+    cover_url: p.cover_key ? `/api/v1/images/${p.cover_key}` : null,
     created_at: p.created_at,
     ...extra,
   };

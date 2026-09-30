@@ -11,6 +11,7 @@ import { images, newsletter, users } from './routes/misc';
 import { runCron } from './cron';
 import { auth } from './routes/auth';
 import { pages } from './pages';
+import { geocode } from './routes/geocode';
 
 const app = new Hono<AppEnv>();
 app.use('*', session, sameOrigin);
@@ -25,6 +26,7 @@ api.route('/users', users);
 api.route('/admin', admin);
 api.route('/newsletter', newsletter);
 api.route('/images', images);
+api.route('/geocode', geocode);
 
 app.route('/api/v1', api);
 app.route('/', pages);

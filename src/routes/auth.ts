@@ -51,6 +51,12 @@ export async function userForEmail(
 
 const publicUser = (u: UserRow) => ({ id: u.id, email: u.email, name: u.display_name, role: u.role, karma: u.karma });
 
+/** Which sign-in options this deployment has, so the app only shows working buttons. */
+auth.get('/providers', c => c.json({
+  email: !!c.env.RESEND_API_KEY || isDev(c),
+  google: !!(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
+}));
+
 /* ---------------- email magic link ---------------- */
 
 auth.post('/magic-link', async c => {

@@ -1,5 +1,5 @@
 ENVIRONMENT=development
-APP_URL=http://localhost:8787
+APP_URL=http://localhost:5173
 IP_SALT=local-dev-salt
 # Optional in development. Without them, sign-in links are returned in the API response.
 # RESEND_API_KEY=

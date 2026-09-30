@@ -71,7 +71,8 @@ popups.get('/', async c => {
     args.push(s, n, w, e);
   }
 
-  const sql = `SELECT * FROM popups WHERE ${where.join(' AND ')} ORDER BY hot DESC, id LIMIT ? OFFSET ?`;
+  const sql = `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key
+    FROM popups WHERE ${where.join(' AND ')} ORDER BY hot DESC, id LIMIT ? OFFSET ?`;
   const { results } = await c.env.DB.prepare(sql).bind(...args, near ? 500 : limit + 1, near ? 0 : offset).all<PopupRow>();
 
   let rows = results.map(p => ({ p, d: near ? haversine(near.lat, near.lng, p.lat, p.lng) : null }));
@@ -81,12 +82,30 @@ popups.get('/', async c => {
     rows = rows.slice(offset, offset + limit + 1);
   }
   const more = rows.length > limit;
+  const page = rows.slice(0, limit);
+  const mine = await myState(c.env.DB, c.get('user'), page.map(r => r.p.id));
   return c.json({
-    items: rows.slice(0, limit).map(r => toPublic(r.p, r.d !== null ? { distance_m: Math.round(r.d) } : {})),
+    items: page.map(r => toPublic(r.p, { ...(r.d !== null ? { distance_m: Math.round(r.d) } : {}), ...(mine ? { me: mine(r.p.id) } : {}) })),
     next_cursor: more ? (offset + limit).toString(36) : null,
     window: { when, from, to: to === Number.MAX_SAFE_INTEGER ? null : to },
   });
 });
+
+/** Saved flag and votes of the signed-in user for a page of pop-ups, in two queries. */
+async function myState(db: D1Database, u: UserRow | null, ids: string[]) {
+  if (!u || !ids.length) return null;
+  const marks = ids.map(() => '?').join(',');
+  const [saves, votes] = await Promise.all([
+    db.prepare(`SELECT popup_id FROM saves WHERE user_id = ? AND popup_id IN (${marks})`).bind(u.id, ...ids).all<{ popup_id: string }>(),
+    db.prepare(`SELECT popup_id, kind, value FROM votes WHERE user_id = ? AND popup_id IN (${marks})`).bind(u.id, ...ids).all<{ popup_id: string; kind: string; value: number }>(),
+  ]);
+  const saved = new Set(saves.results.map(r => r.popup_id));
+  return (id: string) => ({
+    saved: saved.has(id),
+    existence_vote: votes.results.find(v => v.popup_id === id && v.kind === 'existence')?.value ?? 0,
+    quality_vote: votes.results.find(v => v.popup_id === id && v.kind === 'quality')?.value ?? 0,
+  });
+}
 
 /* ---------- GET /popups/:idOrSlug ---------- */
 popups.get('/:id', async c => {
@@ -101,6 +120,7 @@ popups.get('/:id', async c => {
     db.prepare('SELECT id, display_name, karma FROM users WHERE id = ?').bind(p.created_by).first<{ id: string; display_name: string | null; karma: number }>(),
   ]);
   return c.json(toPublic(p, {
+    cover_url: images[0] ? `/api/v1/images/${images[0].r2_key}` : null,
     images: images.map(i => ({ id: i.id, url: `/api/v1/images/${i.r2_key}` })),
     posted_by: poster ? { id: poster.id, name: poster.display_name, karma: poster.karma } : null,
     me: u ? {

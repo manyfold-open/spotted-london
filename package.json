@@ -4,14 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --port 8787",
+    "deploy": "npm run build:web && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply spotted-db --local",
     "db:seed": "wrangler d1 execute spotted-db --local --file=./seed/seed.sql",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate && npm run db:seed",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web run build",
+    "postinstall": "npm --prefix web install",
+    "pretest": "npm run build:web"
   },
   "dependencies": {
     "hono": "^4.13.12"

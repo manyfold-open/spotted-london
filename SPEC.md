@@ -534,9 +534,9 @@ CREATE TABLE audit_log (
 | 項目 | 決定 |
 |---|---|
 | 後端 | Cloudflare Workers + D1 + R2 + KV + Cron（全 Free tier） |
-| 前端框架 | React Router v7 on Workers（建議，待確認） |
+| 前端框架 | Vite + React SPA（React Router、TanStack Query），由同一個 Worker 以靜態檔提供；`/p/:slug` 由 Worker 用 HTMLRewriter 注入 SEO / OG / schema.org（不做 React SSR，避免 Free tier 每 request 10ms CPU 上限） |
 | 地圖 | MapLibre + OpenFreeMap |
-| 地址補完 | Mapbox Geocoding 免費額度 |
+| 地址補完 | Photon（OpenStreetMap，免 API key），經 `/api/v1/geocode` 代理並用 Cache API 快取一天；流量大時再換 Mapbox |
 | Newsletter | Beehiiv 免費方案 |
 | 交易信 | Resend 免費方案 |
 | 圖片處理 | 前端壓縮，不用 Cloudflare Images |

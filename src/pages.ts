@@ -1,9 +1,9 @@
-// Tiny server-rendered pages: the magic-link confirm step, and a dev landing page
-// to try sign in before the real front end exists.
+// Server-rendered bits: the magic-link confirm step and share/SEO tags for pop-up pages.
+// Everything else is the single-page app in web/.
 
 import { Hono, type Context } from 'hono';
-import { html, raw } from 'hono/html';
-import type { AppEnv } from './types';
+import { html } from 'hono/html';
+import type { AppEnv, PopupRow } from './types';
 import { consumeMagicToken, startSession, userForEmail } from './routes/auth';
 import { safeReturnTo } from './lib/auth';
 import { ApiError } from './lib/util';
@@ -70,26 +70,59 @@ pages.post('/login/verify', async c => {
   return c.redirect(safeReturnTo(typeof form.return_to === 'string' ? form.return_to : null), 303);
 });
 
-/** Dev landing page until the front end exists. */
-pages.get('/', c => {
-  noStore(c);
-  const u = c.get('user');
-  const err = c.req.query('login_error');
-  if (u) {
-    return c.html(shell('Spotted London', html`
-      <h1>Hi ${u.display_name ?? 'there'}</h1>
-      <p>You are signed in as <b>${u.email}</b>. Karma ${u.karma}.</p>
-      <button class="btn" id="out">Sign out</button>
-      <script>document.getElementById('out').onclick=async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});location.reload()}</script>`));
-  }
-  return c.html(shell('Sign in to Spotted London', html`
-    <h1>Sign in</h1>
-    <p>No password. We email you a link.</p>
-    ${err ? html`<p class="err">Sign in did not finish (${err}). Try again.</p>` : ''}
-    <form id="f"><input id="e" type="email" required placeholder="you@email.com" autocomplete="email"><button class="btn">Email me a link</button></form>
-    <a class="btn alt" href="/api/v1/auth/google">Continue with Google</a>
-    <p class="out" id="o" style="margin:14px 0 0"></p>
-    <script>${raw(`document.getElementById('f').onsubmit=async e=>{e.preventDefault();const o=document.getElementById('o');
-      const r=await fetch('/api/v1/auth/magic-link',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:document.getElementById('e').value})});
-      const j=await r.json();o.textContent='';if(j.dev_link){const a=document.createElement('a');a.href=j.dev_link;a.textContent='Dev: open sign-in link';o.append(j.message+' ',a)}else o.textContent=j.message||j.error?.message}`)}</script>`));
+/**
+ * Pop-up pages get real titles, share previews and schema.org Event data, injected into the
+ * SPA shell at the edge. Crawlers and link previews see them without running JavaScript.
+ */
+pages.get('/p/:slug', async c => {
+  const shellRes = await c.env.ASSETS.fetch(new URL('/', c.req.url));
+  const p = await c.env.DB.prepare(
+    `SELECT p.*, (SELECT r2_key FROM popup_images i WHERE i.popup_id = p.id ORDER BY position LIMIT 1) AS cover_key
+     FROM popups p WHERE p.slug = ? AND p.status IN ('community', 'verified_community', 'verified_admin', 'ended')`,
+  ).bind(c.req.param('slug')).first<PopupRow & { cover_key: string | null }>();
+  if (!p) return shellRes;
+  return new HTMLRewriter()
+    .on('title', { element: e => { e.setInnerContent(`${p.title} · Spotted London`); } })
+    .on('meta[name="description"]', { element: e => { e.setAttribute('content', describe(p)); } })
+    .on('head', { element: e => { e.append(headTags(p, new URL(c.req.url).origin), { html: true }); } })
+    .transform(shellRes);
 });
+
+const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
+
+function describe(p: PopupRow): string {
+  const when = new Date(p.start_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+  return [`${when}${p.borough ? ` in ${p.borough}` : ''}.`, p.description].filter(Boolean).join(' ').slice(0, 200);
+}
+
+export function headTags(p: PopupRow & { cover_key?: string | null }, origin: string): string {
+  const url = `${origin}/p/${p.slug}`;
+  const image = p.cover_key ? `${origin}/api/v1/images/${p.cover_key}` : null;
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: p.title,
+    description: p.description ?? undefined,
+    startDate: new Date(p.start_at).toISOString(),
+    endDate: new Date(p.end_at).toISOString(),
+    eventStatus: 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+    location: { '@type': 'Place', name: p.address ?? p.borough ?? 'London', address: { '@type': 'PostalAddress', streetAddress: p.address ?? undefined, addressLocality: 'London', addressCountry: 'GB' }, geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lng } },
+    organizer: p.host ? { '@type': 'Organization', name: p.host } : undefined,
+    image: image ?? undefined,
+    isAccessibleForFree: p.price_type === 'free' ? true : undefined,
+    url,
+  };
+  const tags = [
+    `<link rel="canonical" href="${esc(url)}">`,
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:title" content="${esc(p.title)}">`,
+    `<meta property="og:description" content="${esc(describe(p))}">`,
+    `<meta property="og:url" content="${esc(url)}">`,
+    image ? `<meta property="og:image" content="${esc(image)}">` : '',
+    `<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">`,
+    // "<" is escaped so the JSON cannot close the script tag
+    `<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`,
+  ];
+  return tags.join('');
+}

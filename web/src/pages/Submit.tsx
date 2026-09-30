@@ -1,0 +1,288 @@
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError, type Category, type Extracted, type Place, type Popup } from '../lib/api';
+import { CAT_LIST, CATS, catIcon, londonDate, londonTs } from '../lib/format';
+import { useDebounced, useErrorToast, useMe, useToast } from '../lib/hooks';
+import { compressImage } from '../lib/image';
+import { Icon } from '../components/Icon';
+
+const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
+
+type Flag = 'ai' | 'check' | undefined;
+type FieldKey = 'title' | 'host' | 'category' | 'where' | 'start' | 'end' | 'hours' | 'price' | 'desc';
+interface Photo { id: string; file: File; url: string }
+
+const today = () => londonDate(Date.now());
+const looksLikeUrl = (s: string) => /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(s.trim());
+
+export function Submit() {
+  const { data: me, isPending: meLoading } = useMe();
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+
+  const [src, setSrc] = useState('');
+  const [title, setTitle] = useState('');
+  const [host, setHost] = useState('');
+  const [category, setCategory] = useState<Category>('food');
+  const [whereText, setWhereText] = useState('');
+  const [place, setPlace] = useState<Place | null>(null);
+  const [start, setStart] = useState(today());
+  const [end, setEnd] = useState(today());
+  const [hours, setHours] = useState('');
+  const [priceType, setPriceType] = useState<'free' | 'paid' | 'unknown'>('unknown');
+  const [price, setPrice] = useState('');
+  const [desc, setDesc] = useState('');
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [flags, setFlags] = useState<Partial<Record<FieldKey, Flag>>>({});
+  const [ai, setAi] = useState<{ state: 'idle' | 'busy' | 'done' | 'error'; msg?: string }>({ state: 'idle' });
+  const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const [dupes, setDupes] = useState<{ id: string; slug: string; title: string }[] | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const clearFlag = (k: FieldKey) => { setFlags(f => ({ ...f, [k]: undefined })); setErrors(e => ({ ...e, [k]: undefined })); };
+
+  /* ----- address search ----- */
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const dq = useDebounced(whereText, 350);
+  const suggest = useQuery({
+    queryKey: ['geocode', dq],
+    queryFn: () => api<{ items: Place[] }>(`/geocode?q=${encodeURIComponent(dq)}`),
+    enabled: !!me && dq.trim().length >= 3 && (!place || place.label !== dq),
+    staleTime: 86_400_000,
+  });
+  const pickPlace = (p: Place) => { setPlace(p); setWhereText(p.label); setSuggestOpen(false); clearFlag('where'); };
+  const movePin = async (lat: number, lng: number) => {
+    setPlace(p => (p ? { ...p, lat, lng } : p));
+    try {
+      const r = await api<Place>(`/geocode/reverse?lat=${lat}&lng=${lng}`);
+      setPlace(r); setWhereText(r.label);
+    } catch { /* keep the moved pin even if the address lookup fails */ }
+  };
+
+  /* ----- AI autofill ----- */
+  const fill = async (input: string, via: 'link' | 'text') => {
+    setAi({ state: 'busy', msg: via === 'link' ? 'Reading the page. Looking for dates, place and price.' : 'Reading the text.' });
+    try {
+      const r = await api<{ fields: Extracted; platform: string | null }>('/extract', { method: 'POST', json: via === 'link' ? { url: input } : { text: input } });
+      const f = r.fields, c = f.confidence;
+      const mark = (k: string): Flag => (c[k] === 'check' ? 'check' : c[k] ? 'ai' : undefined);
+      const next: Partial<Record<FieldKey, Flag>> = {};
+      let n = 0;
+      if (f.title) { setTitle(f.title); next.title = mark('title'); n++; }
+      if (f.host) { setHost(f.host); next.host = mark('host'); n++; }
+      if (f.category) { setCategory(f.category); next.category = mark('category'); n++; }
+      if (f.start_date) { setStart(f.start_date); next.start = mark('start_date'); n++; }
+      if (f.end_date) { setEnd(f.end_date); next.end = mark('end_date'); n++; }
+      if (f.hours_text) { setHours(f.hours_text); next.hours = mark('hours_text'); n++; }
+      if (f.price_text) { setPrice(f.price_text); setPriceType(/free/i.test(f.price_text) ? 'free' : 'paid'); next.price = mark('price_text'); n++; }
+      if (f.description) { setDesc(f.description); next.desc = mark('description'); n++; }
+      if (f.address) {
+        setWhereText(f.address); setPlace(null); n++;
+        // Resolve the address to a pin; the person confirms it on the map.
+        const places = await api<{ items: Place[] }>(`/geocode?q=${encodeURIComponent(f.address)}`).catch(() => ({ items: [] }));
+        if (places.items[0]) { setPlace(places.items[0]); setWhereText(places.items[0].label); }
+        next.where = 'check';
+      }
+      if (via === 'link' && !src) setSrc(input);
+      setFlags(next);
+      const checks = Object.values(next).filter(v => v === 'check').length;
+      setAi({ state: 'done', msg: `Filled ${n} fields. Blue fields came from AI${checks ? `, and ${checks} need a closer look` : ''}. Check them before you submit.` });
+    } catch (e) {
+      setAi({ state: 'error', msg: e instanceof Error ? e.message : 'Autofill did not work. Fill in the form yourself.' });
+    }
+  };
+  const onAutofill = () => {
+    const v = src.trim();
+    if (!v) return toast('Paste a link or the post text first', 'i-link');
+    fill(v, looksLikeUrl(v) ? 'link' : 'text');
+  };
+
+  /* ----- photos ----- */
+  const addPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const room = 5 - photos.length;
+    const list = [...files].filter(f => f.type.startsWith('image/')).slice(0, room);
+    if (files.length > room) toast('You can add up to 5 photos', 'i-image');
+    setPhotos(ps => [...ps, ...list.map(file => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
+  };
+  useEffect(() => () => photos.forEach(p => URL.revokeObjectURL(p.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ----- trust preview ----- */
+  const hasSource = looksLikeUrl(src);
+  const trust = (me?.trust ?? 0) + (hasSource ? 10 : 0);
+  const auto = me?.role === 'admin' || me?.role === 'organizer' || trust >= 50;
+
+  /* ----- submit ----- */
+  const validate = () => {
+    const e: Partial<Record<FieldKey, string>> = {};
+    if (title.trim().length < 3) e.title = 'Give it a name of at least 3 characters.';
+    if (!place) e.where = 'Choose an address from the list, or drop the pin on the map.';
+    if (!start) e.start = 'Pick a start date.';
+    if (!end || end < start) e.end = 'The end date must be on or after the start.';
+    if (end && end < today()) e.end = 'This pop-up has already ended.';
+    setErrors(e);
+    return !Object.keys(e).length;
+  };
+
+  const submit = async (force = false) => {
+    if (!validate()) { toast('A few fields need attention', 'i-info', true); return; }
+    setSaving('Posting');
+    try {
+      const created = await api<Popup>('/popups', {
+        method: 'POST',
+        json: {
+          title: title.trim(), host: host.trim() || null, category, description: desc.trim() || null,
+          address: place!.address, borough: place!.area, lat: place!.lat, lng: place!.lng,
+          start_at: londonTs(start, 0), end_at: londonTs(end, 23, 59), hours_text: hours.trim() || null,
+          price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force,
+        },
+      });
+      for (const [i, ph] of photos.entries()) {
+        setSaving(`Uploading photo ${i + 1} of ${photos.length}`);
+        try {
+          const blob = await compressImage(ph.file);
+          await api(`/popups/${created.id}/images`, { method: 'POST', body: blob, headers: { 'content-type': blob.type } });
+        } catch (e) { onError(e); }
+      }
+      qc.invalidateQueries({ queryKey: ['popups'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+      toast(created.status === 'pending' ? 'Submitted. An admin will review it soon.' : 'Live now. The community will start checking it.', created.status === 'pending' ? 'i-clock' : 'i-bolt');
+      nav(`/?p=${created.slug}`, { replace: true });
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'possible_duplicate') setDupes((e.data?.candidates as { id: string; slug: string; title: string }[]) ?? []);
+      else onError(e);
+    } finally { setSaving(null); }
+  };
+
+  if (meLoading) return <div className="sk" style={{ height: 400 }} />;
+  if (!me) {
+    return (
+      <div className="auth panel">
+        <h1 style={{ fontSize: 28 }}>Add a pop-up</h1>
+        <p className="muted" style={{ margin: '8px 0 18px' }}>Sign in first, so the community knows who spotted it. You earn 10 karma when it gets verified.</p>
+        <Link className="btn primary block" to="/signin?return_to=/add">Sign in</Link>
+      </div>
+    );
+  }
+
+  const lbl = (k: FieldKey, text: string, extra?: string) => (
+    <span className="lbl">{text}{extra ? <span className="muted small">{extra}</span> : null}
+      {flags[k] === 'check' ? <span className="tag t-watch">Check this</span> : flags[k] === 'ai' ? <span className="tag t-ai">AI</span> : null}</span>
+  );
+  const cls = (k: FieldKey) => `input ${flags[k] ? 'ai' : ''} ${errors[k] ? 'bad' : ''}`;
+  const err = (k: FieldKey) => (errors[k] ? <span className="ferr" role="alert">{errors[k]}</span> : null);
+
+  return (
+    <>
+      <div className="eyebrow">Contribute</div><h1>Add a pop-up</h1>
+      <p className="intro">Seen something worth sharing? You earn 10 karma when it gets verified.</p>
+      <div className="form">
+        <form className={`fields panel ${ai.state === 'busy' ? 'filling' : ''}`} noValidate onSubmit={e => { e.preventDefault(); submit(); }}>
+          <section className="aibox" aria-labelledby="aih">
+            <div className="row" style={{ gap: 8 }}><span className="tag t-ai"><Icon name="i-sparkle" />AI</span><h2 id="aih">Paste a link, we fill it in</h2></div>
+            <div className="ailine">
+              <label style={{ flex: 1, minWidth: 0 }}><span className="sr">Link or post text</span>
+                <input className="input src" value={src} onChange={e => setSrc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAutofill(); } }}
+                  placeholder="Instagram, TikTok, Eventbrite, website, or the post text" autoComplete="off" /></label>
+              <button type="button" className="btn primary sm" onClick={onAutofill} disabled={ai.state === 'busy'}>{ai.state === 'busy' ? <span className="spin" /> : <Icon name="i-sparkle" />}Autofill</button>
+            </div>
+            {ai.state !== 'idle' ? (
+              <div className={`notice small ${ai.state === 'error' ? 'err' : 'ai'}`} aria-live="polite">
+                {ai.state === 'busy' ? <span className="spin" /> : <Icon name={ai.state === 'error' ? 'i-info' : 'i-sparkle'} />}<span>{ai.msg}</span>
+              </div>
+            ) : <p className="small muted">Instagram often blocks previews. If a link does not work, paste the caption text instead.</p>}
+          </section>
+
+          <label className="field">{lbl('title', 'Name of the pop-up')}
+            <input className={cls('title')} value={title} onChange={e => { setTitle(e.target.value); clearFlag('title'); setDupes(null); }} placeholder="e.g. Matcha Lab Pop-up" autoComplete="off" />{err('title')}</label>
+          {dupes ? (
+            <div className="notice watch small" style={{ flexDirection: 'column' }}>
+              <span><b>This looks like it is already listed.</b> If it is the same pop-up, vote on it instead of adding a copy.</span>
+              <span className="row">{dupes.map(d => <Link key={d.id} to={`/?p=${d.slug}`}>{d.title}</Link>)}</span>
+              <button type="button" className="btn sm" onClick={() => submit(true)}>It is a different pop-up, post it</button>
+            </div>
+          ) : null}
+          <label className="field">{lbl('host', 'Host or brand', ' (optional)')}
+            <input className={cls('host')} value={host} onChange={e => { setHost(e.target.value); clearFlag('host'); }} placeholder="Who is running it" autoComplete="off" /></label>
+          <div className="field"><span id="catlbl">{lbl('category', 'Category')}</span>
+            <div className="chips" role="radiogroup" aria-labelledby="catlbl">
+              {CAT_LIST.map(c => <button key={c} type="button" className="chip" role="radio" aria-checked={category === c} aria-pressed={category === c} onClick={() => { setCategory(c); clearFlag('category'); }}><Icon name={catIcon(c)} />{CATS[c]}</button>)}
+            </div></div>
+
+          <div className="field">
+            <label htmlFor="where">{lbl('where', 'Where')}</label>
+            <input id="where" className={cls('where')} value={whereText} autoComplete="off" placeholder="Start typing an address or venue"
+              onChange={e => { setWhereText(e.target.value); setPlace(null); setSuggestOpen(true); clearFlag('where'); }}
+              onFocus={() => setSuggestOpen(true)} onBlur={() => setTimeout(() => setSuggestOpen(false), 150)} />
+            {suggestOpen && suggest.data?.items.length && !place ? (
+              <ul className="suggest">{suggest.data.items.map(p => (
+                <li key={`${p.lat},${p.lng}`}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pickPlace(p)}>{p.name ?? p.address}<small>{p.name ? p.address : p.area}</small></button></li>
+              ))}</ul>
+            ) : null}
+            {suggest.isFetching ? <span className="hint"><span className="spin" style={{ width: 11, height: 11 }} /> Searching</span> : null}
+            {err('where')}
+            {place ? (
+              <Suspense fallback={<div className="minimap sk" />}>
+                <PinPicker lat={place.lat} lng={place.lng} onMove={movePin} />
+                <span className="hint">Drag the pin or tap the map if it is not quite right.</span>
+              </Suspense>
+            ) : null}
+          </div>
+
+          <div className="two">
+            <label className="field">{lbl('start', 'Starts')}<input className={cls('start')} type="date" value={start} min={londonDate(Date.now() - 7 * 86_400_000)} onChange={e => { setStart(e.target.value); if (end < e.target.value) setEnd(e.target.value); clearFlag('start'); }} />{err('start')}</label>
+            <label className="field">{lbl('end', 'Ends')}<input className={cls('end')} type="date" value={end} min={start} onChange={e => { setEnd(e.target.value); clearFlag('end'); }} />{err('end')}</label>
+          </div>
+          <label className="field">{lbl('hours', 'Opening hours', ' (optional)')}
+            <input className={cls('hours')} value={hours} onChange={e => { setHours(e.target.value); clearFlag('hours'); }} placeholder="e.g. Sat 10:00 to 16:00" /></label>
+          <div className="field"><span className="lbl" id="pricelbl">Price</span>
+            <div className="chips" role="radiogroup" aria-labelledby="pricelbl">
+              {([['free', 'Free'], ['paid', 'Paid'], ['unknown', 'Not sure']] as const).map(([k, l]) => <button key={k} type="button" className="chip" role="radio" aria-checked={priceType === k} aria-pressed={priceType === k} onClick={() => setPriceType(k)}>{l}</button>)}
+            </div>
+            <input className={cls('price')} value={price} onChange={e => { setPrice(e.target.value); clearFlag('price'); }} placeholder="Details, e.g. £5 entry, bowls from £9" aria-label="Price details" />
+          </div>
+          <label className="field">{lbl('desc', 'What to expect', ' (optional)')}
+            <textarea className={cls('desc')} value={desc} onChange={e => { setDesc(e.target.value); clearFlag('desc'); }} maxLength={2000} placeholder="Queues, what to bring, anything useful" /></label>
+
+          <div className="field"><span className="lbl">Photos <span className="muted small">(up to 5)</span></span>
+            {photos.length ? <div className="thumbs">{photos.map(p => (
+              <figure key={p.id}><img src={p.url} alt="" /><button type="button" aria-label="Remove photo" onClick={() => { URL.revokeObjectURL(p.url); setPhotos(ps => ps.filter(x => x.id !== p.id)); }}><Icon name="i-x" /></button></figure>
+            ))}</div> : null}
+            {photos.length < 5 ? <span className="btn sm filebtn" style={{ alignSelf: 'flex-start' }}><Icon name="i-image" />Add photos<input type="file" accept="image/*" multiple onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} aria-label="Add photos" /></span> : null}
+            <span className="hint">We shrink photos before uploading them.</span>
+          </div>
+
+          <div className="row">
+            <button className="btn primary" type="submit" disabled={!!saving} style={{ flex: '1 1 auto', maxWidth: 320 }}>{saving ? <><span className="spin" />{saving}</> : <><Icon name="i-plus" />Submit pop-up</>}</button>
+          </div>
+        </form>
+
+        <aside className="sticky">
+          <TrustBox trust={trust} auto={auto} hasSource={hasSource} karma={me.karma} verified={me.verified_posts} />
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function TrustBox({ trust, auto, hasSource, karma, verified }: { trust: number; auto: boolean; hasSource: boolean; karma: number; verified: number }) {
+  const width = `${Math.min(100, (trust / 50) * 100)}%`;
+  return (
+    <div className="panel">
+      <div className="eyebrow">Your trust score</div>
+      <div className="confrow"><b className="num">{trust}</b><span className="muted">/ 50 to skip review</span></div>
+      <div className={`meter big ${auto ? '' : 'mid'}`} style={{ margin: '10px 0 12px' }}><i style={{ width }} /></div>
+      {auto
+        ? <div className="notice good small"><Icon name="i-bolt" /><span>This goes live straight away and the community starts checking it.</span></div>
+        : <div className="notice watch small"><Icon name="i-clock" /><span>An admin reviews this first, usually within 12 hours.{hasSource ? '' : ' A source link adds 10.'}</span></div>}
+      <table className="log small" style={{ marginTop: 12 }}><tbody>
+        <tr><td>Karma {karma} × 0.5</td><td className="d num">{Math.round(karma * 0.5)}</td></tr>
+        <tr><td>{verified} verified posts × 5</td><td className="d num">{verified * 5}</td></tr>
+        <tr><td>Source link</td><td className={`d num ${hasSource ? 'pos' : ''}`}>+{hasSource ? 10 : 0}</td></tr>
+      </tbody></table>
+    </div>
+  );
+}
