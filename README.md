@@ -109,13 +109,38 @@ In the Google console, add `<APP_URL>/api/v1/auth/google/callback` as an authori
 - Emails other than sign-in: newsletter confirmation and reminders are found by the jobs but not sent yet.
 - Vote ring detection in the daily abuse scan.
 - Photo uploads by people other than the poster, and an image moderation step.
+- Photos in local development too: they need the R2 binding, which is switched off until R2 is enabled on the account.
 
-## Deploy (later)
+## Production
+
+Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zack11712@gmail.com).
+
+| Resource | Name | Notes |
+|---|---|---|
+| Worker | `spotted-london` | cron: every 10 min, hourly, daily 04:00 UTC |
+| D1 | `spotted-db` (WEUR) | id in `wrangler.jsonc` |
+| KV | `CACHE` | autofill cache and rate limits |
+| Turnstile | "Spotted London" | site key in `wrangler.jsonc`, secret in `TURNSTILE_SECRET` |
+| Secrets | `IP_SALT`, `TURNSTILE_SECRET` | set with `wrangler secret put`, never in the repo |
 
 ```bash
-npx wrangler login
-npx wrangler d1 create spotted-db    # then put the id in wrangler.jsonc
-npx wrangler d1 migrations apply spotted-db --remote
-npx wrangler secret put IP_SALT
-npx wrangler deploy
+npm run deploy                                                        # build web/ and deploy
+npx wrangler d1 migrations apply spotted-db --remote                  # after adding a migration
+npx wrangler tail                                                     # live logs
 ```
+
+### Example data
+
+The live site has fictional pop-ups marked **Example** (`is_example = 1`), hidden from search engines. Their accounts use `@example.invalid` addresses, so nobody can sign in as them. Regenerate with `python3 scripts/seed.py`.
+
+```bash
+npx wrangler d1 execute spotted-db --remote --file=./seed/examples.sql        # load
+npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # remove before launch
+```
+
+### Still to switch on
+
+- **Sign in**: add `RESEND_API_KEY` and `EMAIL_FROM` (email links) and/or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Until then the site is browse-only.
+- **Photos**: enable R2 in the Cloudflare dashboard, then `npx wrangler r2 bucket create spotted-images` and uncomment `r2_buckets` in `wrangler.jsonc`.
+- **Workers AI** for autofill from pasted text: uncomment the `ai` binding.
+- **Custom domain**: add it to the Worker, update `APP_URL`, and add the domain to the Turnstile widget.

@@ -5,6 +5,7 @@ import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { Icon } from './Icon';
 import { Cover, Meter, ScoreVotes, StatusTag, usePopupActions } from './PopupBits';
+import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
 const VERIFY_CONFIDENCE = 0.75, VERIFY_MIN_WEIGHT = 8;
@@ -66,6 +67,8 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const { toggleSave } = usePopupActions(p);
   const [reporting, setReporting] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [botToken, setBotToken] = useState<string | null>(null);
+  const needsBot = useNeedsTurnstile();
 
   const live = isLive(p);
   const started = p.start_at <= Date.now();
@@ -105,7 +108,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
     onError,
   });
   const report = useMutation({
-    mutationFn: (reason: string) => api<{ status_change: { from: string; to: string } | null }>(`/popups/${p.id}/report`, { method: 'POST', json: { reason } }),
+    mutationFn: (reason: string) => api<{ status_change: { from: string; to: string } | null }>(`/popups/${p.id}/report`, { method: 'POST', json: { reason, turnstile_token: botToken } }),
     onSuccess: d => { setReporting(false); if (d.status_change?.to !== 'hidden') toast('Report sent to the admins', 'i-flag'); after(d.status_change); },
     onError: e => { setReporting(false); onError(e); },
   });
@@ -133,7 +136,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
-          <StatusTag status={p.status} /><span className="tag t-mute">{CATS[p.category]}</span>
+          <StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
           {live ? <span className="tag t-new">On now</span> : null}
         </div>
         <div><h1 style={{ fontSize: 32 }}>{p.title}</h1>{p.host ? <p className="muted" style={{ marginTop: 4 }}>by {p.host}</p> : null}</div>
@@ -144,6 +147,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow">{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
         </dl>
         {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <img key={i.id} src={i.url} alt="" loading="lazy" />)}</div> : null}
+        {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
         <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /><span className="spacer" /><button className="btn sm subtle" onClick={share}><Icon name="i-link" />Share</button></div>
 
@@ -182,8 +186,9 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
             <div className="panel" style={{ padding: 14 }}>
               <h3>What's wrong?</h3>
               <div className="chips" style={{ marginTop: 10 }}>
-                {REASONS.map(([k, l]) => <button key={k} className="chip" disabled={report.isPending} onClick={() => report.mutate(k)}>{l}</button>)}
+                {REASONS.map(([k, l]) => <button key={k} className="chip" disabled={report.isPending || (needsBot && !botToken)} onClick={() => report.mutate(k)}>{l}</button>)}
               </div>
+              <div style={{ marginTop: 10 }}><Turnstile onToken={setBotToken} /></div>
             </div>
           ) : <div><button className="btn sm subtle" onClick={requireAuth(() => setReporting(true), 'Sign in to report')}><Icon name="i-flag" />Report a problem</button></div>
         ) : null}

@@ -319,6 +319,7 @@ popups.delete('/:id/save', async c => {
 const IMAGE_TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
 popups.post('/:id/images', async c => {
   const u = requireUser(c);
+  if (!c.env.IMAGES) throw new ApiError(501, 'photos_not_enabled', 'Photo uploads are not switched on yet. Your pop-up was saved without photos.');
   const db = c.env.DB;
   const p = await load(db, c.req.param('id'));
   if (p.created_by !== u.id && u.role !== 'admin') throw new ApiError(403, 'not_yours', 'Only the poster can add photos for now.');

@@ -55,6 +55,8 @@ const publicUser = (u: UserRow) => ({ id: u.id, email: u.email, name: u.display_
 auth.get('/providers', c => c.json({
   email: !!c.env.RESEND_API_KEY || isDev(c),
   google: !!(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
+  photos: !!c.env.IMAGES,
+  turnstile_site_key: c.env.TURNSTILE_SECRET ? (c.env.TURNSTILE_SITE_KEY ?? null) : null,
 }));
 
 /* ---------------- email magic link ---------------- */

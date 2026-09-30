@@ -99,6 +99,6 @@ describe('address search', () => {
 
 describe('sign-in options', () => {
   it('reports which providers are set up', async () => {
-    expect(await (await call('/api/v1/auth/providers')).json()).toEqual({ email: true, google: true });
+    expect(await (await call('/api/v1/auth/providers')).json()).toEqual({ email: true, google: true, photos: true, turnstile_site_key: null });
   });
 });

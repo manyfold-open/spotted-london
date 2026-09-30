@@ -3,6 +3,8 @@ import type { Status } from './lib/scoring';
 /** Bindings from wrangler.jsonc plus optional secrets and bindings added later. */
 export type Bindings = Cloudflare.Env & {
   AI?: Ai;
+  IMAGES?: R2Bucket;
+  TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;
   RESEND_API_KEY?: string;
@@ -57,6 +59,7 @@ export interface PopupRow {
   report_weight: number;
   created_at: number;
   updated_at: number;
+  is_example: number;
 }
 
 export type AppEnv = {

@@ -6,6 +6,7 @@ import { CAT_LIST, CATS, catIcon, londonDate, londonTs } from '../lib/format';
 import { useDebounced, useErrorToast, useMe, useToast } from '../lib/hooks';
 import { compressImage } from '../lib/image';
 import { Icon } from '../components/Icon';
+import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
@@ -41,6 +42,10 @@ export function Submit() {
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [dupes, setDupes] = useState<{ id: string; slug: string; title: string }[] | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [botToken, setBotToken] = useState<string | null>(null);
+  const [botReset, setBotReset] = useState(0);
+  const needsBot = useNeedsTurnstile();
+  const photosOn = useProviders().data?.photos ?? false;
 
   const clearFlag = (k: FieldKey) => { setFlags(f => ({ ...f, [k]: undefined })); setErrors(e => ({ ...e, [k]: undefined })); };
 
@@ -137,10 +142,10 @@ export function Submit() {
           title: title.trim(), host: host.trim() || null, category, description: desc.trim() || null,
           address: place!.address, borough: place!.area, lat: place!.lat, lng: place!.lng,
           start_at: londonTs(start, 0), end_at: londonTs(end, 23, 59), hours_text: hours.trim() || null,
-          price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force,
+          price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force, turnstile_token: botToken,
         },
       });
-      for (const [i, ph] of photos.entries()) {
+      for (const [i, ph] of (photosOn ? photos : []).entries()) {
         setSaving(`Uploading photo ${i + 1} of ${photos.length}`);
         try {
           const blob = await compressImage(ph.file);
@@ -152,6 +157,7 @@ export function Submit() {
       toast(created.status === 'pending' ? 'Submitted. An admin will review it soon.' : 'Live now. The community will start checking it.', created.status === 'pending' ? 'i-clock' : 'i-bolt');
       nav(`/?p=${created.slug}`, { replace: true });
     } catch (e) {
+      setBotReset(n => n + 1); // tokens work once
       if (e instanceof ApiError && e.code === 'possible_duplicate') setDupes((e.data?.candidates as { id: string; slug: string; title: string }[]) ?? []);
       else onError(e);
     } finally { setSaving(null); }
@@ -247,16 +253,17 @@ export function Submit() {
           <label className="field">{lbl('desc', 'What to expect', ' (optional)')}
             <textarea className={cls('desc')} value={desc} onChange={e => { setDesc(e.target.value); clearFlag('desc'); }} maxLength={2000} placeholder="Queues, what to bring, anything useful" /></label>
 
-          <div className="field"><span className="lbl">Photos <span className="muted small">(up to 5)</span></span>
+          {photosOn ? <div className="field"><span className="lbl">Photos <span className="muted small">(up to 5)</span></span>
             {photos.length ? <div className="thumbs">{photos.map(p => (
               <figure key={p.id}><img src={p.url} alt="" /><button type="button" aria-label="Remove photo" onClick={() => { URL.revokeObjectURL(p.url); setPhotos(ps => ps.filter(x => x.id !== p.id)); }}><Icon name="i-x" /></button></figure>
             ))}</div> : null}
             {photos.length < 5 ? <span className="btn sm filebtn" style={{ alignSelf: 'flex-start' }}><Icon name="i-image" />Add photos<input type="file" accept="image/*" multiple onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} aria-label="Add photos" /></span> : null}
             <span className="hint">We shrink photos before uploading them.</span>
-          </div>
+          </div> : <div className="notice small"><Icon name="i-image" /><span>Photo uploads are coming soon. Add a source link so people can see what it looks like.</span></div>}
 
+          <Turnstile onToken={setBotToken} resetKey={botReset} />
           <div className="row">
-            <button className="btn primary" type="submit" disabled={!!saving} style={{ flex: '1 1 auto', maxWidth: 320 }}>{saving ? <><span className="spin" />{saving}</> : <><Icon name="i-plus" />Submit pop-up</>}</button>
+            <button className="btn primary" type="submit" disabled={!!saving || (needsBot && !botToken)} style={{ flex: '1 1 auto', maxWidth: 320 }}>{saving ? <><span className="spin" />{saving}</> : <><Icon name="i-plus" />Submit pop-up</>}</button>
           </div>
         </form>
 

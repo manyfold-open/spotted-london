@@ -64,6 +64,7 @@ export function Explore() {
       <h1><span className="d-only">What's popping up this week</span><span className="m-only">What's on this week</span></h1>
       <p className="intro d-only">Pop-ups added by locals and checked by the people who went. Live and verified ones come first, then the ones starting soon.</p>
       <Filters near={near} setNear={setNear} />
+      {items.some(p => p.example) ? <div className="notice small" style={{ marginTop: 14 }}><Icon name="i-info" /><span>Pop-ups marked <b>Example</b> show how Spotted works. They are not real events.</span></div> : null}
 
       {live.length && f.when !== 'today' ? (
         <div className="m-only" style={{ display: 'block' }}>

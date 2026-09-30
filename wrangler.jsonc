@@ -18,16 +18,18 @@
   "vars": {
     "ENVIRONMENT": "production",
     // Public site address, used in sign-in links and the Google redirect. Set before deploying.
-    "APP_URL": "",
+    "APP_URL": "https://spotted-london.zack11712.workers.dev",
+    // Public Turnstile site key (the secret goes in `wrangler secret put TURNSTILE_SECRET`)
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFKY6joZ7fjJGaI4",
     "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   },
 
-  // IDs are filled in by `wrangler deploy` auto-provisioning (or `wrangler d1 create`).
   "d1_databases": [
-    { "binding": "DB", "database_name": "spotted-db", "migrations_dir": "./migrations" }
+    { "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a", "migrations_dir": "./migrations" }
   ],
-  "kv_namespaces": [{ "binding": "CACHE" }],
-  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
+  // Photos need R2, which has to be switched on in the Cloudflare dashboard first. Then uncomment:
+  // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
 
   // Workers AI needs `wrangler login` even in local dev. Uncomment after logging in:
   // "ai": { "binding": "AI", "remote": true },

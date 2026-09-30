@@ -84,7 +84,7 @@ pages.get('/p/:slug', async c => {
   return new HTMLRewriter()
     .on('title', { element: e => { e.setInnerContent(`${p.title} · Spotted London`); } })
     .on('meta[name="description"]', { element: e => { e.setAttribute('content', describe(p)); } })
-    .on('head', { element: e => { e.append(headTags(p, new URL(c.req.url).origin), { html: true }); } })
+    .on('head', { element: e => { e.append(headTags(p, new URL(c.req.url).origin) + (p.is_example ? '<meta name="robots" content="noindex">' : ''), { html: true }); } })
     .transform(shellRes);
 });
 

@@ -12,7 +12,7 @@ export interface Popup {
   location: { address: string | null; borough: string | null; lat: number; lng: number };
   start_at: number; end_at: number; hours_text: string | null; source_url: string | null; status: Status;
   verification: { confidence: number; weighted_votes: number; voters: number; checkins: number };
-  score: number; hot: number; cover_url: string | null; created_at: number;
+  score: number; hot: number; cover_url: string | null; created_at: number; example?: boolean;
   distance_m?: number;
   me?: MyState | null;
   images?: { id: string; url: string }[];

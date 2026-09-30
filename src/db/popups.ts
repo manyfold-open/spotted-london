@@ -98,6 +98,7 @@ export function toPublic(p: PopupRow & { cover_key?: string | null }, extra: Rec
     score: p.quality_pos - p.quality_neg,
     hot: p.hot,
     cover_url: p.cover_key ? `/api/v1/images/${p.cover_key}` : null,
+    example: !!p.is_example,
     created_at: p.created_at,
     ...extra,
   };

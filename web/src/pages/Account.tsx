@@ -6,6 +6,7 @@ import { dateRange, initials } from '../lib/format';
 import { useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CardSkeletons, Cover, PopupCard, StatusTag } from '../components/PopupBits';
+import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 
 /* ---------------- Saved ---------------- */
 export function Saved() {
@@ -44,10 +45,13 @@ export function SignIn() {
   const { data: me } = useMe();
   const [email, setEmail] = useState('');
   const onError = useErrorToast();
-  const providers = useQuery({ queryKey: ['providers'], queryFn: () => api<{ email: boolean; google: boolean }>('/auth/providers'), staleTime: Infinity });
+  const providers = useProviders();
+  const needsBot = useNeedsTurnstile();
+  const [botToken, setBotToken] = useState<string | null>(null);
+  const [botReset, setBotReset] = useState(0);
   const send = useMutation({
-    mutationFn: () => api<{ message: string; dev_link?: string }>('/auth/magic-link', { method: 'POST', json: { email, return_to: returnTo } }),
-    onError,
+    mutationFn: () => api<{ message: string; dev_link?: string }>('/auth/magic-link', { method: 'POST', json: { email, return_to: returnTo, turnstile_token: botToken } }),
+    onError: e => { onError(e); setBotReset(n => n + 1); },
   });
   if (me) {
     return <div className="auth panel"><h1 style={{ fontSize: 28 }}>You are signed in</h1><p className="muted" style={{ margin: '8px 0 18px' }}>as {me.email}</p><Link className="btn primary block" to={returnTo}>Continue</Link></div>;
@@ -56,7 +60,9 @@ export function SignIn() {
     <div className="auth panel">
       <h1 style={{ fontSize: 28 }}>Sign in</h1>
       <p className="muted" style={{ margin: '8px 0 18px' }}>No password. We email you a link that signs you in.</p>
-      {send.isSuccess ? (
+      {providers.data && !providers.data.email && !providers.data.google ? (
+        <div className="notice watch"><Icon name="i-clock" /><span>Sign in is not switched on yet. You can still browse every pop-up.</span></div>
+      ) : providers.data && !providers.data.email ? null : send.isSuccess ? (
         <div className="stack">
           <div className="notice good"><Icon name="i-mail" /><span>{send.data.message}</span></div>
           {send.data.dev_link ? <a className="btn block" href={send.data.dev_link}>Development: open the sign-in link</a> : null}
@@ -66,7 +72,8 @@ export function SignIn() {
         <form className="stack" onSubmit={e => { e.preventDefault(); send.mutate(); }}>
           <label className="field"><span className="lbl">Email</span>
             <input className="input" type="email" required autoComplete="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></label>
-          <button className="btn primary block" disabled={send.isPending}>{send.isPending ? <span className="spin" /> : <Icon name="i-mail" />}Email me a link</button>
+          <Turnstile onToken={setBotToken} resetKey={botReset} />
+          <button className="btn primary block" disabled={send.isPending || (needsBot && !botToken)}>{send.isPending ? <span className="spin" /> : <Icon name="i-mail" />}Email me a link</button>
         </form>
       )}
       {providers.data?.google ? (

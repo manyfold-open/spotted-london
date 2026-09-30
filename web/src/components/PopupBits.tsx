@@ -87,7 +87,7 @@ export function PopupCard({ p }: { p: Popup }) {
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
       </div>
       <div className="cbody">
-        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} /><span className="tag t-mute cattag">{CATS[p.category]}</span></div>
+        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute cattag">{CATS[p.category]}</span></div>
         <h3><Link className="stretch" to={`/p/${p.slug}`} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
