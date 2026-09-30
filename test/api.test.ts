@@ -221,6 +221,57 @@ describe('cron settlement', () => {
   });
 });
 
+describe('AI autofill', () => {
+  const answer = { title: 'Kimchi Club pop-up', host: 'Kimchi Club', category: 'food', address: '12 Rivington Street, EC2A 3DU',
+    start_date: '2026-10-03', end_date: '2026-10-04', hours_text: 'Sat and Sun 12:00 to 18:00', price_text: 'Plates from £8', description: null, unsure: ['end_date'] };
+
+  it('reads pasted post text with the text model', async () => {
+    const run = vi.spyOn(env.AI, 'run').mockResolvedValue({ response: answer } as never);
+    const r = await api('POST', '/extract', { user: await user(), body: { text: 'Kimchi Club takes over Rivington St this weekend! Sat+Sun 12-6' } });
+    expect(r.status).toBe(200);
+    expect(r.json.fields).toMatchObject({ title: 'Kimchi Club pop-up', category: 'food', start_date: '2026-10-03', end_date: '2026-10-04' });
+    expect(r.json.fields.confidence).toMatchObject({ title: 'high', end_date: 'check' });
+    expect(r.json.fields.source).toEqual(['llm_text']);
+    expect(run.mock.calls[0][0]).toBe(env.AI_TEXT_MODEL);
+  });
+
+  it('reads a screenshot with the vision model', async () => {
+    const run = vi.spyOn(env.AI, 'run').mockResolvedValue({ response: JSON.stringify(answer) } as never);
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const res = await exports.default.fetch(new Request('http://spotted.test/api/v1/extract/image', {
+      method: 'POST', headers: { 'x-now': String(NOW), 'x-dev-user': await user(), 'content-type': 'image/png' }, body: png,
+    }));
+    const json = (await res.json()) as any;
+    expect(res.status).toBe(200);
+    expect(json.fields).toMatchObject({ title: 'Kimchi Club pop-up', address: '12 Rivington Street, EC2A 3DU' });
+    expect(json.fields.source).toEqual(['llm_vision']);
+    const [model, input] = run.mock.calls[0] as unknown as [string, { messages: { content: unknown }[] }];
+    expect(model).toBe(env.AI_VISION_MODEL);
+    expect(JSON.stringify(input.messages[1].content)).toContain('data:image/png;base64,iVBORw0KGgoBAgM=');
+  });
+
+  it('refuses files that are not images and explains an empty result', async () => {
+    const send = async (type: string, body: BodyInit) => {
+      const res = await exports.default.fetch(new Request('http://spotted.test/api/v1/extract/image', {
+        method: 'POST', headers: { 'x-now': String(NOW), 'x-dev-user': await user(), 'content-type': type }, body,
+      }));
+      return { status: res.status, json: (await res.json()) as any };
+    };
+    expect((await send('application/pdf', 'x')).status).toBe(415);
+    vi.spyOn(env.AI, 'run').mockResolvedValue({ response: { title: null, unsure: [] } } as never);
+    const r = await send('image/jpeg', new Uint8Array([255, 216, 255]));
+    expect(r.status).toBe(422);
+    expect(r.json.error.code).toBe('unreadable_image');
+  });
+
+  it('says so when the daily AI allowance is used up', async () => {
+    vi.spyOn(env.AI, 'run').mockRejectedValue(new Error('AiError: 4006: you have used up your daily free allocation of 10,000 neurons'));
+    const r = await api('POST', '/extract', { user: await user(), body: { text: 'Some pop-up this Saturday in Hackney' } });
+    expect(r.status).toBe(503);
+    expect(r.json.error.code).toBe('ai_quota');
+  });
+});
+
 describe('link autofill', () => {
   it('fills fields from Event JSON-LD and caches the result', async () => {
     const html = `<html><head><script type="application/ld+json">{"@type":"Event","name":"Autumn Flower Market",

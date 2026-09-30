@@ -27,7 +27,7 @@ export async function sha256(s: string): Promise<string> {
 
 /** Error with a stable machine-readable code (SPEC §7 error format). */
 export class ApiError extends HTTPException {
-  constructor(status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 501 | 502, public code: string, message: string, public extra?: Record<string, unknown>) {
+  constructor(status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 501 | 502 | 503, public code: string, message: string, public extra?: Record<string, unknown>) {
     super(status, { message });
   }
 }

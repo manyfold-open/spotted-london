@@ -6,8 +6,8 @@ import { jsonBody, text } from '../lib/validate';
 import { DAY } from '../lib/scoring';
 import { londonDateString } from '../lib/time';
 import {
-  emptyExtraction, finalise, fromLlm, llmPrompt, LLM_SCHEMA, mergeInto, missing, parseJsonLdEvent,
-  parseOpenGraph, platformOf, readableText, safeUrl, type Extracted,
+  emptyExtraction, finalise, fromLlm, llmPrompt, llmVisionPrompt, LLM_SCHEMA, mergeInto, missing, parseJsonLdEvent,
+  parseOpenGraph, platformOf, readableText, safeUrl, type Extracted, type Source,
 } from '../lib/extract';
 
 export const extract = new Hono<AppEnv>();
@@ -33,8 +33,13 @@ extract.post('/', async c => {
   if (pasted && !url) {
     if (!c.env.AI) throw new ApiError(501, 'ai_unavailable', 'Reading pasted text needs AI, which is not switched on yet. Fill in the form yourself.');
     const e = emptyExtraction();
-    await llmPass(c.env, e, pasted, now);
-    return c.json({ fields: finalise(e, pasted, now), platform: null, cached: false });
+    const fail = await llmPass(c.env, e, c.env.AI_TEXT_MODEL, llmPrompt(pasted.slice(0, 8000), now), 'llm_text');
+    if (fail) throw aiError(fail);
+    finalise(e, pasted, now);
+    if (!e.title && !e.start_date && !e.address) {
+      throw new ApiError(422, 'unreadable_text', 'We could not find a name, date or place in that text. Paste more of the post, or fill in the form yourself.');
+    }
+    return c.json({ fields: e, platform: null, cached: false });
   }
 
   if (!url) throw bad('url_invalid', 'That does not look like a public web link.');
@@ -49,7 +54,8 @@ extract.post('/', async c => {
   mergeInto(e, parseOpenGraph(html), 'og', platformOf(url) === 'web' || platformOf(url) === 'eventbrite' ? 'high' : 'check');
   if (missing(e).length && c.env.AI) {
     const og = parseOpenGraph(html);
-    await llmPass(c.env, e, [og.title, og.description, readableText(html)].filter(Boolean).join('\n'), now);
+    const page = [og.title, og.description, readableText(html)].filter(Boolean).join('\n');
+    await llmPass(c.env, e, c.env.AI_TEXT_MODEL, llmPrompt(page.slice(0, 8000), now), 'llm_text');
   }
   finalise(e, readableText(html, 2000), now);
   if (!e.title && !e.start_date) {
@@ -59,11 +65,43 @@ extract.post('/', async c => {
   return c.json({ fields: e, platform: platformOf(url), cached: false });
 });
 
-/** Screenshots need a vision model; this is wired up once Workers AI is enabled. */
-extract.post('/image', c => {
-  requireUser(c);
-  throw new ApiError(501, 'vision_not_enabled', 'Reading screenshots is not switched on yet. Paste the post text or fill in the form yourself.');
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE = 2 * 1024 * 1024;
+
+/**
+ * POST /extract/image  raw image body (JPEG, PNG or WebP, up to 2 MB)
+ * Reads a screenshot of a post with the vision model. The web app shrinks screenshots first.
+ */
+extract.post('/image', async c => {
+  const u = requireUser(c);
+  const now = c.get('now');
+  const type = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!IMAGE_TYPES.includes(type)) throw new ApiError(415, 'image_type', 'Screenshots must be JPEG, PNG or WebP.');
+  if (Number(c.req.header('content-length') ?? 0) > MAX_IMAGE) throw tooLarge();
+  if (!c.env.AI) throw new ApiError(501, 'vision_not_enabled', 'Reading screenshots is not switched on yet. Paste the post text or fill in the form yourself.');
+  const body = await c.req.arrayBuffer();
+  if (body.byteLength > MAX_IMAGE) throw tooLarge();
+  if (!body.byteLength) throw bad('image_empty', 'The screenshot is empty. Try taking it again.');
+  await rateLimit(c.env, u.id, now, now - u.created_at < 7 * DAY ? 3 : 10);
+
+  const e = emptyExtraction();
+  const fail = await llmPass(c.env, e, c.env.AI_VISION_MODEL, llmVisionPrompt(`data:${type};base64,${base64(body)}`, now), 'llm_vision');
+  if (fail) throw aiError(fail);
+  finalise(e, '', now);
+  if (!e.title && !e.start_date && !e.address) {
+    throw new ApiError(422, 'unreadable_image', 'We could not read pop-up details in that screenshot. Try one that shows the caption, or fill in the form yourself.');
+  }
+  return c.json({ fields: e, platform: null, cached: false });
 });
+
+const tooLarge = () => new ApiError(413, 'image_too_large', 'That screenshot is too big. Crop it to the post and try again.');
+
+function base64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
 
 async function fetchPage(url: URL): Promise<string> {
   let res: Response;
@@ -97,24 +135,35 @@ async function fetchPage(url: URL): Promise<string> {
   return new TextDecoder().decode(buf);
 }
 
-async function llmPass(env: Bindings, e: Extracted, input: string, now: number) {
-  if (!env.AI) return;
+type AiFailure = 'quota' | 'error';
+
+/** One model call. Fills empty fields and returns why it failed, if it did. */
+async function llmPass(env: Bindings, e: Extracted, model: string, messages: unknown[], source: Source): Promise<AiFailure | null> {
+  if (!env.AI) return 'error';
   let out: unknown;
   try {
-    const r = await env.AI.run(env.AI_TEXT_MODEL as Parameters<Ai['run']>[0], {
-      messages: llmPrompt(input.slice(0, 8000), now),
+    const r = await env.AI.run(model as Parameters<Ai['run']>[0], {
+      messages,
       response_format: { type: 'json_schema', json_schema: LLM_SCHEMA },
       max_tokens: 700,
     } as never) as { response?: unknown };
     out = r?.response ?? r;
   } catch (err) {
-    console.error('extract llm failed', err);
-    return; // fall back to whatever deterministic parsing found
+    console.error('extract llm failed', model, err);
+    // Workers AI error 4006: the account used up today's free neurons.
+    return /4006|neurons|daily free allocation/i.test(String(err)) ? 'quota' : 'error';
   }
   const { fields, unsure } = fromLlm(out);
   const before = new Set(Object.keys(e.confidence));
-  mergeInto(e, fields, 'llm_text', 'high');
+  mergeInto(e, fields, source, 'high');
   for (const f of unsure) if (!before.has(f) && f in e.confidence) (e.confidence as Record<string, string>)[f] = 'check';
+  return null;
+}
+
+function aiError(f: AiFailure) {
+  return f === 'quota'
+    ? new ApiError(503, 'ai_quota', 'Autofill has reached its limit for today. Fill in the form yourself, or try again tomorrow.')
+    : new ApiError(503, 'ai_failed', 'Autofill did not work this time. Try again, or fill in the form yourself.');
 }
 
 async function rateLimit(env: Bindings, userId: string, now: number, cap: number) {

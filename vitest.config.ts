@@ -7,6 +7,8 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: './wrangler.jsonc' },
+        // Tests never call Cloudflare: the AI binding stays local and each test mocks env.AI.run.
+        remoteBindings: false,
         miniflare: {
           bindings: {
             ENVIRONMENT: 'development', APP_URL: 'http://spotted.test', IP_SALT: 'test-salt',
