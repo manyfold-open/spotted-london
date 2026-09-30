@@ -80,7 +80,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 
 ## Production
 
-Deploys run on Cloudflare Workers Builds, connected to this repo (no GitHub Actions minutes available). Push to `main` deploys production; other branches get preview versions that share production D1/KV/R2. Work on a branch and open a PR; Zack merges. The build token has no D1 access: if a PR adds a migration, say so in the PR and ask Zack to run `npx wrangler d1 migrations apply spotted-db --remote` before merging (migrations must not break the currently deployed code). Build settings are listed in README "How deploys happen".
+Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this repo (no GitHub Actions minutes available). Push to `main` deploys production; other branches get preview versions that share production D1/KV/R2. Work on a branch and open a PR; Zack merges. The build token has no D1 access: if a PR adds a migration, say so in the PR and ask Zack to run `npx wrangler d1 migrations apply spotted-db --remote` before merging (migrations must not break the currently deployed code). Build settings are listed in README "How deploys happen".
 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
