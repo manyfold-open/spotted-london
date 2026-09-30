@@ -56,7 +56,7 @@ export function Shell() {
     ['/', 'i-list', 'Explore'], ['/map', 'i-map', 'Map'], ['/add', 'i-plus', 'Add a pop-up'],
     ['/saved', 'i-bookmark', 'Saved', savedCount], ['/me', 'i-user', 'Me'],
   ];
-  if (me?.role === 'admin') items.push(['/admin', 'i-inbox', 'Review queue', queueCount, true]);
+  if (me?.role === 'admin') items.push(['/admin', 'i-inbox', 'Review queue', queueCount, true], ['/admin/agent', 'i-sparkle', 'Agents']);
 
   return (
     <div className="shell">
@@ -67,7 +67,7 @@ export function Shell() {
         </NavLink>
         <nav className="sidenav" aria-label="Main">
           {items.map(([to, icon, label, ct, hot]) => (
-            <NavLink key={to} to={to} end={to === '/'} viewTransition className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
+            <NavLink key={to} to={to} end={to === '/' || to === '/admin'} viewTransition className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
               <Icon name={icon} /><span>{label}</span>{ct ? <span className={`ct ${hot ? 'hot' : ''}`}><Ticker value={ct} /></span> : null}
             </NavLink>
           ))}
@@ -107,7 +107,7 @@ export function Shell() {
         <Tab to="/map" icon="i-map" label="Map" warm={loadMap} />
         <NavLink to="/add" viewTransition className={({ isActive }) => `tab add ${isActive ? 'active' : ''}`}><span className="plus"><Icon name="i-plus" /></span><span>Add</span></NavLink>
         <Tab to="/saved" icon="i-bookmark" label="Saved" badge={savedCount} />
-        <Tab to="/me" icon="i-user" label="Me" badge={queueCount} alsoActive={loc.pathname === '/admin'} />
+        <Tab to="/me" icon="i-user" label="Me" badge={queueCount} alsoActive={loc.pathname.startsWith('/admin')} />
       </nav>
 
       {/* Each page keeps its own scroll position, so switching tabs and back lands where you were. */}

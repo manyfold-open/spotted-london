@@ -13,6 +13,7 @@ export default defineConfig(async () => {
           bindings: {
             ENVIRONMENT: 'development', APP_URL: 'http://spotted.test', IP_SALT: 'test-salt',
             GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'test-secret',
+            AGENTS_KEY: 'test-agents-key-that-is-at-least-32-chars',
             TEST_MIGRATIONS: migrations,
           },
         },

@@ -48,6 +48,23 @@ function addDays(p: LondonParts, n: number) {
   return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
 }
 
+/**
+ * First London wall-clock slot after `from` at one of `hours` (on `days` of the week if given,
+ * 0 = Sunday). Used for agent schedules.
+ */
+export function nextLondonSlot(from: number, hours: number[], days?: number[]): number {
+  const p = londonParts(from);
+  for (let i = 0; i < 8; i++) {
+    if (days && !days.includes((p.dow + i) % 7)) continue;
+    const q = addDays(p, i);
+    for (const h of hours) {
+      const t = londonTime(q.y, q.m, q.d, h);
+      if (t > from) return t;
+    }
+  }
+  return from + 7 * DAY;
+}
+
 export type When = 'today' | 'weekend' | 'week' | 'all';
 
 /** Time window [from, to) for the list filters (SPEC §3.1). */

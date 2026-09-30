@@ -28,7 +28,7 @@ export function toPlace(f: PhotonFeature): Place {
   return { label: [name, address].filter(Boolean).join(', ') || p.city || 'London', name, address: address || name || 'London', area, lat, lng };
 }
 
-type WaitUntil = { waitUntil(p: Promise<unknown>): void };
+export type WaitUntil = { waitUntil(p: Promise<unknown>): void };
 
 async function photon(url: string, ctx: WaitUntil | undefined): Promise<PhotonFeature[]> {
   const cache = (caches as unknown as { default: Cache }).default;
@@ -48,16 +48,20 @@ const ctxOf = (c: { executionCtx: WaitUntil }): WaitUntil | undefined => { try {
 
 geocode.get('/', async c => {
   requireUser(c);
-  const q = (c.req.query('q') ?? '').trim();
+  return c.json({ items: await searchPlaces(c.req.query('q') ?? '', ctxOf(c)) });
+});
+
+/** Places in London matching a search. Also used by the MCP find_place tool. */
+export async function searchPlaces(query: string, ctx?: WaitUntil): Promise<Place[]> {
+  const q = query.trim();
   if (q.length < 3) throw bad('query_too_short', 'Type at least 3 characters.');
   const params = new URLSearchParams({
     q: q.slice(0, 120), limit: '6', lang: 'en', lat: '51.5072', lon: '-0.1276',
     bbox: `${LONDON.west},${LONDON.south},${LONDON.east},${LONDON.north}`,
   });
-  const features = await photon(`${PHOTON}/api/?${params}`, ctxOf(c));
-  const places = features.map(toPlace).filter(p => inLondon(p.lat, p.lng));
-  return c.json({ items: places });
-});
+  const features = await photon(`${PHOTON}/api/?${params}`, ctx);
+  return features.map(toPlace).filter(p => inLondon(p.lat, p.lng));
+}
 
 geocode.get('/reverse', async c => {
   requireUser(c);

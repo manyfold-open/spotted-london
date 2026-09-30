@@ -11,7 +11,7 @@
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/login/*", "/p/*"]
+    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp"]
   },
 
   // Safe default. Local dev switches to "development" through .dev.vars.
@@ -57,7 +57,7 @@
 
   "triggers": {
     "crons": [
-      "*/10 * * * *", // recompute hot, end expired pop-ups
+      "*/10 * * * *", // recompute hot, end expired pop-ups, start and check agent runs
       "0 * * * *",    // reminders
       "0 4 * * *"     // settle karma, abuse scan, purge old check-in coordinates
     ]

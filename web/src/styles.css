@@ -392,6 +392,26 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .qitem { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px; border: 1.5px solid var(--ink); border-radius: 16px; background: var(--card) }
 .qitem .sw { width: 64px; height: 64px; border-radius: 12px; border: 1.5px solid var(--ink); display: grid; place-items: center; overflow: hidden }
 .qactions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end }
+/* ---------- agents (admin) ---------- */
+.agent h2 { font-size: 22px }
+.agrid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; margin-top: 16px; align-items: start }
+.stepper { display: inline-flex; align-items: center; gap: 8px }
+.stepper .btn { width: 34px; padding: 0; font-size: 17px }
+.stepper b { min-width: 48px; text-align: center; font-size: 14px }
+.conn { margin-top: 16px; padding-top: 16px; border-top: 1.5px dashed var(--hair) }
+.conn .fields { max-width: 560px }
+.runs { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column }
+.runs li { padding: 10px 0; border-top: 1.5px dashed var(--hair); display: flex; flex-direction: column; gap: 6px }
+.runs li:first-child { border-top: 0 }
+.runs .summary { white-space: pre-line; color: var(--ink2); max-width: 72ch }
+code.secret { font-size: 12.5px; padding: 6px 8px; overflow-wrap: anywhere; flex: 1 1 220px; min-width: 0; user-select: all }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px }
+.steps .copyrow { margin-top: 8px }
+.anotes { display: flex; flex-direction: column; gap: 8px; margin-top: 4px }
+.anote { border: 1.5px solid var(--ai); background: var(--ai-bg); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px }
+.anote p { color: var(--ink) }
+.anote a { display: inline-flex; align-items: center; gap: 4px; font-weight: 600 }
+.anote svg.i { width: 14px; height: 14px }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px }
 .kpi { background: var(--card); border: 1.5px solid var(--ink); border-radius: 16px; padding: 14px 16px }
 .kpi b { display: block; font-family: var(--display); font-size: 28px; font-weight: 800; letter-spacing: -.5px; line-height: 1.1; margin-top: 4px }
@@ -499,6 +519,9 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .qitem .sw { width: 48px; height: 48px }
   .qactions { grid-column: 1 / -1; justify-content: stretch }
   .qactions .btn { flex: 1 }
+  .agrid { grid-template-columns: minmax(0, 1fr); gap: 14px }
+  .agent h2 { font-size: 20px }
+  .agent .chips .chip { min-height: 38px }
   .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1.5px solid var(--ink); padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)) }
   .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; color: var(--ink2); padding: 2px 0; text-decoration: none; -webkit-touch-callout: none }
   .tab .ti { position: relative; width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; transition: scale var(--dur-1) }

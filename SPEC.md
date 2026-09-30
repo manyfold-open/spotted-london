@@ -545,6 +545,8 @@ CREATE TABLE audit_log (
 | 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
 | 範例資料 | 線上放標示「Example」的虛構活動、noindex；正式上線前用 `seed/clear-examples.sql` 清除 |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |
+| AI agents | 跑在 **Manyfold**（不在 Cloudflare 上，不吃 Workers AI 額度）。三個：Scout 找新活動送草稿、Triage 幫審核佇列寫判斷、Checker 複查已上架活動。Spotted 用 A2A 啟動（cron 排程或 admin 按 Run now），agent 透過 `/mcp` 用各自的 key 回寫。**只能寫草稿與備註**，發布與否一律 admin 決定。設定頁 `/admin/agent`（2026-09-30） |
+| MCP | `POST /mcp`，無狀態 Streamable HTTP、手寫 JSON-RPC（不用 SDK）。無 key：`search_popups`、`get_popup` 給任何人的 AI 助手用；有 key：依 agent 角色多開工具 |
 | Icons | [Koboyo hand-drawn icons](https://koboyo.com/icons)：手繪風格 SVG，`fill="currentColor"`，商用免費、免標註。限制：不可把 icon 當成產品功能讓用戶挑選或下載，也不可重新散布整套 icon 庫 |
 
 ### 待決問題
@@ -577,3 +579,17 @@ CREATE TABLE audit_log (
 
 ### 13.3 Phase 3：內容匯入 agent
 定時掃描白名單來源（Eventbrite 公開 API、主辦方官網、合作帳號）→ 產生 draft → 走正常審核流程。可用 Cloudflare Agents SDK + Cron。需注意各平台 ToS（IG 不可爬）。
+→ 已由 §13.4 的 Scout agent 取代（改跑在 Manyfold）。
+
+### 13.4 Manyfold agents（2026-09-30 實作）
+| Agent | 預設排程 | 做什麼 | 能寫什麼 |
+|---|---|---|---|
+| Scout | 每天 07:00 | 在公開網頁找新 pop-up（Time Out、Secret London、場地 what's on 頁等） | `pending` 草稿（以「Scout agent」帳號發）＋一則附來源的備註 |
+| Triage | 每 6 小時 | 讀審核佇列每則貼文、查來源與重複 | 備註：looks_real / needs_check / likely_fake / duplicate |
+| Checker | 每天 09:00 | 複查進行中/即將開始的活動來源頁 | 備註：cancelled / details_changed / needs_check / looks_real（只是紀錄已查過） |
+
+- **流程**：cron（每 10 分鐘）找出到期的 agent → A2A `message/stream` 送出 brief（含 run id、上限、admin 指示）→ 拿到 task id 就斷線（避免吃 Worker CPU）→ 之後用 `tasks/get` 查狀態；3 小時沒結束算失敗。agent 做完呼叫 `finish_run` 留摘要。
+- **權限**：每個 agent 有自己的 Spotted key（只存 SHA-256），只能用自己角色的工具；每次 run 有寫入上限（預設 20–30）。Manyfold caller token 用 `AGENTS_KEY` secret 做 AES-GCM 加密存 D1，API 只回傳末四碼。
+- **審核佇列**：agent 備註顯示在該 pop-up 底下；已上架活動被標 cancelled / details_changed / likely_fake / duplicate / needs_check 會重新進佇列。admin 做決定或按 Dismiss 後備註結案。
+- **安全**：網頁與貼文內容一律當資料不當指令（防 prompt injection，寫在 skill 裡）；不登入任何網站、不爬 IG/TikTok。
+- **Agent 的知識**：`skills/spotted-london/SKILL.md`，從 GitHub 匯入 Manyfold 安裝。

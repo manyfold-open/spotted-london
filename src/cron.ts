@@ -1,14 +1,17 @@
-// Scheduled jobs (SPEC §13.1). Plain deterministic code, no AI agent.
+// Scheduled jobs (SPEC §13.1). Plain deterministic code; AI agents run on Manyfold, and cron only starts and checks them.
 
 import type { Bindings, PopupRow } from './types';
 import { DAY, hot, KARMA } from './lib/scoring';
 import { awardKarma } from './db/karma';
+import { runAgents } from './db/agents';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
     case '*/10 * * * *':
       await endExpired(env.DB, now);
       await recomputeHot(env.DB, now);
+      // AI agents on Manyfold: check open runs, start the ones that are due (SPEC §13.4)
+      await runAgents(env, now).catch(e => console.error('agents cron failed', e));
       break;
     case '0 * * * *':
       await reminders(env.DB, now);

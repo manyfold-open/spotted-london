@@ -9,7 +9,13 @@ import { awardKarma } from '../db/karma';
 
 export const admin = new Hono<AppEnv>();
 
-/** Pending posts, community-hidden posts, and public posts with open reports (SPEC §3.7). */
+/** Agent findings that put a published pop-up back in front of the admin. */
+const FLAGGING_VERDICTS = ['needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'];
+
+/**
+ * Pending posts, community-hidden posts, and public posts with open reports or a problem
+ * flagged by an agent (SPEC §3.7, §13.4).
+ */
 admin.get('/queue', async c => {
   requireAdmin(c);
   const { results } = await c.env.DB.prepare(
@@ -18,17 +24,22 @@ admin.get('/queue', async c => {
      FROM popups p JOIN users u ON u.id = p.created_by
      WHERE p.status IN ('pending', 'hidden')
         OR (p.status IN ('community', 'verified_community', 'verified_admin') AND p.report_weight >= 3)
+        OR (p.status IN ('community', 'verified_community', 'verified_admin') AND EXISTS (
+          SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.resolved_at IS NULL AND n.verdict IN (${FLAGGING_VERDICTS.map(() => '?').join(',')})))
      ORDER BY CASE p.status WHEN 'hidden' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, p.created_at
      LIMIT 100`,
-  ).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number; open_reports: number }>();
+  ).bind(...FLAGGING_VERDICTS).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number; open_reports: number }>();
   const now = c.get('now');
+  const notes = await openNotes(c.env.DB, results.map(p => p.id));
   return c.json({
     items: results.map(p => toPublic(p, {
       poster: { id: p.created_by, name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((now - p.poster_created_at) / 86_400_000) },
       open_reports: p.open_reports,
+      agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, ...n }) => n),
       flags: [
+        p.created_by.startsWith('agent_') && 'by_agent',
         !p.source_url && 'no_source_link',
-        now - p.poster_created_at < 86_400_000 && 'new_account',
+        now - p.poster_created_at < 86_400_000 && !p.created_by.startsWith('agent_') && 'new_account',
         p.report_weight >= 3 && 'reported',
         p.status === 'hidden' && 'community_hidden',
       ].filter(Boolean),
@@ -73,11 +84,24 @@ admin.post('/popups/:id/decision', async c => {
   }
   if (action === 'approve' || action === 'reject') await resolveReports(db, p.id, action === 'reject' ? 'upheld' : 'rejected', now);
   if (action === 'restore') await recompute(db, p.id, now);
+  // The admin has now looked at this pop-up, so agent notes on it are done.
+  await db.prepare('UPDATE agent_notes SET resolved_at = ? WHERE popup_id = ? AND resolved_at IS NULL').bind(now, p.id).run();
 
   await audit(db, a.id, `popup.${action}`, 'popup', p.id, { reason, merge_into: mergeInto, from: p.status, to }, now);
   const after = await db.prepare('SELECT * FROM popups WHERE id = ?').bind(p.id).first<PopupRow>();
   return c.json(toPublic(after!));
 });
+
+type NoteRow = { id: string; popup_id: string; agent_id: string; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number };
+
+async function openNotes(db: D1Database, ids: string[]): Promise<NoteRow[]> {
+  if (!ids.length) return [];
+  const { results } = await db.prepare(
+    `SELECT id, popup_id, agent_id, verdict, note, evidence_url, duplicate_of, created_at FROM agent_notes
+     WHERE resolved_at IS NULL AND popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`,
+  ).bind(...ids).all<NoteRow>();
+  return results;
+}
 
 async function resolveReports(db: D1Database, popupId: string, resolution: 'upheld' | 'rejected', now: number) {
   const { results } = await db.prepare('SELECT id, user_id FROM reports WHERE popup_id = ? AND resolution IS NULL').bind(popupId).all<{ id: string; user_id: string }>();
@@ -129,7 +153,7 @@ admin.post('/users/:id/action', async c => {
   return c.json({ ok: true });
 });
 
-async function audit(db: D1Database, adminId: string, action: string, type: string, target: string, detail: unknown, now: number) {
+export async function audit(db: D1Database, adminId: string, action: string, type: string, target: string, detail: unknown, now: number) {
   await db.prepare('INSERT INTO audit_log (id, admin_id, action, target_type, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(newId(), adminId, action, type, target, detail ? JSON.stringify(detail) : null, now).run();
 }

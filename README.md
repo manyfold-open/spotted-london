@@ -83,21 +83,26 @@ src/
   index.ts          Hono app, error format, cron entry
   middleware.ts     session, CSRF guard, admin checks, Turnstile, IP hashing
   pages.ts          sign-in confirm page, SEO tags for /p/:slug
-  cron.ts           end expired pop-ups, recompute hot, settle karma, reminders
+  cron.ts           end expired pop-ups, recompute hot, settle karma, reminders, start agent runs
+  mcp.ts            MCP server at /mcp: public search, plus agent tools with a key
   lib/scoring.ts    vote weight, Wilson confidence, status rules, trust, hot (SPEC 4)
   lib/extract.ts    paste-a-link autofill parsing (SPEC 3.8)
   lib/time.ts       Europe/London calendar maths
   lib/geo.ts        geohash, distances, London bounds
   db/popups.ts      recompute aggregates and status after every vote
   db/karma.ts       idempotent karma awards with the daily cap
-  routes/           auth, popups, extract, geocode, me, admin, newsletter, images, users
+  db/agents.ts      AI agents: roles, schedules, starting and checking runs
+  lib/a2a.ts        A2A client for Manyfold (start a task, check a task)
+  lib/seal.ts       AES-GCM for the stored Manyfold caller tokens
+  routes/           auth, popups, extract, geocode, me, admin, agents, newsletter, images, users
   services/email.ts sending through Resend
 migrations/         D1 schema
+skills/             the skill the Manyfold agents install (spotted-london/SKILL.md)
 seed/seed.sql       local example data
 web/src/
   main.tsx          routes
   components/       Shell (sidebar, top bar, tabs), PopupSheet, cards, maps, icons
-  pages/            Explore, MapPage, Submit, Account (Saved, Me, Sign in, Review queue)
+  pages/            Explore, MapPage, Submit, Account (Saved, Me, Sign in, Review queue), Agents
   lib/              API client, hooks, formatting, photo compression
 ```
 
@@ -121,6 +126,32 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 
 In the Google console, add `<APP_URL>/api/v1/auth/google/callback` as an authorised redirect URI. For local testing with Google, add `http://localhost:8787/api/v1/auth/google/callback` and put the two Google values in `.dev.vars`.
 
+## AI agents and MCP
+
+Three AI agents run on [Manyfold](https://manyfold.ai), not on Cloudflare, so they cost no Workers AI quota. Spotted keeps their settings at **/admin/agent**, starts their runs, and shows what they did.
+
+| Agent | Job | Writes |
+|---|---|---|
+| Scout | finds new pop-ups on the public web | pending drafts, posted as "Scout agent" |
+| Triage | checks each post in the review queue | a note per post: looks real, needs a check, likely fake, duplicate |
+| Checker | rechecks live pop-ups against their source | a flag when one is cancelled or changed |
+
+Nothing an agent writes is published without the admin. Drafts are always `pending`, and notes show in the review queue until the admin decides or dismisses them.
+
+How it fits together:
+
+- **Spotted to agent**: the `*/10` cron starts agents that are due over A2A (`message/stream`), reads only until the task id arrives, and later checks with `tasks/get`. Runs that do not finish in 3 hours are marked failed. "Run now" starts one straight away.
+- **Agent to Spotted**: `POST /mcp` (MCP, Streamable HTTP, stateless). Without a key it offers `search_popups` and `get_popup` to anyone's AI assistant. With `Authorization: Bearer spk_...` it adds the tools for that agent's job. Keys are stored as SHA-256 and each agent has its own.
+- **What the agent knows**: `skills/spotted-london/SKILL.md`, installed on each agent from GitHub, plus a short brief per run with the run id, limits and the admin's instructions.
+
+One-time setup:
+
+1. Set the secret that encrypts the Manyfold tokens: `npx wrangler secret put AGENTS_KEY` (32+ random characters, for example from `openssl rand -base64 32`). Changing it later means pasting the tokens again.
+2. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote`.
+3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, add the MCP server with the Spotted key, turn on A2A and paste its address and caller token, press Test, then Run now.
+
+Manyfold caller tokens last 90 days. When one expires, runs fail with "Manyfold rejected the agent token"; mint a new one and paste it in.
+
 ## What is not built yet
 
 - Emails other than sign-in: newsletter confirmation and reminders are found by the jobs but not sent yet.
@@ -138,7 +169,7 @@ Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zac
 | KV | `CACHE` | autofill cache and rate limits |
 | R2 | `spotted-images` (WEUR) | photos, served through `/api/v1/images/...` |
 | Turnstile | "Spotted London" | site key in `wrangler.jsonc`, secret in `TURNSTILE_SECRET` |
-| Secrets | `IP_SALT`, `TURNSTILE_SECRET` | set with `wrangler secret put`, never in the repo |
+| Secrets | `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY` | set with `wrangler secret put`, never in the repo |
 
 ### How deploys happen
 
