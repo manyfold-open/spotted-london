@@ -81,7 +81,7 @@ Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat
 
 ## Icons
 
-Koboyo hand-drawn icons (koboyo.com/icons), stored as an SVG sprite in `web/src/components/Icon.tsx`. They are filled paths: style them with `fill: currentColor`, never stroke. 18px by default, 22px in the tab bar. Free for commercial use; do not let users browse, pick or download them.
+Koboyo hand-drawn icons (koboyo.com/icons), stored as an SVG sprite in `web/src/components/Icon.tsx`. They are filled paths: style them with `fill: currentColor`, never stroke. 18px by default, 22px in the tab bar. Path coordinates are rounded to whole numbers (SVGO `--precision 0`), which halves the sprite and is invisible even at 2x the largest size we use. Free for commercial use; do not let users browse, pick or download them.
 
 ## Motion
 
