@@ -12,6 +12,7 @@ import { Submit } from './pages/Submit';
 import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
 const MapPage = lazy(() => import('./pages/MapPage'));
+const AgentsPage = lazy(() => import('./pages/Agents'));
 
 // iOS Safari only shows :active press states when the page listens for touches.
 document.addEventListener('touchstart', () => {}, { passive: true });
@@ -40,6 +41,7 @@ const router = createBrowserRouter([
       { path: '/me', element: <MePage /> },
       { path: '/signin', element: <SignIn /> },
       { path: '/admin', element: <AdminQueue /> },
+      { path: '/admin/agent', element: <Suspense fallback={null}><AgentsPage /></Suspense> },
       { path: '*', element: <NotFound /> },
     ],
   },

@@ -8,3 +8,5 @@ IP_SALT=local-dev-salt
 # GOOGLE_CLIENT_SECRET=
 # TURNSTILE_SECRET=
 # MAPBOX_TOKEN=
+# Encrypts the Manyfold caller tokens of the AI agents (32+ characters). Needed for /admin/agent.
+AGENTS_KEY=local-dev-agents-key-at-least-32-chars

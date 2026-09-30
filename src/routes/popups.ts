@@ -27,9 +27,10 @@ function canSee(p: PopupRow, u: UserRow | null): boolean {
 }
 
 /* ---------- GET /popups ---------- */
-popups.get('/', async c => {
-  const q = c.req.query();
-  const now = c.get('now');
+popups.get('/', async c => c.json(await listPopups(c.env.DB, c.req.query(), c.get('now'), c.get('user'))));
+
+/** The public list with its filters. Also used by the MCP search tool. */
+export async function listPopups(db: D1Database, q: Record<string, string>, now: number, user: UserRow | null) {
   const when = (['today', 'weekend', 'week', 'all'].includes(q.when) ? q.when : 'week') as When;
   const { from, to } = windowFor(when, now);
   const limit = Math.min(50, Math.max(1, Number(q.limit) || 20));
@@ -73,7 +74,7 @@ popups.get('/', async c => {
 
   const sql = `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key
     FROM popups WHERE ${where.join(' AND ')} ORDER BY hot DESC, id LIMIT ? OFFSET ?`;
-  const { results } = await c.env.DB.prepare(sql).bind(...args, near ? 500 : limit + 1, near ? 0 : offset).all<PopupRow>();
+  const { results } = await db.prepare(sql).bind(...args, near ? 500 : limit + 1, near ? 0 : offset).all<PopupRow>();
 
   let rows = results.map(p => ({ p, d: near ? haversine(near.lat, near.lng, p.lat, p.lng) : null }));
   if (near) {
@@ -83,13 +84,13 @@ popups.get('/', async c => {
   }
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
-  const mine = await myState(c.env.DB, c.get('user'), page.map(r => r.p.id));
-  return c.json({
+  const mine = await myState(db, user, page.map(r => r.p.id));
+  return {
     items: page.map(r => toPublic(r.p, { ...(r.d !== null ? { distance_m: Math.round(r.d) } : {}), ...(mine ? { me: mine(r.p.id) } : {}) })),
     next_cursor: more ? (offset + limit).toString(36) : null,
     window: { when, from, to: to === Number.MAX_SAFE_INTEGER ? null : to },
-  });
-});
+  };
+}
 
 /** Saved flag and votes of the signed-in user for a page of pop-ups, in two queries. */
 async function myState(db: D1Database, u: UserRow | null, ids: string[]) {
@@ -150,12 +151,7 @@ popups.post('/', async c => {
 
   // Duplicate check: same few hundred metres, overlapping dates, similar title (SPEC §3.2).
   if (b.force !== true) {
-    const box = boxAround(input.lat!, input.lng!, 300);
-    const { results } = await db.prepare(
-      `SELECT * FROM popups WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND start_at < ? AND end_at > ?
-         AND status NOT IN ('removed') LIMIT 50`,
-    ).bind(box.south, box.north, box.west, box.east, input.end_at, input.start_at).all<PopupRow>();
-    const dupes = results.filter(p => titleSimilarity(p.title, input.title!) >= 0.8);
+    const dupes = await findDuplicates(db, input as DupeInput);
     if (dupes.length) {
       throw new ApiError(409, 'possible_duplicate', 'This looks like a pop-up that is already listed. Vote on it instead, or send again with "force": true.', {
         candidates: dupes.map(p => ({ id: p.id, slug: p.slug, title: p.title, start_at: p.start_at, end_at: p.end_at })),
@@ -180,6 +176,18 @@ popups.post('/', async c => {
   const created = await load(db, id);
   return c.json(toPublic(created), 201);
 });
+
+type DupeInput = { title: string; lat: number; lng: number; start_at: number; end_at: number };
+
+/** Same few hundred metres, overlapping dates, similar title (SPEC §3.2). */
+export async function findDuplicates(db: D1Database, x: DupeInput): Promise<PopupRow[]> {
+  const box = boxAround(x.lat, x.lng, 300);
+  const { results } = await db.prepare(
+    `SELECT * FROM popups WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND start_at < ? AND end_at > ?
+       AND status NOT IN ('removed') LIMIT 50`,
+  ).bind(box.south, box.north, box.west, box.east, x.end_at, x.start_at).all<PopupRow>();
+  return results.filter(p => titleSimilarity(p.title, x.title) >= 0.8);
+}
 
 /* ---------- PATCH /popups/:id ---------- */
 popups.patch('/:id', async c => {
@@ -350,7 +358,7 @@ function fromRow(p: PopupRow) {
   };
 }
 
-function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean) {
+export function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean) {
   const title = text(b, 'title', { min: 3, max: 100, required: true });
   const category = oneOf(b, 'category', CATEGORIES, { required: true });
   const lat = num(b, 'lat', { required: true }), lng = num(b, 'lng', { required: true });

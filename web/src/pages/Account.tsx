@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useRouteError, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Popup } from '../lib/api';
+import { api, type AgentNote, type Popup } from '../lib/api';
 import { dateRange, initials, looksLikeEmail } from '../lib/format';
 import { useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
@@ -150,6 +150,7 @@ export function MePage() {
       <div className="lh"><h2>Account</h2></div>
       <div className="menu">
         {me.role === 'admin' ? <Link className="mrow" to="/admin"><Icon name="i-inbox" /><span>Review queue<span className="sub">Posts waiting for a decision</span></span><Icon name="i-down" className="i chev" /></Link> : null}
+        {me.role === 'admin' ? <Link className="mrow" to="/admin/agent"><Icon name="i-sparkle" /><span>Agents<span className="sub">AI helpers that find, check and flag pop-ups</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         <button className="mrow" onClick={() => newsletter.mutate()} disabled={newsletter.isPending || newsletter.isSuccess}><Icon name="i-mail" /><span>Weekend newsletter<span className="sub">{newsletter.isSuccess ? 'Confirmation email sent' : `Send it to ${me.email}`}</span></span><Icon name="i-down" className="i chev" /></button>
         <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Emailed the day before a saved pop-up starts, and on its last day</span></span></div>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
@@ -186,8 +187,34 @@ export function MePage() {
 }
 
 /* ---------------- Admin queue ---------------- */
-type QueueItem = Popup & { poster: { id: string; name: string | null; karma: number; account_age_days: number }; open_reports: number; flags: string[] };
-const FLAG_TEXT: Record<string, string> = { no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes' };
+type QueueItem = Popup & { poster: { id: string; name: string | null; karma: number; account_age_days: number }; open_reports: number; flags: string[]; agent_notes: AgentNote[] };
+const FLAG_TEXT: Record<string, string> = { no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes', by_agent: 'Found by an agent' };
+const VERDICT: Record<string, [string, string]> = {
+  looks_real: ['Looks real', 't-eng'], needs_check: ['Needs a check', 't-watch'], likely_fake: ['Likely fake', 't-err'],
+  duplicate: ['Duplicate', 't-err'], details_changed: ['Details changed', 't-watch'], cancelled: ['Cancelled', 't-err'],
+};
+const AGENT_NAME: Record<string, string> = { scout: 'Scout', triage: 'Triage', checker: 'Checker' };
+
+function AgentNotes({ notes, onDismiss, busy }: { notes: AgentNote[]; onDismiss: (id: string) => void; busy: boolean }) {
+  const { open } = useSheet();
+  return (
+    <div className="anotes">{notes.map(n => (
+      <div key={n.id} className="anote">
+        <div className="row" style={{ gap: 6 }}>
+          <span className="tag t-ai"><Icon name="i-sparkle" />{AGENT_NAME[n.agent_id] ?? n.agent_id}</span>
+          <span className={`tag ${VERDICT[n.verdict]?.[1] ?? 't-mute'}`}>{VERDICT[n.verdict]?.[0] ?? n.verdict}</span>
+        </div>
+        <p className="small">{n.note}</p>
+        <div className="row small" style={{ gap: 12 }}>
+          {n.evidence_url ? <a href={n.evidence_url} target="_blank" rel="noopener noreferrer"><Icon name="i-ext" className="i" /> Source</a> : null}
+          {n.duplicate_of ? <a href={`/p/${n.duplicate_of}`} onClick={e => { e.preventDefault(); open(n.duplicate_of!); }}>Open the original</a> : null}
+          <span className="spacer" />
+          <button className="btn sm subtle" disabled={busy} onClick={() => onDismiss(n.id)}>Dismiss</button>
+        </div>
+      </div>
+    ))}</div>
+  );
+}
 
 export function AdminQueue() {
   const { data: me, isPending } = useMe();
@@ -204,6 +231,11 @@ export function AdminQueue() {
     },
     onError,
   });
+  const dismiss = useMutation({
+    mutationFn: (id: string) => api(`/admin/agents/notes/${id}/dismiss`, { method: 'POST' }),
+    onSuccess: () => { toast('Note dismissed'); qc.invalidateQueries({ queryKey: ['queue'] }); },
+    onError,
+  });
   if (isPending) return <QueueSkeleton />;
   if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page is for the people who review new posts.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   const items = q.data?.items ?? [];
@@ -211,7 +243,7 @@ export function AdminQueue() {
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Review queue</h1>
-      <p className="intro">New posts below trust 50, posts the community voted down, and posts with several reports. Your decision overrides community votes.</p>
+      <p className="intro">New posts below trust 50, posts the community voted down, posts with several reports, and anything an <Link to="/admin/agent">agent</Link> flagged. Your decision overrides community votes.</p>
       <div className="lh"><h2>{items.length} to review</h2><span className="muted small">Target: under 12 hours</span></div>
       {q.isPending ? <QueueSkeleton list /> : items.length ? (
         <div className="stack">{items.map(p => (
@@ -221,7 +253,8 @@ export function AdminQueue() {
               <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} /></div>
               <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={`/p/${p.slug}`} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
               <div className="small muted">{p.location.borough ?? 'London'} · {dateRange(p)} · by <b>{p.poster.name ?? 'a member'}</b> (karma {p.poster.karma}, {p.poster.account_age_days} days)</div>
-              <div className="row" style={{ gap: 6 }}>{p.flags.map(f => <span key={f} className="tag t-err"><Icon name="i-flag" />{FLAG_TEXT[f] ?? f}{f === 'reported' ? ` (${p.open_reports})` : ''}</span>)}</div>
+              <div className="row" style={{ gap: 6 }}>{p.flags.map(f => <span key={f} className={`tag ${f === 'by_agent' ? 't-ai' : 't-err'}`}><Icon name={f === 'by_agent' ? 'i-sparkle' : 'i-flag'} />{FLAG_TEXT[f] ?? f}{f === 'reported' ? ` (${p.open_reports})` : ''}</span>)}</div>
+              {p.agent_notes?.length ? <AgentNotes notes={p.agent_notes} busy={dismiss.isPending} onDismiss={id => dismiss.mutate(id)} /> : null}
             </div>
             <div className="qactions">
               {p.status === 'hidden' ? <button className="btn sm" onClick={() => decide.mutate({ id: p.id, action: 'restore' })}>Restore</button> : null}

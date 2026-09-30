@@ -50,11 +50,15 @@ src/db/popups.ts        recompute(): aggregates + status after every vote/check-
 src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
 src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
-src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub)
+src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub), start/check agent runs
+src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
+src/db/agents.ts        AI agents on Manyfold (Scout, Triage, Checker): schedules, briefs, run life cycle
+src/lib/a2a.ts          A2A client: start a Manyfold task, check it with tasks/get, probe a token
+skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep it in step with the MCP tools
 migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
 web/src/components/     Shell (sidebar, top bar, bottom tabs), PopupSheet, PopupBits, maps, Icon, Turnstile
-web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue)
+web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent)
 ```
 
 ## Rules that are easy to break
@@ -64,6 +68,9 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - Every karma change goes through `awardKarma` so it stays idempotent and capped.
 - Times are Unix ms. "Today" and "weekend" are London days: use `src/lib/time.ts` / `web/src/lib/format.ts`.
 - The dev fallback that returns sign-in links in the response must stay development only.
+- Agents only write drafts (`pending`) and notes. Never give an MCP tool the power to approve, remove, vote or edit a live pop-up.
+- Agent secrets are write-only: the Manyfold token is sealed with `AGENTS_KEY`, Spotted keys are stored as SHA-256, and the API returns only the last four characters.
+- Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.
@@ -89,13 +96,14 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
-- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. `AGENTS_KEY` still to set (needed for /admin/agent).
+- AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP".
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
 - Live data is fictional examples (`is_example = 1`, labelled, noindex). Clear before launch with `seed/clear-examples.sql`.
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots.
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page.
 
 Not done yet, roughly in priority order:
 1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).

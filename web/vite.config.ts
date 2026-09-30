@@ -9,7 +9,7 @@ export default defineConfig({
   worker: { format: 'es' },
   server: {
     port: 5173,
-    proxy: { '/api': worker, '/login': worker },
+    proxy: { '/api': worker, '/login': worker, '/mcp': worker },
   },
   // the map library is big and only loads on the map and Add screens
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 1100 },

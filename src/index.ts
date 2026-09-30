@@ -12,6 +12,8 @@ import { runCron } from './cron';
 import { auth } from './routes/auth';
 import { pages } from './pages';
 import { geocode } from './routes/geocode';
+import { agentsAdmin } from './routes/agents';
+import { mcp } from './mcp';
 
 const app = new Hono<AppEnv>();
 app.use('*', session, sameOrigin);
@@ -23,12 +25,14 @@ api.route('/popups', popups);
 api.route('/extract', extract);
 api.route('/me', me);
 api.route('/users', users);
+api.route('/admin/agents', agentsAdmin);
 api.route('/admin', admin);
 api.route('/newsletter', newsletter);
 api.route('/images', images);
 api.route('/geocode', geocode);
 
 app.route('/api/v1', api);
+app.route('/mcp', mcp);
 app.route('/', pages);
 
 app.notFound(c => c.json({ error: { code: 'not_found', message: 'No such endpoint.' } }, 404));

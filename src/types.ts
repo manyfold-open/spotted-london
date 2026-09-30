@@ -11,6 +11,8 @@ export type Bindings = Cloudflare.Env & {
   EMAIL_FROM?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Seals the Manyfold caller tokens of the AI agents. 32+ characters. */
+  AGENTS_KEY?: string;
 };
 
 export interface UserRow {
