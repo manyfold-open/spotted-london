@@ -100,6 +100,11 @@
 
 ### 3.4 帳號（P0）
 - 登入：Google OAuth、Email magic link（MVP 不做密碼）
+  - Magic link：單次使用、15 分鐘過期；連結先開確認頁、按按鈕（POST）才登入，避免信箱掃描器用掉；每個 email 每小時 3 封、每個 IP 每小時 10 封
+  - Google：authorization code + PKCE + state cookie；同 email 的既有帳號自動連結，不重複開帳號
+  - Session：HttpOnly、SameSite=Lax cookie，30 天；資料庫只存 session 與登入 token 的 SHA-256
+  - CSRF：帶 session cookie 的寫入請求，Origin 不是本站就拒絕
+  - 顯示名稱可自訂（不可含 email 或連結），email 永不公開
 - 個人頁：karma、上傳紀錄、收藏、徽章
 - 刪除帳號（GDPR）：刪除個資，貼文匿名化保留
 

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { AppEnv, Bindings } from './types';
-import { session } from './middleware';
+import { sameOrigin, session } from './middleware';
 import { ApiError } from './lib/util';
 import { popups } from './routes/popups';
 import { extract } from './routes/extract';
@@ -9,19 +9,25 @@ import { me } from './routes/me';
 import { admin } from './routes/admin';
 import { images, newsletter, users } from './routes/misc';
 import { runCron } from './cron';
+import { auth } from './routes/auth';
+import { pages } from './pages';
 
-const app = new Hono<AppEnv>().basePath('/api/v1');
+const app = new Hono<AppEnv>();
+app.use('*', session, sameOrigin);
 
-app.use('*', session);
+const api = new Hono<AppEnv>();
+api.get('/health', c => c.json({ ok: true }));
+api.route('/auth', auth);
+api.route('/popups', popups);
+api.route('/extract', extract);
+api.route('/me', me);
+api.route('/users', users);
+api.route('/admin', admin);
+api.route('/newsletter', newsletter);
+api.route('/images', images);
 
-app.get('/health', c => c.json({ ok: true }));
-app.route('/popups', popups);
-app.route('/extract', extract);
-app.route('/me', me);
-app.route('/users', users);
-app.route('/admin', admin);
-app.route('/newsletter', newsletter);
-app.route('/images', images);
+app.route('/api/v1', api);
+app.route('/', pages);
 
 app.notFound(c => c.json({ error: { code: 'not_found', message: 'No such endpoint.' } }, 404));
 

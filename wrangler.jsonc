@@ -9,6 +9,8 @@
   // Safe default. Local dev switches to "development" through .dev.vars.
   "vars": {
     "ENVIRONMENT": "production",
+    // Public site address, used in sign-in links and the Google redirect. Set before deploying.
+    "APP_URL": "",
     "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   },
 

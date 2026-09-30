@@ -5,6 +5,10 @@ export type Bindings = Cloudflare.Env & {
   AI?: Ai;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 };
 
 export interface UserRow {

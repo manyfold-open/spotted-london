@@ -3,12 +3,13 @@ import { getCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import type { AppEnv, UserRow } from './types';
 import { ApiError, sha256 } from './lib/util';
+import { SESSION_COOKIE } from './lib/auth';
 
 const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 
 /**
  * Loads the signed-in user.
- * - Production: `sid` session cookie (real sign-in flows land in the next milestone).
+ * - `sid` session cookie from sign in; the database only holds its SHA-256.
  * - Development only: `x-dev-user: <user id>` header, and `x-now` to pin the clock in tests.
  */
 export const session = createMiddleware<AppEnv>(async (c, next) => {
@@ -20,11 +21,11 @@ export const session = createMiddleware<AppEnv>(async (c, next) => {
   if (devUser) {
     user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(devUser).first<UserRow>();
   } else {
-    const sid = getCookie(c, 'sid');
+    const sid = getCookie(c, SESSION_COOKIE);
     if (sid) {
       user = await c.env.DB.prepare(
         'SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ?',
-      ).bind(sid, c.get('now')).first<UserRow>();
+      ).bind(await sha256(sid), c.get('now')).first<UserRow>();
     }
   }
   c.set('user', user && user.status !== 'deleted' ? user : null);
@@ -66,3 +67,27 @@ export async function ipHash(c: Context<AppEnv>): Promise<string | null> {
   if (!ip) return null;
   return (await sha256(`${c.env.IP_SALT ?? ''}:${ip}`)).slice(0, 32);
 }
+
+/** The site's own origin, from APP_URL (falls back to the request origin in development). */
+export function appOrigin(c: Context<AppEnv>): string {
+  const u = c.env.APP_URL;
+  if (u) return new URL(u).origin;
+  if (isDev(c)) return new URL(c.req.url).origin;
+  throw new ApiError(501, 'app_url_missing', 'APP_URL is not configured on the server.');
+}
+
+/**
+ * CSRF guard for cookie sessions. SameSite=Lax already blocks most cross-site posts;
+ * this also rejects state-changing requests whose Origin is another site.
+ */
+export const sameOrigin = createMiddleware<AppEnv>(async (c, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) || !getCookie(c, SESSION_COOKIE)) return next();
+  const origin = c.req.header('origin');
+  const site = c.req.header('sec-fetch-site');
+  const allowed = new Set([new URL(c.req.url).origin]);
+  if (c.env.APP_URL) allowed.add(new URL(c.env.APP_URL).origin);
+  if ((origin && !allowed.has(origin)) || site === 'cross-site') {
+    throw new ApiError(403, 'cross_site', 'This request came from another site and was blocked.');
+  }
+  await next();
+});

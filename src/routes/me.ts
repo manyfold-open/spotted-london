@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import type { AppEnv, PopupRow } from '../types';
 import { requireUser } from '../middleware';
-import { ApiError } from '../lib/util';
+import { ApiError, bad } from '../lib/util';
+import { jsonBody, text } from '../lib/validate';
 import { trust, voteWeight } from '../lib/scoring';
 import { toPublic } from '../db/popups';
 
@@ -15,6 +16,16 @@ me.get('/', c => {
     vote_weight: voteWeight({ karma: u.karma, createdAt: u.created_at, emailVerified: !!u.email_verified, status: u.status }, c.get('now')),
     verified_posts: u.verified_posts, created_at: u.created_at,
   });
+});
+
+/** The name shown next to your posts. Emails are never shown publicly. */
+me.patch('/', async c => {
+  const u = requireUser(c);
+  const b = await jsonBody(c.req);
+  const name = text(b, 'display_name', { min: 2, max: 40, required: true })!;
+  if (/@|https?:\/\//i.test(name)) throw bad('display_name_invalid', 'Names cannot contain emails or links.');
+  await c.env.DB.prepare('UPDATE users SET display_name = ? WHERE id = ?').bind(name, u.id).run();
+  return c.json({ display_name: name });
 });
 
 me.get('/saves', async c => {

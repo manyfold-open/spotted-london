@@ -1,4 +1,10 @@
 ENVIRONMENT=development
+APP_URL=http://localhost:8787
 IP_SALT=local-dev-salt
+# Optional in development. Without them, sign-in links are returned in the API response.
+# RESEND_API_KEY=
+# EMAIL_FROM=Spotted London <hello@your-domain>
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
 # TURNSTILE_SECRET=
 # MAPBOX_TOKEN=

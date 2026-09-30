@@ -16,6 +16,7 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
     case '0 4 * * *':
       await settleKarma(env.DB, now);
       await purgeCheckinCoordinates(env.DB, now);
+      await purgeExpiredAuth(env.DB, now);
       break;
     default:
       console.warn('unknown cron', cron);
@@ -83,4 +84,13 @@ export async function reminders(db: D1Database, now: number) {
   ).bind(now + 23 * 3_600_000, now + 24 * 3_600_000).all();
   if (results.length) console.log(`reminders due: ${results.length}`);
   return results.length;
+}
+
+/** Expired sessions, used or stale sign-in links and abandoned OAuth attempts. */
+export async function purgeExpiredAuth(db: D1Database, now: number) {
+  await db.batch([
+    db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
+    db.prepare('DELETE FROM login_tokens WHERE created_at < ?').bind(now - DAY),
+    db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').bind(now),
+  ]);
 }
