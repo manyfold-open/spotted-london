@@ -288,6 +288,17 @@ describe('agent runs', () => {
     expect(open!.n).toBe(0);
   });
 
+  it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const sent = await tool('submit_draft', draft(runId, { title: 'InterStellar BBQ Residency', lat: 51.5136, lng: -0.0867, start_date: '2026-09-04', end_date: '2026-10-25' }), key);
+    expect(sent.structuredContent.sent).toBe(true);
+    const row = await env.DB.prepare('SELECT start_at FROM popups WHERE id = ?').bind(sent.structuredContent.id).first<{ start_at: number }>();
+    expect(row!.start_at).toBe(Date.UTC(2026, 8, 3, 23)); // 4 Sep 00:00 BST
+    const ended = await tool('submit_draft', draft(runId, { title: 'Summer Rooftop Cinema', lat: 51.5033, lng: -0.1196, start_date: '2026-08-01', end_date: '2026-09-20' }), key);
+    expect(ended.content[0].text).toMatch(/already ended/);
+  });
+
   it('enforces the per-run limit, the run owner, and finishes the run', async () => {
     const key = await connect('scout');
     await call('PATCH', '/admin/agents/scout', { user: admin, body: { max_items: 1 } });
@@ -382,9 +393,19 @@ describe('agent cron', () => {
   it('settles finished runs from Manyfold and times out hung ones', async () => {
     await connect('scout');
     const runId = await startRun('scout');
-    fakeManyfold('completed', 'Sent 3 drafts.');
+    fakeManyfold('completed', 'I could not use the Spotted tools.');
     await checkRuns(env, NOW + 10 * 60_000);
-    expect(await env.DB.prepare('SELECT status, summary FROM agent_runs WHERE id = ?').bind(runId).first()).toEqual({ status: 'done', summary: 'Sent 3 drafts.' });
+    // finished without finish_run: the agent never reached Spotted, so it is not "done"
+    const silent = await env.DB.prepare('SELECT status, summary, error FROM agent_runs WHERE id = ?').bind(runId).first<{ status: string; summary: string; error: string }>();
+    expect(silent).toMatchObject({ status: 'failed', summary: 'I could not use the Spotted tools.' });
+    expect(silent!.error).toMatch(/without reporting back/);
+
+    const key = await call('POST', '/admin/agents/scout/key', { user: admin });
+    const second = await startRun('scout');
+    await tool('finish_run', { run_id: second, summary: 'Sent 3 drafts.' }, key.json.key);
+    fakeManyfold('completed', 'Done, see summary.');
+    await checkRuns(env, NOW + 20 * 60_000);
+    expect(await env.DB.prepare('SELECT status, summary, error FROM agent_runs WHERE id = ?').bind(second).first()).toEqual({ status: 'done', summary: 'Sent 3 drafts.', error: null });
 
     await env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, task_id, started_at) VALUES ('hung', 'scout', 'schedule', 'running', 'task-9', ?)").bind(NOW - 4 * HOUR).run();
     await checkRuns(env, NOW);

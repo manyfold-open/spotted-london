@@ -358,7 +358,8 @@ function fromRow(p: PopupRow) {
   };
 }
 
-export function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean) {
+/** `ongoing`: agents may send a pop-up that started long ago and is still running, with its real start date. */
+export function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean, opts: { ongoing?: boolean } = {}) {
   const title = text(b, 'title', { min: 3, max: 100, required: true });
   const category = oneOf(b, 'category', CATEGORIES, { required: true });
   const lat = num(b, 'lat', { required: true }), lng = num(b, 'lng', { required: true });
@@ -366,7 +367,7 @@ export function parsePopupInput(b: Record<string, unknown>, now: number, creatin
   const start_at = num(b, 'start_at', { required: true }), end_at = num(b, 'end_at', { required: true });
   if (end_at! <= start_at!) throw bad('dates_invalid', 'The end must be after the start.');
   if (end_at! - start_at! > MAX_DURATION) throw bad('too_long', 'A pop-up can run for at most 90 days.');
-  if (creating && start_at! < now - 7 * DAY) throw bad('too_old', 'The start date cannot be more than 7 days ago.');
+  if (creating && !opts.ongoing && start_at! < now - 7 * DAY) throw bad('too_old', 'The start date cannot be more than 7 days ago.');
   if (creating && end_at! < now) throw bad('already_ended', 'This pop-up has already ended.');
   let source_url: string | null = text(b, 'source_url', { max: 500 });
   if (source_url) {

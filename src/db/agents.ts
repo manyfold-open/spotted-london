@@ -99,7 +99,7 @@ export function brief(a: AgentRow, runId: string, appUrl: string, now: number): 
   return [
     `Spotted London: ${info.name} run ${runId}.`,
     `Today in London is ${today}, ${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}.`,
-    `Use the spotted-london skill, section "${info.name}". Spotted MCP server: ${new URL('/mcp', appUrl)} with the key in SPOTTED_API_KEY.`,
+    `Use the spotted-london skill, section "${info.name}". Use the Spotted tools from the MCP server named "spotted" (${new URL('/mcp', appUrl)}), which already carries your key.`,
     `Your job: ${info.job}`,
     `Write at most ${a.max_items} ${info.unit} in this run. Pass run_id "${runId}" to every tool that asks for it.`,
     'When you are done, call finish_run with a short summary: what you looked at, what you sent, and anything the admin should know.',
@@ -110,7 +110,7 @@ export function brief(a: AgentRow, runId: string, appUrl: string, now: number): 
 /** Why an agent cannot start a run right now, or null when it can. */
 export async function blocker(db: D1Database, a: AgentRow, now: number): Promise<ApiError | null> {
   if (!a.rpc_url || !a.token_sealed) return new ApiError(409, 'agent_not_connected', 'Connect this agent first: open Connection and press Connect with Manyfold.');
-  if (!a.key_hash) return new ApiError(409, 'agent_key_missing', 'Create a Spotted key for this agent first, and save it in Manyfold as SPOTTED_API_KEY.');
+  if (!a.key_hash) return new ApiError(409, 'agent_key_missing', 'Create a Spotted key for this agent first, and add it to the agent in Manyfold with mf mcp add (see Set up an agent).');
   const open = await db.prepare("SELECT id FROM agent_runs WHERE agent_id = ? AND status = 'running' AND started_at > ?").bind(a.id, now - RUN_TIMEOUT).first();
   if (open) return new ApiError(409, 'agent_busy', 'This agent is still working on its last run. Wait for it to finish, then try again.');
   return null;
@@ -138,13 +138,17 @@ export async function startRun(env: Bindings, a: AgentRow, trigger: RunRow['trig
 
 /** Records how a finished Manyfold task ended. A summary sent with finish_run is kept. */
 async function settle(db: D1Database, runId: string, info: TaskInfo, now: number) {
-  const ok = info.state === 'completed';
+  // A finished turn only counts as done when the agent reported back with finish_run.
+  // Without it the agent usually could not use Spotted (a wrong key, a missing MCP server).
+  const reported = await db.prepare("SELECT status FROM agent_runs WHERE id = ?").bind(runId).first<{ status: string }>();
+  const ok = info.state === 'completed' && reported?.status !== 'running';
   const error = ok ? null
+    : info.state === 'completed' ? 'The agent finished without reporting back to Spotted, so it probably could not use its Spotted tools. Read its message below.'
     : info.state === 'input-required' ? 'The agent stopped to ask a question. Answer it in Manyfold, or add the answer to its instructions here.'
     : `The agent run ended as "${info.state}".`;
   await db.prepare(
     `UPDATE agent_runs SET status = CASE WHEN status = 'running' THEN ? ELSE status END,
-       summary = COALESCE(summary, ?), error = COALESCE(error, ?), finished_at = COALESCE(finished_at, ?), checked_at = ? WHERE id = ?`,
+       summary = COALESCE(summary, ?), error = CASE WHEN status = 'running' THEN COALESCE(error, ?) ELSE error END, finished_at = COALESCE(finished_at, ?), checked_at = ? WHERE id = ?`,
   ).bind(ok ? 'done' : 'failed', info.text.slice(0, 4000) || null, error, now, now, runId).run();
 }
 

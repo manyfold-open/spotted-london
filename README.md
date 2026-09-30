@@ -149,7 +149,9 @@ One-time setup:
 
 1. Set the secret that encrypts the Manyfold tokens: `npx wrangler secret put AGENTS_KEY` (32+ random characters, for example from `openssl rand -base64 32`). Changing it later means pasting the tokens again.
 2. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote`.
-3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, add the MCP server with the Spotted key, press Connect with Manyfold and approve, then Run now.
+3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, give the agent its own Spotted key with `mf mcp add spotted <APP_URL>/mcp --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…` (Manyfold has no per-agent secrets; the key lives in the MCP server's header), press Connect with Manyfold and approve, then Run now.
+
+A run counts as done only when the agent reports back with `finish_run`. A turn that ends without it is marked failed, which usually means the agent's `spotted` MCP server is missing or carries another agent's key.
 
 When a Manyfold token expires or is revoked, runs fail with "Manyfold rejected the agent token"; press Connect again on that agent.
 
