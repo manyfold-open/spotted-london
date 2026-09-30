@@ -66,7 +66,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - The dev fallback that returns sign-in links in the response must stay development only.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
-- Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx`. Licence forbids letting users pick or download icons.
+- Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.
 - No native browser UI: dates use `web/src/components/DatePicker.tsx`, forms use `noValidate` with our own `.ferr` messages, and inputs are 16 px on phones so iOS does not zoom.
 - Phone layout is under 900 px (`@media (max-width: 899px)`): bottom tabs, bottom sheets. Check every screen at 375 px.
 
@@ -102,4 +102,4 @@ Not done yet, roughly in priority order:
 2. Hide quality votes on your own posts in the UI (the API already rejects them).
 3. Vote ring detection in the daily abuse scan.
 4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
-5. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).
+5. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).
