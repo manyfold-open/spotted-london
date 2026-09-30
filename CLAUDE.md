@@ -76,6 +76,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - `compatibility_date` is 2026-08-20 because `@cloudflare/vitest-pool-workers` bundles an older workerd. Raise it only together with that package.
 - MapLibre v6 must get its worker via `setWorkerUrl` from `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (see `web/src/components/maps.tsx`), or the map stays blank.
 - Map pins are plain DOM, not React roots (unmounting roots during render caused races).
+- Branch builds run `wrangler preview`, which reads only the `previews` block in `wrangler.jsonc`. Add every new var or binding there too, or preview builds fail.
 - Tests never reach Cloudflare: `vitest.config.ts` sets `remoteBindings: false` and `test/setup.ts` swaps `env.AI` for a stub; mock `env.AI.run` per test.
 - After `npm run build:web`, a running `wrangler dev` can serve 404s for every page. Restart it.
 - Tests share one D1 per file, so give each test its own titles and coordinates or the duplicate check (same place, similar title) returns 409.

@@ -150,11 +150,11 @@ The Worker is connected to this repo with **Cloudflare Workers Builds** (no GitH
 | Production branch | `main` |
 | Build command | `npm ci && npm run build:web` |
 | Deploy command | `npx wrangler deploy` |
-| Non-production branches | preview builds on (default preview command) |
+| Non-production branches | preview builds on, deploy command `npx wrangler preview` (uses the `previews` block in `wrangler.jsonc`) |
 | Build variable | `NODE_VERSION=22` |
 
 - A push to `main` builds and deploys production.
-- A push to any other branch makes a preview version. Previews use the **same** D1, KV and R2 as production.
+- A push to any other branch makes a preview version. Previews use the **same** D1, KV and R2 as production. They take their vars and bindings from the `previews` block in `wrangler.jsonc`, so a new binding or var goes in both places. Previews have no secrets and a different address, so you are signed out there and sign in, adding a pop-up and reporting do not work. Browsing does.
 - The build token cannot touch D1. When a change adds a file to `migrations/`, apply it from a computer signed in with wrangler **before** merging: `npx wrangler d1 migrations apply spotted-db --remote`. Migrations must stay backwards compatible with the code already running.
 
 Manual deploy from a computer, if ever needed:
