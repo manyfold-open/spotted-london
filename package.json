@@ -1,0 +1,25 @@
+{
+  "name": "spotted-london",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply spotted-db --local",
+    "db:seed": "wrangler d1 execute spotted-db --local --file=./seed/seed.sql",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate && npm run db:seed",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.13.12"
+  },
+  "devDependencies": {
+    "wrangler": "^4.145.0",
+    "vitest": "^4.1.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "typescript": "^5"
+  }
+}

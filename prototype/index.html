@@ -1,0 +1,1115 @@
+<title>Spotted London</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: mobile first. Phones get top bar + bottom tab bar + bottom sheets. Desktop gets a 232px sidebar + right drawer.
+   On wide screens a Phone preview frame shows the mobile layout. Sketchbook paper world, light only by design. */
+:root{
+  --paper:#f4efe6; --paper2:#efe8db; --dot:#d6cbb9; --hair:#d6cbb9;
+  --card:#fffdf8; --soft:#e8e1d5;
+  --ink:#1d1b18; --ink2:#48423a; --ink3:#5e574c;
+  --accent:#e8622c; --accent-soft:#fff1e2;
+  --ai:#1b45ad; --ai-bg:#dce6fc;
+  --you:#8f3e07; --you-bg:#fce2cb;
+  --sim:#553095; --sim-bg:#ebe0fa;
+  --eng:#155e3a; --eng-bg:#d8efe0;
+  --watch:#6b5200; --watch-bg:#fff3c4;
+  --err:#a8200d; --err-bg:#fde8e6;
+  --note:#fff6cf; --water:#cfdcea; --glass:rgba(244,239,230,.88); --scrim:rgba(29,27,24,.38);
+  --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --sans:"Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, monospace;
+  --shadow:4px 4px 0 var(--ink); --shadow-sm:3px 3px 0 var(--ink);
+  --dots:radial-gradient(var(--dot) 1.1px, transparent 1.2px);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);background-image:var(--dots);background-size:22px 22px;color:var(--ink);font:14px/1.5 var(--sans)}
+a{color:var(--you)} a:hover{color:#6e2f05}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+h1,h2{font-family:var(--display);font-weight:800;text-wrap:balance;margin:0}
+h1{font-size:40px;line-height:1.1;letter-spacing:-.8px}
+h2{font-size:20px;line-height:1.2}
+h3{font-size:15px;font-weight:700;margin:0}
+p{margin:0}
+.eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3)}
+.small{font-size:12.5px}
+.muted{color:var(--ink2)}
+.num{font-variant-numeric:tabular-nums}
+svg.i{width:18px;height:18px;flex:none;fill:currentColor;stroke:none}
+.stage:not(.m) .m-only{display:none!important}
+.stage.m .d-only{display:none!important}
+.noscroll{scrollbar-width:none}.noscroll::-webkit-scrollbar{display:none}
+
+/* ---------- stage + phone preview ---------- */
+.device{position:relative}
+.statusbar{display:none}
+.stage[data-mode="phone"]{display:flex;justify-content:center;align-items:flex-start;gap:48px;padding-block:28px 40px;padding-inline:16px;min-height:100vh}
+.stage[data-mode="phone"] .device{width:390px;height:min(844px, calc(100vh - 56px));flex:none;border:2px solid var(--ink);border-radius:48px;box-shadow:8px 8px 0 var(--ink);overflow:hidden;transform:translateZ(0);background:var(--paper);background-image:var(--dots);background-size:22px 22px;display:flex;flex-direction:column;position:sticky;top:28px}
+.stage[data-mode="phone"] .app{flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+.stage[data-mode="phone"] .app::-webkit-scrollbar{display:none}
+.stage[data-mode="phone"].locked .app{overflow:hidden}
+.stage[data-mode="phone"] .statusbar{display:flex;align-items:center;justify-content:space-between;height:46px;flex:none;padding:6px 30px 0 34px;font-weight:700;font-size:15px;background:var(--glass);position:relative;z-index:6}
+.island{position:absolute;left:50%;top:10px;translate:-50% 0;width:112px;height:30px;border-radius:999px;background:var(--ink)}
+.sbicons{display:flex;gap:6px;align-items:center}
+.notes{width:300px;flex:none;display:flex;flex-direction:column;gap:16px;padding-top:8px}
+.stage:not([data-mode="phone"]) .notes{display:none}
+.notes h1{font-size:30px}
+.notes ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
+.notes li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;font-size:13.5px}
+.notes li b{display:block}
+.notes .k{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--ink);background:var(--card);display:grid;place-items:center}
+.jump{display:flex;flex-wrap:wrap;gap:8px}
+.modeswitch{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;gap:4px;padding:4px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);box-shadow:var(--shadow-sm)}
+.modeswitch button{min-height:34px;padding:0 14px;border-radius:999px;border:0;background:none;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.modeswitch button[aria-pressed="true"]{background:var(--ink);color:var(--card)}
+
+/* ---------- desktop shell ---------- */
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.side{position:sticky;top:env(safe-area-inset-top,0px);height:100vh;background:var(--paper2);border-right:1.5px solid var(--ink);padding:20px 14px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.logo{width:36px;height:36px;border-radius:50%;border:2px solid var(--ink);background:var(--accent);display:grid;place-items:center;box-shadow:var(--shadow-sm);color:var(--card);flex:none}
+.brand b,.mbrand b{font-family:var(--display);font-size:22px;font-weight:800;letter-spacing:-.4px}
+.brand span{display:block;font-size:11.5px;color:var(--ink3);margin-top:-3px}
+nav.sidenav{display:flex;flex-direction:column;gap:6px}
+.nav{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:12px;border:1.5px solid transparent;background:none;cursor:pointer;text-align:left;font-weight:600;white-space:nowrap}
+.nav:hover{background:var(--card);border-color:var(--ink)}
+.nav[aria-current="page"]{background:var(--ink);color:var(--card);border-color:var(--ink);box-shadow:3px 3px 0 var(--accent)}
+.nav .ct{margin-left:auto;font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--ink2)}
+.nav .ct.hot{background:var(--accent);color:var(--card)}
+.nav[aria-current="page"] .ct{background:var(--card);color:var(--ink)}
+.sidenote{margin-top:auto;background:var(--note);border:1.5px solid var(--ink);border-radius:12px;padding:12px;font-size:12.5px;rotate:-1deg}
+.sidenote b{display:block;margin-bottom:4px}
+.main{min-width:0}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;min-height:60px;display:flex;align-items:center;gap:12px;padding:0 32px;background:var(--glass);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1.5px solid var(--ink)}
+.mbrand{display:flex;align-items:center;gap:8px}
+.mbrand .logo{width:32px;height:32px}
+.search{flex:1;max-width:460px;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card)}
+.search input{border:0;outline:0;background:none;font:inherit;flex:1;min-width:0;color:var(--ink)}
+.search:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.me{margin-left:auto;display:flex;align-items:center;gap:10px}
+.avatar{width:36px;height:36px;border-radius:50%;border:2px solid var(--ink);background:var(--you-bg);display:grid;place-items:center;font-weight:700;font-family:var(--display);flex:none}
+.karma{font-size:12.5px;line-height:1.2;text-align:right}
+.karma b{font-size:15px;font-family:var(--display)}
+.kpill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px 0 4px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);font-weight:700;font-size:13px;cursor:pointer}
+.kpill .avatar{width:24px;height:24px;border-width:1.5px;font-size:10px}
+.page{padding:32px 32px 96px;max-width:1180px}
+.intro{font-size:15px;color:var(--ink2);max-width:66ch;margin-top:8px}
+
+/* ---------- buttons, tags ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);font-size:14px;font-weight:600;cursor:pointer;transition:translate .12s, box-shadow .12s;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover{translate:-1px -1px;box-shadow:var(--shadow-sm);color:var(--ink)}
+.btn:active{translate:2px 2px;box-shadow:1px 1px 0 var(--ink)}
+.btn.primary{background:var(--ink);color:var(--card);box-shadow:3px 3px 0 var(--accent)}
+.btn.primary:hover{box-shadow:4px 4px 0 var(--accent);color:var(--card)}
+.btn.primary:active{box-shadow:1px 1px 0 var(--accent)}
+.btn.sm{min-height:34px;padding:0 12px;font-size:13px}
+.btn.subtle{background:transparent;border-color:transparent}
+.btn.subtle:hover{border-color:var(--ink);background:var(--card)}
+.btn.danger-outline{color:var(--err)}
+.btn.yes.on{background:var(--eng);color:var(--card)}
+.btn.no.on{background:var(--err);color:var(--card)}
+.btn.block{width:100%}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;border:1.5px solid transparent;white-space:nowrap;line-height:1.5}
+.tag svg.i{width:14px;height:14px}
+.t-ink{background:var(--ink);color:var(--card)}
+.t-mute{background:var(--soft);color:var(--ink2)}
+.t-new{background:var(--accent);color:var(--card)}
+.t-eng{background:var(--eng-bg);color:var(--eng)}
+.t-ai{background:var(--ai-bg);color:var(--ai)}
+.t-watch{background:var(--watch-bg);color:var(--watch);border:1.5px dashed var(--watch)}
+.t-err{background:var(--err-bg);color:var(--err)}
+.t-out{border-color:var(--ink);background:var(--card)}
+
+/* ---------- chips ---------- */
+.filters{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:34px;padding:0 14px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none}
+.chip:hover{translate:-1px -1px;box-shadow:2px 2px 0 var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--card);box-shadow:2px 2px 0 var(--accent)}
+.chip .n{font-size:11px;opacity:.7}
+.chip.ai{border-color:var(--ai);color:var(--ai);background:var(--ai-bg);font-weight:600}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;background:none;border:0;padding:0;white-space:nowrap}
+.switch .track{width:34px;height:20px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);position:relative;transition:background .15s;flex:none}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--ink);transition:left .15s}
+.switch[aria-checked="true"] .track{background:var(--eng-bg)}
+.switch[aria-checked="true"] .track::after{left:16px;background:var(--eng)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* ---------- cards ---------- */
+.lh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1.5px dashed var(--hair);margin:28px 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+.card{background:var(--card);border:1.5px solid var(--ink);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:translate .12s, box-shadow .12s;text-align:left;padding:0}
+.card:hover{translate:-2px -2px;box-shadow:var(--shadow)}
+.thumb{height:128px;border-bottom:1.5px solid var(--ink);position:relative;display:grid;place-items:center}
+.thumb svg.big{width:62px;height:62px}
+.thumb .live{position:absolute;top:10px;left:10px}
+.thumb .save{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:50%;border:1.5px solid var(--ink);background:var(--card);display:grid;place-items:center;cursor:pointer;padding:0}
+.thumb .save[aria-pressed="true"]{background:var(--accent);color:var(--card)}
+.thumb .save[aria-pressed="true"] svg,.btn[data-save][aria-pressed="true"] svg{fill:currentColor}
+.cbody{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.cbody h3{font-family:var(--display);font-size:18px;font-weight:800;line-height:1.2;letter-spacing:-.2px}
+.meta{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13px;min-width:0}
+.meta span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta svg.i{width:15px;height:15px;color:var(--ink3)}
+.cfoot{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1.5px dashed var(--hair)}
+.meter{flex:1;height:8px;border-radius:999px;border:1.5px solid var(--ink);background:var(--card);overflow:hidden;min-width:40px}
+.meter i{display:block;height:100%;background:var(--eng)}
+.meter.low i{background:var(--err)} .meter.mid i{background:var(--watch)}
+.score{display:flex;align-items:center;gap:2px;font-weight:700;font-size:13px}
+.vote{width:30px;height:30px;border-radius:50%;border:1.5px solid transparent;background:none;display:grid;place-items:center;cursor:pointer;padding:0}
+.vote:hover{border-color:var(--ink);background:var(--card)}
+.vote[aria-pressed="true"]{background:var(--accent);color:var(--card);border-color:var(--ink)}
+.vote svg.i{width:15px;height:15px}
+.carousel{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 16px 12px;margin:0 -16px}
+.carousel .card{flex:0 0 82%;scroll-snap-align:center}
+
+.pat-food{background-color:var(--you-bg);background-image:repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px)}
+.pat-fashion{background-color:var(--sim-bg);background-image:repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px)}
+.pat-sample{background-color:var(--accent-soft);background-image:radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px);background-size:12px 12px}
+.pat-art{background-color:var(--ai-bg);background-image:repeating-linear-gradient(90deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px)}
+.pat-market{background-color:var(--eng-bg);background-image:repeating-linear-gradient(0deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px)}
+.pat-beauty{background-color:var(--err-bg);background-image:radial-gradient(rgba(29,27,24,.1) 2px, transparent 2.2px);background-size:16px 16px}
+.pat-tech{background-color:var(--soft);background-image:linear-gradient(rgba(29,27,24,.07) 1.5px, transparent 1.5px),linear-gradient(90deg, rgba(29,27,24,.07) 1.5px, transparent 1.5px);background-size:14px 14px}
+.pat-other{background-color:var(--watch-bg);background-image:repeating-linear-gradient(135deg, rgba(29,27,24,.07) 0 2px, transparent 2px 10px)}
+
+/* ---------- panels ---------- */
+.panel{background:var(--card);border:1.5px solid var(--ink);border-radius:16px;box-shadow:var(--shadow);padding:20px}
+.notice{border:1.5px solid var(--ink);border-radius:12px;padding:12px 14px;background:var(--card);display:flex;gap:10px;align-items:flex-start}
+.notice.watch{border-style:dashed;border-color:var(--watch);background:var(--watch-bg);color:var(--watch)}
+.notice.good{background:var(--eng-bg);color:var(--eng)}
+.notice.err{background:var(--err-bg);color:var(--err)}
+.notice.ai{background:var(--ai-bg);color:var(--ai);border-color:var(--ai)}
+.notice.note{background:var(--note)}
+.empty{padding:40px 20px;text-align:center;color:var(--ink2);border:1.5px dashed var(--ink3);border-radius:16px}
+
+/* ---------- map ---------- */
+.mapwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;margin-top:22px;align-items:start}
+.mapbox{background:var(--card);border:1.5px solid var(--ink);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;position:relative}
+.mapbox svg{display:block;width:100%;height:auto}
+.maplist{display:flex;flex-direction:column;gap:10px;max-height:620px;overflow:auto;padding:2px 6px 6px 2px}
+.mini{display:flex;gap:12px;align-items:center;padding:10px;border:1.5px solid var(--ink);border-radius:12px;background:var(--card);cursor:pointer;text-align:left;width:100%}
+.mini:hover,.mini.hl{box-shadow:var(--shadow-sm);translate:-1px -1px}
+.mini.hl{border-color:var(--accent);box-shadow:3px 3px 0 var(--accent)}
+.mini .sw{width:44px;height:44px;border-radius:10px;border:1.5px solid var(--ink);display:grid;place-items:center;flex:none}
+.mini b{display:block;font-size:14px;line-height:1.25}
+.mini span{font-size:12px;color:var(--ink2)}
+.pin{cursor:pointer}
+.pin .ring{opacity:0}
+.pin.hl .ring{opacity:1}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;flex-wrap:wrap}
+
+/* ---------- drawer / sheet ---------- */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);background:var(--paper);border-left:1.5px solid var(--ink);z-index:21;overflow-y:auto;display:flex;flex-direction:column;animation:slide .22s ease-out}
+@keyframes slide{from{translate:40px 0;opacity:.4}}
+.dhead{height:190px;flex:none;border-bottom:1.5px solid var(--ink);position:relative;display:grid;place-items:center}
+.dhead svg.big{width:76px;height:76px}
+.dclose{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px}
+.handle{display:none}
+.dbody{padding:22px 24px;display:flex;flex-direction:column;gap:18px;flex:1}
+.dfoot{position:sticky;bottom:0;display:flex;gap:10px;padding:12px 24px calc(12px + env(safe-area-inset-bottom,0px));background:var(--glass);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1.5px solid var(--ink)}
+.dfoot .btn{flex:1}
+.facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;font-size:13.5px;margin:0}
+.facts dt{color:var(--ink3);display:flex;align-items:center;gap:6px;font-weight:600}
+.facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.checklist{display:flex;flex-direction:column;gap:6px;margin:12px 0 0;padding:0;list-style:none;font-size:13px}
+.checklist li{display:flex;gap:8px;align-items:flex-start}
+.checklist .ok{color:var(--eng)} .checklist .no{color:var(--ink3)}
+.bigmeter{height:14px}
+.confrow{display:flex;align-items:baseline;gap:8px;margin-top:4px}
+.confrow b{font-family:var(--display);font-size:30px;font-weight:800;letter-spacing:-.5px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.weightnote{font-size:12.5px;color:var(--ink2);background:var(--soft);padding:8px 10px;border-radius:10px}
+code{font-family:var(--mono);font-size:12px;background:var(--soft);padding:1px 5px;border-radius:4px}
+
+/* ---------- form + AI ---------- */
+.form{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;margin-top:22px;align-items:start}
+.fields{display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field .lbl{font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.field .hint{font-size:12px;color:var(--ink3)}
+.input{width:100%;min-height:42px;padding:9px 14px;border-radius:12px;border:1.5px solid var(--ink);background:var(--card);font:inherit;color:var(--ink);transition:background .2s}
+textarea.input{min-height:96px;resize:vertical}
+.input:focus{outline:3px solid var(--accent);outline-offset:1px}
+.input.ai{border-color:var(--ai);background:var(--ai-bg)}
+.filling .input:not(#f-src){color:transparent;border-color:var(--hair);background:linear-gradient(90deg,var(--soft) 0,var(--card) 50%,var(--soft) 100%);background-size:200% 100%;animation:sheen 1.35s linear infinite}
+@keyframes sheen{from{background-position:100% 0}to{background-position:-100% 0}}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.aibox{border:1.5px solid var(--ai);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:4px 4px 0 var(--ai)}
+.aibox h2{font-size:18px}
+.ailine{display:flex;gap:8px}
+.ailine .input{border-radius:999px}
+.spin{width:15px;height:15px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:turn .8s linear infinite;flex:none;margin-top:2px}
+@keyframes turn{to{rotate:360deg}}
+.drop{border:1.5px dashed var(--ink3);border-radius:12px;padding:18px;text-align:center;color:var(--ink2);background:var(--card)}
+.sticky{position:sticky;top:84px;display:flex;flex-direction:column;gap:14px}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* ---------- queue, profile ---------- */
+.qitem{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px;border:1.5px solid var(--ink);border-radius:16px;background:var(--card)}
+.qitem .sw{width:64px;height:64px;border-radius:12px;border:1.5px solid var(--ink);display:grid;place-items:center}
+.qactions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.stack{display:flex;flex-direction:column;gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:22px}
+.kpi{background:var(--card);border:1.5px solid var(--ink);border-radius:16px;padding:14px 16px}
+.kpi b{display:block;font-family:var(--display);font-size:28px;font-weight:800;letter-spacing:-.5px;line-height:1.1;margin-top:4px}
+.log{width:100%;border-collapse:collapse;font-size:13.5px}
+.log td{padding:10px 8px;border-top:1.5px dashed var(--hair);vertical-align:top}
+.log tr:first-child td{border-top:0}
+.log td.d{font-weight:700;text-align:right;white-space:nowrap}
+.pos{color:var(--eng)} .neg{color:var(--err)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.menu{background:var(--card);border:1.5px solid var(--ink);border-radius:16px;overflow:hidden}
+.mrow{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:10px 16px;background:none;border:0;border-top:1.5px dashed var(--hair);text-align:left;cursor:pointer;font-weight:600}
+.mrow:first-child{border-top:0}
+.mrow:hover{background:var(--accent-soft)}
+.mrow .sub{display:block;font-weight:400;font-size:12.5px;color:var(--ink2)}
+.mrow .chev{margin-left:auto;color:var(--ink3);rotate:-90deg}
+.mrow.static{cursor:default}.mrow.static:hover{background:none}
+.hero-me{display:flex;align-items:center;gap:14px}
+.hero-me .avatar{width:60px;height:60px;font-size:20px;box-shadow:var(--shadow-sm)}
+
+/* ---------- tab bar ---------- */
+.tabbar{display:none}
+.m .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1.5px solid var(--ink);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
+.stage[data-mode="phone"] .tabbar{padding-bottom:26px}
+.stage[data-mode="phone"] .tabbar::after{content:"";position:absolute;left:50%;bottom:8px;translate:-50% 0;width:130px;height:5px;border-radius:999px;background:var(--ink)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;cursor:pointer;font-size:11px;font-weight:600;color:var(--ink2);padding:2px 0}
+.tab .ti{position:relative;width:52px;height:30px;border-radius:999px;display:grid;place-items:center;border:1.5px solid transparent}
+.tab .ti svg.i{width:22px;height:22px}
+.tab[aria-current="page"]{color:var(--ink)}
+.tab[aria-current="page"] .ti{background:var(--ink);color:var(--card);box-shadow:2px 2px 0 var(--accent)}
+.tab .badge{position:absolute;top:-4px;right:4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--accent);color:var(--card);border:1.5px solid var(--ink);font-size:10px;display:grid;place-items:center;line-height:1}
+.tab.add .plus{width:50px;height:50px;margin-top:-22px;border-radius:50%;background:var(--accent);color:var(--card);border:2px solid var(--ink);display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
+.tab.add .plus svg{width:24px;height:24px}
+.tab.add[aria-current="page"] .plus{background:var(--ink);box-shadow:3px 3px 0 var(--accent)}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));translate:-50% 0;z-index:40;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:calc(100% - 32px);max-width:460px}
+.m .toasts{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+.toast{background:var(--ink);color:var(--card);border-radius:12px;padding:11px 16px;box-shadow:3px 3px 0 var(--accent);font-weight:600;font-size:13.5px;animation:tin .22s ease-out;display:flex;gap:8px;align-items:center}
+@keyframes tin{from{opacity:0;translate:0 12px;scale:.96}}
+
+/* ---------- mid desktop ---------- */
+@media (max-width:1180px){.mapwrap{grid-template-columns:minmax(0,1fr) 280px}.form{grid-template-columns:minmax(0,1fr) 260px}}
+
+/* ---------- mobile (.m is set when the app is under 900px wide, or in Phone preview) ---------- */
+.m .shell{grid-template-columns:minmax(0,1fr);min-height:0}
+.m .side{display:none}
+.m .topbar{flex-wrap:wrap;padding:10px 16px;gap:10px}
+.m .search{order:3;flex-basis:100%;max-width:none}
+.m .page{padding:18px 16px 120px}
+.m h1{font-size:28px;letter-spacing:-.5px}
+.m .filters{margin-top:14px;gap:8px}
+.m .filters .chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:2px 16px 4px}
+.m .lh{margin:20px 0 12px}
+.m .grid{grid-template-columns:minmax(0,1fr);gap:12px}
+.m .grid .card{display:grid;grid-template-columns:100px minmax(0,1fr)}
+.m .grid .thumb{height:auto;min-height:100%;border-bottom:0;border-right:1.5px solid var(--ink);grid-row:1/3}
+.m .grid .thumb svg.big{width:36px;height:36px}
+.m .grid .thumb .live{top:auto;bottom:8px;left:8px;font-size:10.5px;padding:1px 7px}
+.m .grid .thumb .save{width:30px;height:30px;top:6px;right:6px}
+.m .grid .cbody{padding:10px 12px 4px;gap:4px}
+.m .grid .cbody h3{font-size:16px}
+.m .grid .cattag{display:none}
+.m .grid .cfoot{padding:4px 8px 8px 12px;border-top:0;gap:6px}
+.m .grid .meta{font-size:12.5px}
+.m .carousel .thumb{height:112px}
+.m .mapwrap{grid-template-columns:minmax(0,1fr);margin-top:14px;gap:10px}
+.m .mapbox{box-shadow:var(--shadow-sm)}
+.m .legend{position:static;padding:8px 10px;border-top:1.5px dashed var(--hair)}
+.m .legend .tag{font-size:11px;padding:1px 8px}
+.m .maplist{flex-direction:row;overflow-x:auto;max-height:none;scroll-snap-type:x mandatory;margin:0 -16px;padding:4px 16px 10px;gap:10px}
+.m .maplist .mini{flex:0 0 80%;scroll-snap-align:center}
+.m .scrim{animation:fade .2s}
+@keyframes fade{from{opacity:0}}
+.m .drawer{top:auto;left:0;right:0;bottom:0;width:auto;height:92%;border-left:0;border-top:1.5px solid var(--ink);border-radius:24px 24px 0 0;animation:up .26s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{translate:0 40%}}
+.m .handle{display:block;position:absolute;top:8px;left:50%;translate:-50% 0;width:44px;height:5px;border-radius:999px;background:var(--ink);opacity:.5}
+.m .dhead{height:140px}
+.m .dhead svg.big{width:56px;height:56px}
+.m .dclose{top:14px}
+.m .dbody{padding:18px 16px;gap:16px}
+.m .dbody h1{font-size:26px!important}
+.m .dfoot{padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
+.stage[data-mode="phone"] .dfoot{padding-bottom:26px}
+.m .panel{padding:16px;box-shadow:var(--shadow-sm)}
+.m .form{grid-template-columns:minmax(0,1fr);margin-top:14px;gap:16px}
+.m .fields.panel{border:0;box-shadow:none;background:none;padding:0}
+.m .sticky{position:static}
+.m .kpis{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:16px;gap:10px}
+.m .kpi b{font-size:24px}
+.m .qitem{grid-template-columns:48px minmax(0,1fr);gap:12px}
+.m .qitem .sw{width:48px;height:48px}
+.m .qactions{grid-column:1/-1;justify-content:stretch}
+.m .qactions .btn{flex:1}
+.m .nlform{width:100%}
+.m .nlform .input{flex:1;width:auto!important;min-width:0}
+.m .ailine .btn{padding:0 12px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- Hand-drawn icons from koboyo.com/icons (free for commercial use, no attribution required) -->
+    <symbol id="i-search" viewBox="0 0 135 131"><path d="M39.8 8.9A47.5 47.5 0 0 0 7 54c0 13.1 4.3 23.5 13.4 32.5A46 46 0 0 0 54.1 100c11.4 0 21.4-3.6 31.3-11.4.8-.5 7.4 5.5 18.6 16.9 9.6 9.7 18.3 18 19.3 18.6 2.4 1.4 5.9-.7 5.5-3.2-.2-1.1-8.6-10.2-18.8-20.4L91.6 82l1.7-3a58 58 0 0 0 6.4-21.6 46.5 46.5 0 0 0-34.1-49 55 55 0 0 0-25.8.5m29.7 8.9a39 39 0 0 1 22.1 44.1c-6.4 30.8-42.2 41.4-65.7 19.4-18.2-17-13.6-48.8 9-62.1a37 37 0 0 1 34.6-1.4"/></symbol>
+    <symbol id="i-list" viewBox="0 0 172 210"><path d="M78 12.1c-6.2 2.5-10 8.5-10 15.9 0 6 1.8 9.9 6.1 13.3 3.4 2.6 3.2 4.7-.4 4.7-4.1 0-14.1 3.1-21.3 6.5A78 78 0 0 0 9 130.7a77.7 77.7 0 0 0 116.7 58.2c7.4-4.4 21.8-18.7 26.2-26.1a78 78 0 0 0-26.8-107.4 77 77 0 0 0-26-9.4c-4.4 0-4.4-1.1-.2-5.2a17 17 0 0 0-4.6-28.4 30 30 0 0 0-16.3-.3m16.1 4.4c3.1 1.7 5.7 5.4 6.5 9.4.7 3.3-1 9.4-3 11-1.1.9-1.2.1-.8-4 .4-4.5.2-5.3-2.3-7.9a11 11 0 0 0-12.8-2.7q-7.6 3.1-6.3 11.3c.5 4 .4 4.5-.9 3.4-2.3-1.9-3.6-8-2.5-12.1s5.5-8.6 9.6-9.9c3.4-1 8.7-.4 12.5 1.5m-2.6 11c2.6 2.5 3.3 5.9 1.5 7-.5.3-1 2.8-1 5.6V45h-5.5c-4.8 0-5.5-.2-5.5-2 0-1.1-.5-3.9-1.2-6.3q-3-11.4 7-11.6c1.3-.1 3.4 1 4.7 2.4m11.4 23.1a76 76 0 0 1 52.4 48.1 76 76 0 0 1 1.8 40.4 73 73 0 0 1-139.2 10.8A72 72 0 0 1 34 71a72 72 0 0 1 37.5-21c7.2-1.4 24.5-1.1 31.4.6"/><path d="M74.5 58.4a66 66 0 0 0-51.1 46.1 58 58 0 0 0-1.8 18c0 10.8.3 12.9 3 20.6a64.5 64.5 0 0 0 125.5-13.2 66 66 0 0 0-32.4-64.3 67 67 0 0 0-43.2-7.2m24 4.1a60.8 60.8 0 0 1 29.8 103.1A57 57 0 0 1 86 183c-17 0-31-5.8-43.1-18a60.4 60.4 0 0 1 16.6-97.5 59 59 0 0 1 39-5"/><path d="M84.7 66.6c-.4.4-.7 2.9-.7 5.6 0 4.2.3 4.8 2.1 4.8s2-.5 1.7-5.2q-.6-7.4-3.1-5.2m23.2 22.7a492 492 0 0 0-33.5 24.9A704 704 0 0 0 55 158.9c0 2.4 3.3.5 22-12.9 19.3-13.9 19.5-14.1 22.3-20.3l10.4-23q7.6-16.8 6.6-17.8t-8.4 4.4m-1.5 11.4-7.6 16.8a85 85 0 0 1-4.9 9.9c-.4.5-2.1-.3-3.9-1.8a14 14 0 0 0-4-2.6c-.5 0-2.2-1.8-3.9-3.9l-3.1-3.9 15.2-11.1C102.5 98 109.5 93 109.7 93zm-20 27.8c2 1.1 3.6 2.3 3.6 2.7s-6.3 5.2-14.1 10.8-13.9 9.7-13.8 9.2l7.3-16.5 7-15.6 3.2 3.7c1.7 2.1 4.8 4.6 6.8 5.7m-56.4-6c0 1.2 1.3 1.5 5.5 1.5s5.5-.3 5.5-1.5-1.3-1.5-5.5-1.5-5.5.3-5.5 1.5m100.7-.9c-1.5 1.5.8 2.4 5.9 2.4 4.1 0 5.4-.4 5.4-1.5s-1.3-1.5-5.3-1.5c-3 0-5.7.3-6 .6m-46 46c-1 1-.9 10.2.1 10.8 2 1.2 3.3-1.3 3-5.9-.3-4.5-1.5-6.4-3.1-4.9"/></symbol>
+    <symbol id="i-map" viewBox="0 0 199 171"><path d="M11.1 9.4c-.8.9-1 19.1-.9 66.2l.3 64.9 7 2.7 31.2 11.3 24.2 8.6 28.6-9.2 28.5-9.2 7.8 2.2c4.2 1.2 17.1 5.1 28.5 8.7 16.4 5.1 21.2 6.2 22.3 5.3s1.4-11.3 1.4-65.3c0-35.2-.4-64.6-.8-65.3-.9-1.4-9-4-37.9-12.2l-21.2-6-12.3 3.4-28.5 7.9L73.2 28 43.4 18C27 12.5 13.3 8 12.9 8s-1.2.6-1.8 1.4M44 22.8l26.5 8.9.3 16.9c.2 15.2.1 17-1.5 18.2-1.7 1.3-1.7 1.4 0 2.6s1.7 4.3 1.5 44.8l-.3 43.4-21.5-7.7c-11.8-4.3-24.5-8.8-28.2-10l-6.8-2.3v-16.8c0-16.1.1-16.8 2-16.8 2.6 0 2.6-2.7 0-3.5-2-.6-2-1.5-2-44.1 0-41 .1-43.5 1.8-43zm85 39.1v45l-2.2.3c-3.1.4-3.4 2.6-.3 3.4l2.6.6-.3 14.7-.3 14.6-19 6.3-26.7 8.6-7.8 2.4v-43.9c0-37.6.2-43.9 1.4-43.9 2.5 0 2.9-2.1.7-2.7-2.1-.5-2.1-.9-1.9-18.2l.3-17.6 26-7.2c14.3-3.9 26.3-7.2 26.8-7.2.4-.1.7 20.1.7 44.8m18.5-40.5 25 7.4 13 3.8.3 62.3c.2 59 .1 62.2-1.5 61.7l-43-13.1-9.3-2.8v-15.4c0-12.6.2-15.3 1.4-15.3 2.4 0 3-2.1.7-2.7-2.1-.5-2.1-.7-2.1-45.5 0-42.3.1-44.9 1.8-44.4z"/><path d="M57.3 71c-3.1 1.8-4.5 5-2.4 5 1.8 0 8-4.5 8.1-5.8q0-2.6-5.7.8M48 81c-1.4 2.6-.3 4.5 1.6 2.9 1.6-1.3 1.9-4.9.4-4.9q-1 .2-2 2m-6.7 11.3c-2.7 3.9-2.8 4.7-.9 4.7 1.5 0 5.6-5 5.6-6.9 0-2.2-2.6-1-4.7 2.2M28 101.5c-4.3 1.6-5.1 3.5-1.3 3.5 3.3 0 7.5-2 8.1-3.8.5-1.5-2.1-1.4-6.8.3m56-29.7c0 1.3 6.4 7.2 7.8 7.2 2.3 0 1.2-2.9-2.1-5.4-3.4-2.6-5.7-3.3-5.7-1.8M96 85c0 1.9 5.2 9 6.6 9 2.1 0 1.7-1.3-1.6-5.8-2.9-4-5-5.3-5-3.2m11.5 15c-1.5 2.4 8.5 9.4 10.5 7.4q1-1-3.7-4.5c-6-4.2-6-4.2-6.8-2.9M155 46.1c-3.9.8-8.5 5.6-9.3 9.7-.3 1.4-.3 4.1 0 5.9a66 66 0 0 0 12.4 21.1c1.7.3 10.8-14.2 12.2-19.8 2.8-10.2-5.3-19-15.3-16.9m8.1 5.2a11 11 0 0 1 3.9 8.3c0 2.6-7.5 17.4-8.8 17.4-.4 0-2.7-3.8-5.1-8.4-4.7-9.1-4.8-11.1-1-15.9 1.6-2.1 2.9-2.7 5.7-2.7 2 0 4.4.6 5.3 1.3"/><path d="M155.2 56.2c-.7.7-1.2 2.1-1.2 3.3 0 4.7 6.2 6.3 8.1 2.1 2.2-4.7-3.3-9-6.9-5.4m-.1 35.4c-2.4 3-2.7 5.4-.8 5.4s5.2-5.9 3.9-7.2q-1-.9-3.1 1.8m-11.9 11.6c-3.1 1.9-3.5 3.8-.8 3.8 1.7 0 6.6-3.8 6.6-5.1q-.2-2-5.8 1.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 125 124"><path d="M59.2 7.6C57 9.1 57 9.4 57 33.6V58H33.1c-20.4 0-24.2.2-25.5 1.6q-3 3 .1 5.5c1.3 1.1 6.8 1.4 25.7 1.4h24.1l.3 24.8.2 24.8 2.5 1.1c1.9.8 2.8.8 4-.2 1.3-1.1 1.5-5 1.5-26.1V66h24.8c13.6 0 25.3-.4 26-.9.8-.5 1.2-2.1 1-3.7l-.3-2.9-25.7-.3L66 58V33.6c0-22.3-.2-24.4-1.8-25.9-2.3-2.1-2.2-2.1-5-.1"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 104 148"><path d="M32.2 8c-18.1.6-20.5.9-23 2.7-1.4 1.1-3 3.1-3.3 4.4-.4 1.3-.5 29.4-.2 62.4.5 58.3.6 60 2.5 61.7q2 1.9 3.7.8c1-.5 10.2-8.1 20.6-17 10.3-8.8 19.1-16 19.4-16 1 0 12 9.2 26.6 22.3 13 11.7 15.9 13.4 18.5 10.2.9-1.1 1.3-16.6 1.7-64.9.5-63.3.5-63.4-1.6-65.5-2-2-3-2.1-23.3-1.9-11.7.1-30.4.4-41.6.8M93 12c1.3.8 1.5 8.6 1.1 62.2a2786 2786 0 0 1-.7 61.7c-.2.2-6.1-4.8-13.1-11.1C60.8 107.4 54.2 102 52 102c-1.9 0-3.8 1.4-27 21.3l-13.5 11.5-.6-22.6c-.4-12.5-.7-39.2-.8-59.4-.1-41.5-.5-39.7 7.7-39.9L84 11.2c4.1-.1 8.2.3 9 .8"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 139 167"><path d="M61.9 12.2a89 89 0 0 1-44.2 15.5C5 28.6 5.6 27 6.3 58.8c.5 26.4 1.3 32.5 5.7 45.7 6.7 20.2 25.5 39.7 49.3 51.1 3.9 1.9 7.7 3.4 8.5 3.4 2.6 0 16.5-7 24.7-12.5a85 85 0 0 0 35.6-50.8c1.8-7 2.2-12.2 2.6-36 .6-33.3 1.4-31.2-11.5-32.2a97 97 0 0 1-44.3-15A85 85 0 0 0 68.8 8c-.3 0-3.4 1.9-6.9 4.2M91.1 27c9.7 3.7 18.5 5.9 27.9 6.8l7.5.7.3 14.5c.3 17.2-1.2 38.1-3.4 46.5a96 96 0 0 1-15.7 30.6c-10.1 12.1-33 26.9-39.5 25.4a123 123 0 0 1-25.3-15 83 83 0 0 1-27.1-42c-1.8-7-2.2-11.4-2.6-34.3L12.8 34h5.9c12 0 31.1-6.6 45.7-15.7l4.8-3 7.1 4.3c4 2.5 10.6 5.7 14.8 7.4"/><path d="m80.3 79-20.8 21.9-8.6-8.5c-6.8-6.7-9.1-8.5-11-8.2-5.1.7-3.4 3.9 7.9 15.1 6 5.9 11.4 10.7 11.9 10.7s8.2-7.5 16.9-16.8L99 69.7c3.6-3.8 6.9-7.5 7.3-8.3 1.1-1.9-.9-4.4-3.3-4.4a191 191 0 0 0-22.7 22"/></symbol>
+    <symbol id="i-check" viewBox="0 0 118 100"><path d="M106.2 6.4c-4.9 2.7-35.7 37-56.2 62.7L38.2 83.9 25.1 70.4C11 56 8.2 54.4 5.8 59.5c-1 2.3-.3 3.2 11.1 15.4C30 88.8 36.5 95 37.9 95c2.6 0 5-2.3 14.4-14.3a685 685 0 0 1 44-51.6 118 118 0 0 0 16.2-19.4c0-3-3.5-4.9-6.3-3.3"/></symbol>
+    <symbol id="i-checkc" viewBox="0 0 182 184"><path d="M75.7 10c-39.5 7.1-65 36.1-67.4 76.5q-2.6 44.7 29.6 70.6c8.9 7.2 18 12 29.8 15.5a62 62 0 0 0 22.3 2.8 76 76 0 0 0 61.4-25.6 88 88 0 0 0 19.1-82.3 84 84 0 0 0-42-50.7c-10.5-5.4-18-7-33.5-7.4-8-.1-16.7.1-19.3.6m37.1 6.1c27.8 7 49.7 31 54.7 59.7 6.6 37.5-10.7 73-43 88.3a72 72 0 0 1-36.9 6.6 70 70 0 0 1-32.3-7.8 78 78 0 0 1-39.9-47.4c-2.2-8.1-3-28.7-1.4-38.2a86 86 0 0 1 9.1-27A91 91 0 0 1 45 27a88 88 0 0 1 67.8-10.9"/><path d="M95.6 87.2 73 110.5l-3.8-4-8.9-10c-5-5.7-5.3-5.9-7-4.3-1.6 1.7-1.6 1.9.3 4C66.7 111.1 71.6 116 73 116c2.5 0 49.1-48.5 48.4-50.4q-.7-1.5-1.9-1.6c-.7 0-11.5 10.5-23.9 23.2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 118 119"><path d="M5.3 7.6c-.4 1.1 6.5 8.7 24.7 26.9l25.2 25.3-24.3 24.7C7.2 108.6 3.7 112.9 8 113.8c.9.1 12.1-10.4 26.5-24.8l25-25.1 24.8 25A623 623 0 0 0 110 114c1.8 0 3.1-2.9 2.1-4.7-.5-1-11.8-12.6-25-25.8L63 59.5l25.2-25.2C112.9 9.6 115.7 6 110.3 6c-1 0-12.8 11-26.5 24.7L59 55.5 34.2 30.7A274 274 0 0 0 7.7 6Q6 6.1 5.3 7.6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 118 162"><path d="M46.5 8.4A55 55 0 0 0 5.8 53.8c-2 13.8.5 25.9 8.9 42.7 10.6 21.4 39 58.5 44.6 58.5 2.9 0 10.7-8.4 22.6-24.4 26-34.8 34.5-57.9 29.6-81.1a55 55 0 0 0-39.2-41 64 64 0 0 0-25.8-.1m21 5.6a48 48 0 0 1 34.1 26.4c9.3 19.7 5.8 39.6-12.1 68.1A384 384 0 0 1 63.1 144l-4 4.5-3.5-4.1a296 296 0 0 1-35.4-50.9 54 54 0 0 1-7.7-32c0-13 0-13 3.7-20.6a48 48 0 0 1 22.2-22.4A43 43 0 0 1 67.5 14"/><path d="M51.8 39.4c-12.8 4.7-18.5 16.7-14.6 30 2.8 9.3 15.1 16.7 25.1 15.1A22.4 22.4 0 0 0 82 61c0-8.9-4.6-16.7-12.4-20.7a29 29 0 0 0-17.8-.9m17.3 8c4.4 3 6.9 8 6.9 14.1 0 5.5-1.8 9.3-6 12.9C55 87 34.4 68.3 45.3 51.9a20 20 0 0 1 6.7-5.7 17 17 0 0 1 17.1 1.2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 171 169"><path d="M71.5 9.4a79 79 0 0 0-60.7 56.3 88 88 0 0 0-1 34.3A78 78 0 0 0 68 159.1c11.7 3 29.8 2.3 41.5-1.5A78 78 0 0 0 161.6 99a81 81 0 0 0-8.6-52.4A81 81 0 0 0 107 11c-9.7-2.7-26-3.4-35.5-1.6m31.5 7.2a67 67 0 0 1 32.6 18.9A52 52 0 0 1 148.8 53a70.5 70.5 0 0 1-77.4 100.6 75 75 0 0 1-51.2-42.1 73 73 0 0 1 4.5-62.3A79 79 0 0 1 49 25a70 70 0 0 1 54-8.4"/><path d="M80.6 35.8c-.5.8-1 43.5-.7 49.9.1 1.1 5.2 4.8 29.3 21.3 9 6.1 11 7.1 12.3 6 .8-.7 1.5-2 1.5-2.9 0-1-7.4-6.6-18.5-14L86 83.6l-.2-24c-.3-23.8-.3-24.1-2.5-24.4-1.1-.2-2.4.1-2.7.6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 134 74"><path d="M55.2 9.6c-5.3 5.6-34.3 38-46.1 51.6-2.5 3-3.2 4.4-2.7 6.3S7.7 70 9.8 70c2.2 0 5.3-3 18.2-17.7l25.9-29.1 10.4-11.4 28.6 28.6C116.4 63.9 122 69 124.2 69s2.9-.6 3.4-2.6c.6-2.4-1.1-4.4-17.7-21.1Q67.9 3 63.8 3q-2.3 0-8.6 6.6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 137 73"><path d="M8 5.5c-.7.8-1 2.5-.6 3.7.3 1.3 13.5 15.2 29.4 31C63.4 66.9 65.8 69 69 69s5.5-2 32-29.1c15.7-16 28.9-30 29.4-31 1.1-2.3-.8-4.9-3.8-4.9-1.5-.1-10.3 8.3-29.8 28.2L69.1 60.5 40.8 32.2A402 402 0 0 0 10.9 4C10 4 8.7 4.7 8 5.5"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 147 160"><path d="M11.5 8.2C7 10.8 7.1 9 7 80.7v68.2l2.2 2.1c3 2.7 11.6 2.8 14.9.1 2.4-1.9 2.4-2.1 2.9-27.2l.5-25.3 4.5-1.4c2.5-.7 9.3-1.6 15.1-1.9 12.9-.7 20.4.9 35.9 7.4 14.8 6.3 23.1 8 32.8 6.6A54 54 0 0 0 137 102l2.5-1.9.3-33.7c.4-42.9 1.3-40.8-16.3-35.4-5.6 1.7-8.8 2-16 1.7-8.3-.4-10-.8-21-5.7a73 73 0 0 0-57.2-3.6c-2.2.7-2.3.4-2.3-3.8 0-2.5-.5-5.7-1.2-7.1-2.1-4.7-9.6-7-14.3-4.3m7.4 6.2c.8.9 1 19.2.9 66.7l-.3 65.4h-6L13.2 81c-.2-60.7-.1-65.6 1.5-66.8 2.1-1.5 2.8-1.5 4.2.2m51.5 13.1c3 .8 8.8 3 13 4.9 12.7 5.9 16.4 6.9 26.1 6.9 6.5 0 10.8-.6 15.5-2.1 3.6-1.2 6.8-2.2 7.3-2.2s.7 13.9.7 31v31l-2.2 1.4c-8.6 5.5-27.4 6.1-38.8 1.2-17.9-7.7-26-9.9-37.8-10.4-9.8-.4-16.5.2-25.7 2.4-2 .5-2 .1-1.5-30.2l.5-30.7 5.4-1.9a68 68 0 0 1 37.5-1.3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 128 139"><path d="M54.9 8.3A33 33 0 0 0 30 41.8a31 31 0 0 0 10.4 24c6.5 6 12.5 8.4 21.6 9 9.5.5 16.8-2 23.7-8.3A30 30 0 0 0 96.8 43a31 31 0 0 0-8.2-24.6A35 35 0 0 0 54.9 8.3m19.7 6.6a31 31 0 0 1 14.2 13.5 30 30 0 0 1 .2 25 28 28 0 0 1-45.5 7.8c-5.8-5.7-8-11.3-7.9-20.2.1-12 6-21.2 16.8-26.1a34 34 0 0 1 22.2 0M40 85.6a43 43 0 0 0-32.9 32.2c-1.5 7.3-1.4 12.7.4 14.2 2.6 2.2 4.5-.5 4.5-6.4 0-15.1 9.4-27.4 25.5-33.6 5.1-1.9 8.4-2.4 21.7-2.8 24.7-.7 36.6 2.5 46 12.6 6.8 7.2 9 12.3 9.6 21.4.5 8.5 1.9 11.1 4.8 8.7 1.4-1.1 1.6-2.7 1.1-8.8-1.4-18.1-14.3-32.4-33.8-37.6a184 184 0 0 0-46.9.1"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 184 138"><path d="M49.3 7c-13.6.7-13.7.8-14.3 20.8l-.5 15.7-3.5.6c-1.9.3-4.4 1-5.6 1.7S20 53.4 15.7 62L8 77.2v22.6c0 21 .2 22.9 2 26 3.9 6.4 1.5 6.2 82.1 6.2 80.9 0 78.1.2 81.7-6.4 1.5-2.7 1.7-6.3 1.7-25.6V77.5l-6.9-14.7c-3.7-8.1-7.7-15.5-8.7-16.4-1.1-.9-3.6-2-5.7-2.3l-3.7-.6-.5-15.9-.5-15.8-2.8-2.4a10 10 0 0 0-5-2.4L99 6.8c-22.3-.2-44.7-.1-49.7.2m92.5 5.8q1.3.8-5 5.9l-23.3 18.8c-9.3 7.5-18 14.1-19.3 14.6-3.7 1.4-3.2 1.8-35.9-25.4a92 92 0 0 1-14.8-13.8c.8-1.1 96.4-1.2 98.3-.1M61.5 36.7C85.4 56.5 87.5 58 92 58c4.7 0 6.4-1.2 31.7-21.6 11.1-9 20.5-16.4 20.8-16.4s.5 12.8.5 28.4v28.4l-9.5.4c-11.1.4-12.2 1.1-15.8 10.3l-2.3 6H91.5c-21.9 0-25.9-.2-26.6-1.5-.5-.8-1.8-3.9-3-6.8C59.1 78.5 56.4 77 47 77h-7V47.8c0-27.6.1-29 1.8-27.6zM34.7 57c.2 4.1.2 10.3-.2 13.7l-.7 6.3h-9.4c-5.2 0-9.4-.2-9.4-.5 0-1.6 13.1-26.4 14.2-26.8.7-.3 2.1-.5 3.1-.4 1.6.2 2 1.3 2.4 7.7m121.2-6.3c1.9 1.7 12.1 23 12.1 25.3q-.1 1-8.7.8l-8.8-.3-.3-7.5c-.2-4.1 0-10.3.3-13.8.7-6.7 1.7-7.5 5.4-4.5M54.2 83.4c.9.7 2.6 3.8 3.8 6.9 3.7 9.8 3.2 9.7 33.1 9.7h25.7l3-2.5c1.6-1.3 3.7-4.6 4.7-7.2 3-8.3 2.9-8.3 25.6-8.3H170v19.4c0 18-.1 19.5-2.1 22l-2 2.6H92c-71.1 0-73.9-.1-76.1-1.9-2.3-1.9-2.4-2.4-2.7-20.6-.2-10.3-.1-19.4.2-20.1.8-2 38.2-2 40.8 0"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 206 145"><path d="M42.4 8c-21.6.8-25.8 1.6-29.5 5.6l-2.4 2.6V129l3.2 3.2c2.4 2.4 4.4 3.3 8.5 3.9 7.6 1.1 151.9 1 160.3-.1 6.1-.8 7.4-1.3 10.1-4.3 2.8-3 3.3-4.4 3.8-10.8.4-4.1.3-29.6-.1-56.6l-.8-49.3-2.6-2.6c-1.5-1.5-4.6-3-7-3.6C180.2 7.6 68.3 7 42.4 8m133.9 4.9c5.9.4 11.1 1.1 11.6 1.7 1.1 1-1.5 3.3-40.4 34.5-38 30.6-38.7 31.1-43.8 31.6-3.9.5-4.8 0-12.7-5.6-11.9-8.6-72.3-57.3-72.7-58.8-.6-1.9 3.5-2.6 19.2-3.3 21-.9 125.7-1 138.8-.1M191.8 91c.1 17.3-.2 32.1-.6 32.7-.6.9-4.1-1.5-11.8-8l-31.7-26.5L127 71.9l13.3-10.7L168 38.8c8-6.4 16.3-13.2 18.5-15.1l4-3.5.6 19.7c.4 10.8.7 33.8.7 51.1M51.4 50A750 750 0 0 1 78 72c0 .3-11.4 10.2-25.2 22-13.9 11.8-28 23.9-31.3 26.9l-6 5.3-.7-5.3c-.3-3-.4-26.6-.1-52.6l.6-47.1 4.7 3.6c2.7 2 16.8 13.4 31.4 25.2m39.4 30.8c10.4 7.3 15.1 6.9 27-2 4.8-3.5 5.5-3.8 7-2.5L146 94l30.8 25.7c8.6 7.2 11.1 9.8 10.2 10.7-.8.8-22 1.2-78.3 1.4-74.6.3-89.7 0-89.7-1.8 0-1.6 63.3-54.9 64.4-54.3z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 144 163"><path d="M67 8.1a14 14 0 0 0-8 8.4c-.9 2.6-2.3 3.9-7.4 6.4a50 50 0 0 0-25.1 31.7A156 156 0 0 0 24.1 80c-.8 22.1-2 26.5-8.5 31.5a19 19 0 0 0-8 14.4c-.1 6 1.7 9.5 6.1 11.6 2.9 1.4 6.4 1.6 20.8 1.3l17.4-.3 2.8 5.4c1.5 3 4.5 6.9 6.6 8.5 3.5 2.8 4.6 3.1 11.2 3.1s7.7-.3 11.2-3c2.1-1.7 5-5.4 6.4-8.3l2.5-5.2 12-.4c6.5-.2 15.2-.5 19.2-.5 6.7-.1 7.6-.3 10.3-3 2.5-2.5 2.9-3.7 2.9-8.1q0-9.6-6.7-14.7a27 27 0 0 1-6-7.1c-2.5-4.3-2.7-5.6-3.5-23.1-.5-10.2-1.3-21.3-1.8-24.6A51 51 0 0 0 93.6 23c-4.8-2.5-6.5-3.9-8.1-7.2-1.1-2.3-3.2-5-4.6-6.1A18 18 0 0 0 67 8.1m11.3 7.6c.9.9 2 3.3 2.3 5.4.6 3.3 1.1 4 4.3 5a44 44 0 0 1 23.5 20.8c4 7.7 5.3 15.9 6 35.1.7 21.5 1.8 25.3 9.1 32.5 2.9 2.7 5.8 6 6.4 7.2 1.4 2.8 1.4 7.6-.1 9.1-.9.9-15.2 1.2-58 1.2H15l-.6-2.6c-1.1-4.3 1.3-10 5.6-13.4 2.4-1.9 5.2-5.6 7.2-9.7 3.2-6.5 3.2-6.5 3.9-27.2.5-17.4 1-21.5 2.8-26.6a43 43 0 0 1 24.2-25.7l5.7-2.4c.2-.1.5-1.6.7-3.4.9-7.2 8.4-10.1 13.8-5.3m6.6 123.9c1 1-2.5 5.9-5.8 8.1-5.6 3.8-12.5 2.5-17-3.3-3.5-4.4-2.8-5.3 4.7-5.7 7.3-.4 17.3 0 18.1.9"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 145 147"><path d="M100.3 9.6c-1 2.8 1.8 3.4 15.7 3.4h13.5L102 40.5c-26 26-27.3 27.6-25.7 29.2 1.6 1.7 3.2.3 29.2-25.7l27.4-27.4.3 13.9c.3 13.2.4 14 2.3 14s2-.7 2-18v-18l-18.3-.3c-16.1-.2-18.3-.1-18.9 1.4"/><path d="M13.2 27C7 30.8 7 31.1 7 82s0 51.2 6.2 55c3.2 1.9 4.9 2 50.6 2 41.8 0 47.8-.2 50.8-1.6 6.3-3 6.5-3.9 6.2-38.1-.3-30-.3-30.8-2.3-30.8s-2 .8-2.5 31.3c-.5 29.6-.6 31.4-2.4 32.8-1.7 1.2-10.1 1.4-49.7 1.4H16.1l-2-2.6C12 128.8 12 127.8 12 82c0-44.6.1-46.9 1.9-49.1l1.9-2.4 31.9-.5c31-.5 31.8-.6 31.8-2.5 0-2-.8-2-31.5-2.3-30.1-.2-31.6-.1-34.8 1.8"/></symbol>
+    <symbol id="i-locate" viewBox="0 0 167 168"><path d="M81.7 9.6c-.4.4-.7 3.4-.7 6.6 0 5.7-.1 5.8-2.7 5.8-5.1 0-15.7 3.1-23 6.6a52 52 0 0 0-15.1 11.2 60 60 0 0 0-18 33.5L20.6 82h-5.7q-9 0-5.9 3.5 1.3 1.5 6.5 1.5h5.2l1.6 8.2A62 62 0 0 0 39.9 128c10.9 10.8 25.7 18 37.3 18H81v6.4q0 6.5 1.3 6.9c2.6 1 3.6-.8 3.9-6.8l.3-6 6.3-.8a62.5 62.5 0 0 0 52.2-52l1.2-6.7h5.3q5.2 0 6.5-1.5 3.1-3.6-5.9-3.5h-5.7l-1.7-8.8A63 63 0 0 0 89.3 22h-3.2l-.3-6.2c-.2-4.7-.7-6.4-1.8-6.6q-1.5-.2-2.3.4m-.5 25.6c.3 7.5.5 8.3 2.3 8.3s2-.8 2.3-8.4l.3-8.4 5.4.7c7.1.8 17 4.5 23.4 8.5a63 63 0 0 1 24.6 35.3c2.6 11.1 2.8 10.8-6.9 10.8-6.2 0-8.5.4-8.9 1.4-1 2.6 1.7 3.6 9.5 3.6 8.8 0 8.4-.6 6.3 9.2a58.5 58.5 0 0 1-49.7 45.1l-3.7.6-.3-8.7c-.3-7.9-.5-8.7-2.3-8.7s-2 .8-2.3 8.7l-.3 8.7-3.7-.5a59 59 0 0 1-50.7-50.7l-.6-3.7h7.9c7.8 0 10.5-1 9.5-3.6-.4-1-2.7-1.4-9-1.4h-8.5l.7-5.3A59 59 0 0 1 57 33.3a56 56 0 0 1 20.7-6.2l3.2-.1z"/><path d="M77.7 67.4a17 17 0 0 0-11.5 18.2 17.4 17.4 0 0 0 31.4 8.8c2.5-3.3 2.9-4.6 2.9-10.4 0-5.7-.4-7.2-2.8-10.3a18 18 0 0 0-20-6.3m10.8 5C93 74.3 96 79.3 96 84.8c0 8.4-9.3 14.2-17.3 10.8-9.8-4-10.1-18.2-.6-22.9 4.2-2 6-2.1 10.4-.3"/></symbol>
+    <symbol id="i-route" viewBox="0 0 162 182"><path d="M125.5 10.5c-7.8 2.7-13.5 12-13.5 21.8 0 5.7 3.7 15.8 8.8 24.4 4.8 8 4.8 8.1 3.1 10.5-1.7 2.3-2.2 2.4-6.6 1.7-2.6-.4-14.4-.8-26.1-.8-22.3-.1-24.4.2-29.6 4.8-3.4 3-5.6 8.8-5.6 14.7q0 11.3 9.8 17.1c4.6 2.7 5.2 2.8 23.2 3.3 20.3.6 22.4 1.1 27.3 7 8.2 9.7 5 25.2-6.4 31-5.1 2.6-12.5 2.7-13.8.1-2.7-5-12.2-5.1-16.4-.2-2.2 2.6-3.4 3-11.8 4.1-5.2.6-13.4 2.4-18.3 4.1-7.6 2.5-9.2 2.8-10.3 1.6s-.8-2.2 2-7c7.7-12.7 9.5-25.4 4.9-34.3a20 20 0 0 0-34.9-2.1c-7.2 10.6-4.9 24 7.3 42.2q3.7 5.8 4 9.4c.1 4.1 5 9.1 9 9.1 4.9 0 10.3-4.4 10.4-8.5 0-1.5 1.4-2.6 5.8-4.3 11.8-4.5 30.2-6.9 30.2-3.9 0 .8 1.2 2.4 2.6 3.8 5 4.7 14 2.6 16.5-3.9q.8-2.3 3.9-2.2c4 0 12.3-3.2 16.5-6.4 1.8-1.4 4.6-5.1 6.1-8.1 2.4-4.9 2.6-6.4 2.2-12.9-.6-8.9-3.6-14.8-9.8-19.1s-12.6-5.5-29.6-5.5c-14 0-15.3-.2-18.5-2.3a14.3 14.3 0 0 1 1.2-24.9c6.1-3.2 51.7-2 52.8 1.3.2.8 1.7 2.6 3.2 4.1a9.6 9.6 0 0 0 15.4-2.2c1.9-3.6 1.9-5.7.1-9.1-1.2-2.4-1.1-3 1.7-7 1.6-2.4 4.8-8.2 7-12.8q10.1-21.4-1.6-33.5a20 20 0 0 0-22.2-5.1m13.8 5.4c3.4 1.3 7.5 6.5 8.7 11.3 1.5 5.3 0 11.7-5 22.3-4.6 9.6-7.5 13.5-10.1 13.5-3.5 0-12.9-16.7-14.9-26.7-3-14.4 8.4-25.3 21.3-20.4m-3.4 55.3c1.4 2.4 1.4 2.8-.3 4.7-3.4 3.7-8.6 2.2-8.6-2.5 0-5.5 6.3-7 8.9-2.2M33.3 109.4c4.3 1.8 8.4 6.7 9.8 11.8 1.5 5.7-.9 15-6.2 24.3-3.3 5.9-4.6 7.2-7.7 8.2-4.5 1.5-5.3.7-11.4-11.6a31 31 0 0 1-4.6-15.1c-.5-7.8 1-11.6 6-15.3s9-4.5 14.1-2.3m57.9 39.3c1 .9 1.8 2.5 1.8 3.6 0 2.6-2.8 5.7-5.2 5.7-2.2 0-5.8-3.4-5.8-5.5 0-2 3.6-5.5 5.7-5.5a6 6 0 0 1 3.5 1.7m-55.8 10.9c2.2 2.1 2 4.7-.4 6.9-2.9 2.6-7 .7-7-3.3 0-4.9 4.2-6.9 7.4-3.6"/><path d="M129.4 23.6a9.5 9.5 0 0 0-2.4 15.6c2.7 2.6 3.6 3 6.8 2.5 9.6-1.6 11.2-15.4 2.1-18.6l-3.3-1.1zm6.4 5.6c1.7 1.7 1.5 4.2-.7 6.2-2.3 2.1-4.9 1.2-5.7-2-1.1-4.2 3.4-7.2 6.4-4.2M25.4 117c-3 1.2-6.4 5.8-6.4 8.7 0 6.1 5.8 11.1 11.4 9.7 8.1-2 8.9-14.7 1.1-17.9-1.9-.8-3.6-1.5-3.7-1.4zm5.6 6.5c.7.8 1 2.5.6 4-.8 3.1-5 3.5-6.6.5-2.3-4.2 3-8.1 6-4.5"/></symbol>
+    <symbol id="i-pound" viewBox="0 0 117 153"><path d="M57.9 8.4A44 44 0 0 0 30 33.1c-2.1 5.4-2.5 8-2.5 17.4 0 6 .3 13 .8 15.5l.7 4.5-10.7.3c-11.1.3-13 .9-12 3.6.5 1.3 2.6 1.6 12.1 1.6q11.3 0 12.2 1.1c.4.6.9 5 1.2 9.8 1.2 21.4-7.8 42.8-21.4 50.7-4.5 2.7-5.7 4.3-4.4 6.4 1 1.6 4.8.9 12.5-2.3a62 62 0 0 1 28.8-3.7c3.6.6 11 2.4 16.3 4.1 16.2 5.2 29 4.9 42.7-1q8.1-3.6 4.3-6.7c-1.5-1-2.6-.8-6.9 1.2-12.1 5.5-24.1 5.6-40.2.3a55 55 0 0 0-24.2-3.4H25.1l2-3a67 67 0 0 0 10.3-39.8l.1-13.7h20.3c17.5 0 20.3-.2 20.9-1.6.3-.8.1-2-.4-2.5s-9.7-1.1-21.9-1.2l-20.8-.2-1.4-6.5a56 56 0 0 1 2-30.2 39 39 0 0 1 17.6-17.4c4.8-2.4 7-2.8 14.2-2.8 6.9-.1 9.3.3 12.6 2.1a27 27 0 0 1 12.6 12.1q3.3 7.3 6.5 4c3.7-3.8-8.8-18.9-18.5-22.3a48 48 0 0 0-23.3-1.1"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 109 177"><path d="M50.3 9.5A985 985 0 0 0 5.5 92.3q-.8 2.4 1.8 5.3l2.5 2.8 17.1-.1c14.7 0 17.1.2 16.7 1.4a688 688 0 0 0-18 61.3c-.1 4 .2 4.5 2.7 5.4 4.6 1.7 1.4 5.5 45.8-53.4 33.1-44 31.7-41.6 28.1-46-1.8-2.2-2.3-2.2-20-2.1l-18.1.2 4.3-9.3c2.4-5.1 8-16.6 12.5-25.5C93 8 93 8 69.2 8 56.1 8 52 8.3 50.3 9.5m20.1 29.7a230 230 0 0 0-12.4 28c0 5.1 2.6 5.8 21.7 5.8 9.5 0 17.3.2 17.3.4s-12 16.3-26.7 35.8l-32.1 42.5c-3 4-5.5 7.3-5.7 7.3l8.7-28.3c4.9-15.5 8.9-29.5 9-31.1.2-5.1-1.7-5.6-20.9-5.6-9.5 0-17.3-.3-17.3-.7 0-1.3 35.9-69.4 40.7-77.1C54 14.1 54.6 14 68.5 14h14.4z"/></symbol>
+    <symbol id="i-image" viewBox="0 0 190 146"><path d="M90.5 7.7c-7.4.5-9.1 1.8-13 10L74 25H61v-3.9c0-2.3-.8-4.8-1.9-6.2-1.8-2.2-2.7-2.4-13.3-2.7-10.4-.3-11.6-.2-14.1 1.8-2.2 1.8-2.7 2.9-2.7 6.6V25h-4c-5.4 0-10.4 2.2-12.7 5.6-1.7 2.6-1.8 6-1.8 50.4 0 46.1.1 47.6 2.1 51a10 10 0 0 0 5.7 4.7c5.1 1.7 75.9 2.7 119.3 1.6 37.5-.9 37.6-1 40.9-7.4 1.4-2.6 1.6-8.8 1.3-49.7-.2-33.8-.7-47.5-1.5-49.4-2.5-5.5-6.3-6.8-21-6.8H144l-3.7-7.8c-3.3-6.6-4.3-7.9-7.3-8.9a274 274 0 0 0-42.5-.6m42.8 4.5c.9.7 3 4.3 4.6 8.1 1.7 3.7 3.6 6.9 4.3 7.2s7.2.6 14.3.8 14 .9 15.2 1.5Q176 32 176 44.6V52h-46l-4.7-3.7c-2.7-2-7.7-5-11.3-6.7-6.1-2.9-7.2-3.1-18-3.1-13.6 0-19.9 2-28.6 9.1L62 52H13.4l.4-7.3c.4-9.6.8-11.3 3.4-13.7 2.1-1.9 3.4-2 29.1-2 16.6 0 27.6-.4 28.8-1 1-.6 3.5-4.2 5.4-8s4.3-7.3 5.2-7.9a244 244 0 0 1 47.6.1m-76.5 8.5.3 4.3H31.8l.7-3.7a23 23 0 0 1 1.2-4.6c.2-.4 5.5-.6 11.6-.5l11.2.3zm52.1 22.9a50 50 0 0 1 20 13.3 43 43 0 0 1-15.6 66.4c-6.4 3-7.5 3.2-17.8 3.2s-11.4-.2-17.6-3.3a42 42 0 0 1-20.6-19.9 31 31 0 0 1-4.1-16.8 39 39 0 0 1 13.9-33.9 42 42 0 0 1 41.8-9M57.3 55.9c1.6.1 1.5.5-.8 3.5A46 46 0 0 0 50.4 95a41 41 0 0 0 12 21.6 46.4 46.4 0 0 0 66.1.5 46.4 46.4 0 0 0 7-57.3l-2.5-3.7 3.3-.6c1.7-.3 11.5-.5 21.7-.3l18.5.3v36c0 40.7 0 40.7-7.2 42.2-2.1.4-36 .8-75.3.8-78.6 0-77 .1-78.9-5.9-.5-1.7-1.3-18.7-1.7-37.8l-.7-34.7 13.9-.3c13.1-.3 26.7-.2 30.7.1"/><path d="M143.2 36.2c-1.3 1.3-1.6 5.6-.6 8.2.5 1.3 2.4 1.6 10.5 1.6 9.8 0 10 0 10.9-2.6 2.6-6.7.3-8.4-10.9-8.4-5.4 0-9.1.4-9.9 1.2M161 41c0 1.8-.7 2-7.5 2s-7.5-.2-7.5-2 .7-2 7.5-2 7.5.2 7.5 2M85.3 54.9A31.3 31.3 0 0 0 66 95.3a30 30 0 0 0 15.8 16.9 31 31 0 0 0 37.6-7.3 31 31 0 0 0 2.9-37.7c-8-11.8-23.5-17-37-12.3m22.2 4.5a27 27 0 0 1 12.7 37.9 28.1 28.1 0 0 1-49.8-.8c-2.3-4.8-2.6-6.4-2.3-13.3.3-6.6.9-8.6 3.4-12.7A26 26 0 0 1 96 57.1c4.8-.1 7.8.5 11.5 2.3"/><path d="M90 67.3c-6.9 2.2-14 12.4-12.8 18.5.7 3.4 3.2 1.8 4-2.5.4-2.3 1.2-5.1 1.7-6.2 1.7-3.1 6.6-6.1 11.3-6.9q4.3-.8 4.3-2.2c0-1.9-3.9-2.2-8.5-.7"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 156 151"><path d="M121.7 7.7c-.3.5-1.3 3.6-2.2 6.9a32 32 0 0 1-4.7 9.8c-3.2 3.9-9.4 7.6-12.6 7.6-2.4 0-4.6 2.5-3.9 4.4.3.7 2.2 1.7 4.3 2.1 8.6 1.6 13.8 6.6 16.9 16.2 3 9.3 5 9.2 8-.1q4.2-12.7 14.6-15.7c2.4-.7 5.1-1.8 5.9-2.6 1.3-1.1 1.3-1.5 0-2.6-.8-.8-3.5-1.9-6-2.7-6.6-1.8-12.4-8-14.5-15.5l-2-7.3c-.5-1.3-3.1-1.7-3.8-.5m11 24.8c1.8 1.1 3.2 2.2 3.2 2.5s-1.9 1.9-4.2 3.5a26 26 0 0 0-6.2 6.7l-2.1 3.6-2.2-3.8a26 26 0 0 0-6.2-6.7c-2.2-1.5-3.9-3-3.9-3.3s1.4-1.4 3.2-2.5a26 26 0 0 0 6.2-6.5l3-4.5 3 4.5c1.6 2.5 4.4 5.4 6.2 6.5m-98.1-9c-.3.9-.6 2.5-.6 3.5 0 4.3-4.3 13.1-8.5 17.4a20 20 0 0 1-10.6 6.3c-5.1 1.5-6.5 2.4-6.7 4.1q-.6 2.2 2.5 2.8c10.8 2.4 16 6.1 20.2 14.5 1.7 3.4 3.1 7.4 3.1 8.9 0 3.6 2.4 5.7 4.5 4q1.3-1.2 1.5-2.6c0-.7 1-3.9 2.1-7.1a28 28 0 0 1 17.6-16.9c9.2-2.9 9.3-5.1.5-7.8-10.5-3.3-16.4-9.8-19.3-21.5-1.3-5.1-2.1-6.7-3.6-6.9q-2-.2-2.7 1.3m12.6 26.6a25 25 0 0 0 6.1 3.9c.6 0-.9 1.3-3.4 2.9-5.3 3.4-8 6.3-10.7 11.4l-2.1 3.9-1.6-3.4a37 37 0 0 0-11.8-12.4l-2.8-1.5 3.9-2.7c4.9-3.3 8.7-7.9 10.8-12.7l1.5-3.7 2.6 5.2c1.6 3.2 4.4 6.6 7.5 9.1m43.1 16.1c-.6.7-1.5 3.9-2.1 7a35.5 35.5 0 0 1-28.7 28.7c-3.4.5-4 1-4 3.1s.6 2.5 4.5 3.2a35 35 0 0 1 28.6 28.6c1.3 8.4 5.6 8.2 7.4-.5a35 35 0 0 1 25.8-27.8q13-4.2 1.2-7.5c-15.4-4.6-23.8-13.5-27.1-28.5q-2.3-10.6-5.6-6.3m11.5 29.1c2 2.1 6.1 5.1 8.9 6.5l5.3 2.7-5.4 2.8a37 37 0 0 0-15.5 15.6l-2.9 5.4-2.5-4.9a46 46 0 0 0-17.2-16.8l-3.8-1.6 5.1-2.6c6-3 13-10.4 16.2-17l2.2-4.7 2.9 5.4a56 56 0 0 0 6.7 9.2"/></symbol>
+    <symbol id="i-link" viewBox="0 0 153 151"><path d="M104.3 8.5C94 10.7 88.9 14.3 75.1 28.6 56.7 47.8 51.5 57.7 51.5 73.5c.1 8.8 1.9 13.7 7.2 18.7 6.9 6.5 17.7 6.5 23.7-.1 1.5-1.7 1.6-2.3.6-3.6-1.6-2-2.7-1.9-5.7.5-3.9 3-10.3 2.7-14.4-.7C58.7 84.7 57 80.4 57 73c0-7.3 2.9-16.3 7.4-23.5 5.7-8.8 25.7-28.7 32.6-32.4 11.9-6.3 24.4-5.1 33.8 3.4 6.9 6.2 9.5 13.1 9 23.5-.5 11.7-3.5 16.8-19.2 32.8a237 237 0 0 0-13.4 14.1c-.6 1.7 2.6 3.3 4.5 2.3 1-.6 7.5-6.8 14.4-13.9 9-9.2 13.3-14.5 15.2-18.5 7.3-15.4 5.7-31.2-4.3-42.1A33 33 0 0 0 118 8c-6.3-1.2-5.8-1.2-13.7.5"/><path d="M76.5 54.4C72.1 56.3 67 60.9 67 63c0 3 3.1 3.3 5.9.7 5.1-4.8 11.1-6 16.6-3.5 4.8 2.2 7 7.3 7 16.3 0 14.1-6 25-23.8 43.2C58.7 134 53.4 137 42 137c-9.9 0-16.7-3.2-22.1-10.4a27 27 0 0 1-5.9-18.4c0-11.5 2.5-15.9 18.2-31.9 9.7-9.7 13.9-14.7 13.6-16-.7-3.6-3.9-1.6-15.7 9.9C15.5 84.4 12.6 88.4 9.8 97.3a35.5 35.5 0 0 0 17 42.4c5 2.5 6.8 2.8 15.2 2.8 8.8 0 10.1-.3 16.2-3.3 5.5-2.7 9-5.7 19.5-16.6 13.6-14.2 18-20.5 22-31.4a42 42 0 0 0 1.4-24.5c-1.7-5-6.7-10.6-10.8-12.3-4-1.7-9.9-1.7-13.8 0"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 116 207"><path d="M24 9.9c-4.1.4-8.5 1.3-9.7 1.9-4.2 2.3-7.4 7.7-8.4 14.4-.6 4-.9 35-.7 81.4l.3 74.9 2.3 4.6q2.1 4.5 6.5 7l4.2 2.4 36.4.3c23.3.2 38.2-.1 41.5-.8 6.6-1.3 11-5.3 12.7-11.1.9-3.3 1.2-23.8 1.3-81.9.1-82.7.1-82.4-4.8-87.9C100.9 9.9 99 9.6 64 9.4c-17.9-.1-35.9.1-40 .5m75.6 6.3c6.1 3.3 5.9.8 5.9 87.3 0 77.8 0 79.1-2 82.5-3.4 5.7-4.9 5.9-45.5 5.9s-42.1-.2-45.5-5.9c-2-3.4-2-5-2.3-79.4-.2-51.5.1-77.6.8-81.1 1.4-6.9 4.5-9.8 11.3-10.6 2.9-.4 20.7-.6 39.7-.5 30.4.1 34.9.3 37.6 1.8"/><path d="M44.3 24.6c-1 2.7 1.7 3.4 13.8 3.4 9 0 11.9-.3 12.9-1.5 2.4-2.9 0-3.5-13.1-3.5-11 0-13.1.2-13.6 1.6M20.5 35.9l-4 .6-.3 64.4c-.1 46.7.1 64.8.9 65.7.9 1.1 8.5 1.4 40.1 1.4 24.9 0 39.6-.4 40.9-1 1.8-1 1.9-2.8 1.9-65.6V37l-2.6-1a935 935 0 0 0-76.9-.1m75.3 65.3-.3 61.3-37.7.3-37.8.2V40h76zm-42.6 73.5c-1.2 1-2.4 3-2.8 4.5-.5 2.2 0 3.3 2.4 5.8 3.7 3.6 6.2 3.8 9.8.7 5.2-4.5 2.6-12.7-4.1-12.7-1.8 0-4.2.8-5.3 1.7m7.3 5.3q.1 2.6-2.3 2.8c-2.4.4-3.8-1.8-2.8-4.4q.7-1.4 2.8-1.2 2.4.2 2.3 2.8"/></symbol>
+    <symbol id="i-desktop" viewBox="0 0 179 152"><path d="M13.5 8.4C8 10.8 8 11.1 8 62.1v47.1l2.9 2.9 2.9 2.9H76v15h-9.1c-8.7 0-9.2.1-12 2.9-3.1 3.2-4 8.6-1.7 10.9 1.7 1.7 70.9 1.7 72.6 0s1.5-6.9-.4-9.6c-2.5-3.6-5.3-4.5-14.1-4.3l-8.3.2V115h63.1l2.4-2.5 2.5-2.4V62c0-31.1-.4-48.8-1-50.1-2.7-5-1.6-4.9-80.2-4.9-58.4.1-73.9.3-76.3 1.4m151.8 4.5c1.5 1.2 1.7 5.8 1.7 48.2 0 41.2-.2 46.9-1.6 48.3s-9.6 1.6-75.9 1.6H15.1l-1.5-2.2c-1.4-2-1.6-8.2-1.6-47.9V15.1l2.8-2.1 2.7-2.2 73.1.4c60.1.2 73.4.5 74.7 1.7M99 124c0 6.5.4 9 1.3 9.2l9.8.2c7.1.1 9.1.5 10.8 2 1.2 1.1 2 2.6 1.9 3.4-.3 1.3-5.3 1.6-33.5 1.8-35.1.2-35.1.2-31.9-4.2 1.2-1.6 3-2 11.8-2.4l10.3-.5.3-9.3.3-9.2H99z"/><path d="M16.5 16.2c-.3.7-.4 20.4-.3 43.8l.3 42.5 72.4.3c52.6.1 72.8-.1 73.7-.9 1.9-1.6 2.1-83.8.2-85.7-1.8-1.8-145.7-1.7-146.3 0m142.7 42.5-.2 39.8-69.5.3L20 99V19h139.5z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 152 154"><path d="M61.5 8.5a71 71 0 0 0-50.8 46.2A49 49 0 0 0 7.6 77a57 57 0 0 0 7.7 33.5c5 9.7 16 21.1 25.7 26.8a69 69 0 0 0 84-11.5 79 79 0 0 0 16.8-27.6c2.3-6.9 2.6-9.3 2.7-22.2 0-13.7-.2-15-3.1-23.1A69 69 0 0 0 92.9 8.6c-8-2-24.4-2-31.4-.1M92 14.1c2.5.6 8.3 2.8 12.8 5A63 63 0 0 1 136 54.8c14 42-16.8 86.1-60.2 86.2a80 80 0 0 1-13-1.1 84 84 0 0 1-25-11.5 68 68 0 0 1-23.4-36.2 78 78 0 0 1 1.8-36.4 63 63 0 0 1 15.5-24A64 64 0 0 1 92 14.1"/><path d="M69 40c-2.6 2.6-2.6 8.1-.2 10.3a7 7 0 0 0 10.1-.9A9 9 0 0 0 81 45c0-1-.9-2.9-2.1-4.4A6.5 6.5 0 0 0 69 40m6.7 4.6c.3.8.1 2-.6 2.7-1.4 1.4-4.7-1.5-3.7-3.2 1-1.6 3.6-1.3 4.3.5M59 64.5c-2 2.4-.2 3.4 7 3.7l6.5.3v39l-7.3.3c-6.9.3-7.3.4-7 2.5.3 2.2.5 2.2 17.8 2.2s17.5 0 17.8-2.2c.3-2.1-.1-2.2-7.5-2.5l-7.8-.3-.5-22-.5-22-8.6-.3c-6.9-.2-8.9 0-9.9 1.3"/></symbol>
+    <symbol id="c-food" viewBox="0 0 194 155"><path d="M81.8 10.1c-2.1 3.7-2.3 4.9-.5 4.9.7 0 2.3-1.8 3.6-4 2.1-3.7 2.1-4 .4-4-1 0-2.6 1.4-3.5 3.1m18.8.4c-1.1 1.9-1.6 3.8-1.3 4.1.9 1 3.6-1.5 5.3-4.8 1.3-2.6 1.3-2.8-.3-2.8-1.1 0-2.7 1.5-3.7 3.5m19.1-.6q-2.9 5-.7 5.1c1 0 5-5.8 5-7.3 0-1.8-2.7-.4-4.3 2.2M81.3 22.1q-48.6 3.3-65.5 20c-5.6 5.6-6.3 8.4-5.5 21.8a72 72 0 0 0 21.6 49.2c5.3 5.3 11.1 10 15.3 12.3 4.1 2.3 7 4.6 7.4 5.9 1.8 6.2 11.8 11.8 25.6 14.4 12.4 2.3 31.7 1.4 42.4-2.1q15-4.8 17.3-11.9c.9-2.8 2.6-4.3 7.8-7.3 8.4-4.9 18.7-15 23.6-23.1a85 85 0 0 0 12.4-42.7c.5-9 .4-10.6-1.5-14.2-3.6-7-10.2-11.5-23.6-16A146 146 0 0 0 119 22c-18.1-1.1-20-1.1-37.7.1m52.8 5.4c23.7 3.1 37.8 8.8 43.7 17.5q3.9 5.8-.3 12.4l-1.7 2.6-2-3.9c-4.9-9.9-24.7-18.1-50.9-21.2A292 292 0 0 0 66 36.5c-24 4.3-44.4 14.4-46.7 23.2-.5 2.3-.6 2.3-2.4.7-1-.9-2.1-3.1-2.5-4.9C12.2 43.4 33.6 32.1 67 27.6c14.7-2 52.5-2 67.1-.1M123.5 39c18.9 2.2 38.6 9.1 44.8 15.7 4.3 4.6 4 8-.8 11.4-8.6 6-26.5 11.8-45 14.4a276 276 0 0 1-56 0C42.5 76.9 22 68.8 22 63s14.3-14.6 31.5-19.5a219 219 0 0 1 70-4.5m55.9 26.2c-5 29.9-17.9 48.6-41.1 59.4a111 111 0 0 1-74.5 3.4 64 64 0 0 1-28.9-17.9c-7-7-9.4-10.2-12.7-17.1-4-8.3-6.3-16-7.6-25l-.7-4.5 2.8 2.7c7.5 7.2 23.4 13.9 40.8 17.1C100.7 91.5 157 83 175 65.6c4.4-4.3 5.1-4.4 4.4-.4M79.8 136c15.5 2.1 38.8.5 50.1-3.5 6.3-2.2 7.1-1.8 3.2 1.5-9 7.6-34.4 11.2-52.7 7.5-10.7-2.3-20.4-6.8-20.4-9.6 0-.4 2.8.1 6.2 1.2s9.6 2.3 13.6 2.9"/><path d="M95.8 47c-3.9 2.1-6.8 6.4-6.8 10.1 0 2 .4 2.1 4.9 1.7 5.7-.6 10.8-3.8 11.7-7.5 1.5-5.6-3.4-7.7-9.8-4.3m6.2 2.4c0 2.6-4.8 6.6-8 6.6-2.2 0-.8-3.1 2.3-5 2.9-1.8 5.7-2.6 5.7-1.6m16.9 5.6q-7.2 2-6.7 5.3c.2 1.7 1.3 2.4 4.5 3.1 9.4 1.9 16.6-5.8 7.7-8.3-1.6-.4-4.1-.5-5.5-.1m5.1 3.9c0 1.2-3.6 2-6.1 1.4q-2.3-.5-.7-1.4c1.7-1.1 6.8-1.1 6.8 0m-58.8-2.3q-4.7 3.2 1 6c3.7 1.9 10.3 1.4 12.7-1.1 1.5-1.5 1.4-1.8-1.2-4.1-3.3-2.8-9.1-3.2-12.5-.8m9.7 2.3q1.7.9-.8 1.6c-2.8.9-7.4-.2-6.6-1.5.8-1.2 5.5-1.3 7.4-.1m16.6 6.5c-1.7.7-3.6 2-4.2 2.8-3.3 4 8.5 7.5 14.5 4.4 1.8-.9 3.2-2.1 3.2-2.6 0-1.2-4.1-5-5.4-5-.6 0-2-.2-3.1-.5s-3.4.1-5 .9m8 3.5q.3 1-1.6 1.6c-2.6.9-7.2-.2-6.4-1.5s7.2-1.3 8-.1"/></symbol>
+    <symbol id="c-fashion" viewBox="0 0 202 132"><path d="M97.4 7.1c-5.9 1.7-12.6 11.2-11 15.5q1.6 3.7 5.4-4c6.2-12.9 23.5-8.5 23.5 6 0 5.4-3.4 10.9-8.5 13.5q-6.8 3.4-6.8 13.4V56h-3.6c-4.8 0-9 2.1-15.5 7.9-4 3.6-12.8 8.5-34.6 19.4-24.1 12.2-29.6 15.3-32.1 18.4-5.3 6.9-6.6 13.9-3.2 17.3s8 2.6 21.9-4.1q65.8-32 68.3-31.9c1.7 0 53.3 27 71.3 37.3 8.9 5.1 15.4 6 17.9 2.6 2-3 2.1-9.1 0-13.5-2.7-5.7-8.1-9.4-33.8-23.4-21.9-11.9-25.7-14.3-31.7-20.3-7-7-11.7-9.7-16.9-9.7-3 0-3 0-3-5.5 0-4.7.3-5.6 2.6-7.2 9.6-6.7 12.4-10.9 12.4-18.7a17 17 0 0 0-5.3-13.4q-7-7-17.3-4.1M111.6 61c1.5.6 5.9 4.1 9.9 7.8 5.9 5.5 11.5 9.1 30.6 19.6 33.5 18.4 35.1 19.7 35.3 27.8.1 4.2 0 4.3-2.9 4.1-1.7-.1-15.4-6.9-32-15.8-15.9-8.6-34-18.1-40.1-21.1l-11.1-5.5-5.9 2.4A1459 1459 0 0 0 54 99.9 638 638 0 0 1 16.7 117c-4.4 0-3.2-8.2 2-13.4 2.6-2.6 11.7-7.6 30.8-17 21.3-10.5 28.4-14.5 33.6-18.9 3.6-3.1 7.6-6.1 9-6.6a49 49 0 0 1 19.5-.1"/></symbol>
+    <symbol id="c-sample" viewBox="0 0 114 226"><path d="M78.3 12.9c-9.5 4.4-17.5 17-20.9 32.8L55.7 54h-5.9c-10.2 0-12.1 1.5-33.6 25.8A58 58 0 0 0 5.6 94.2c-.3 1.7-.6 27.8-.6 58 0 60.2-.1 59.1 6 62.3 2.5 1.3 9.4 1.5 45.3 1.5 28.5 0 43.4-.4 45.6-1.1 6.2-2.2 6.1-.9 6.1-65.1V91.4l-7.1-8.4-15.1-17.3a37 37 0 0 1-7-8.7c.5 0 4.1-2.9 8-6.5Q100.2 38.3 100 26c0-6.4-2.6-11.5-7-13.7-3.6-1.8-9.9-1.5-14.7.6m14.8 5c2.4 2.5 2.9 3.8 2.9 7.8-.1 8.5-4.4 15.7-14.7 24.1l-5.5 4.6-7.6-.3c-4.2-.1-7.9-.4-8.1-.6-.8-.8 3.1-15.3 5.5-20.5 7-15.2 20.2-22.4 27.5-15.1M56 65c0 5.4-.3 7-1.4 7-.8 0-2.8 1.4-4.5 3.1-2.5 2.4-3.1 3.9-3.1 7.2.1 6.6 4.4 10.7 11.5 10.7C64 93 68 88.6 68 82.5c0-3.8-.5-5.2-2.9-7.6-1.6-1.6-3.7-2.9-4.5-2.9-1.2 0-1.6-1.1-1.6-4.8 0-8.8.4-9.2 7.5-9.2h6.3l9 9.7L97.4 85l6.6 7.5v57.7c0 56.5 0 57.8-2 59.8-1.9 1.9-3.3 2-45 2H13.9l-2.4-2.5-2.5-2.4V94l8.2-9.3c4.4-5 12-13.1 16.7-18l8.6-8.7H56zm0 13c0 2.6 3 2.6 3.7 0q1.2-3.8 4.3 1.3c1.3 2.4 1.3 3 0 5.4-3.5 6.2-12.2 5.1-12.8-1.6q-.3-3.3 1.4-5.2 3.4-3.6 3.4.1"/></symbol>
+    <symbol id="c-art" viewBox="0 0 137 217"><path d="M69.1 12.9a34 34 0 0 0-1.7 8.7c-.6 5.4-1.2 7.4-3.1 9.1-1.2 1.2-2.3 2.9-2.3 3.8 0 1.2-1.6 1.5-9.9 1.5-7.9 0-10.3.3-12 1.7-1.8 1.6-3.2 7.4-9.6 41.6L23 119.6c0 .2-1.5.4-3.2.4-4.7 0-5.7 1-6.8 6.9-1.3 7-.4 8.1 6.6 8.1 2.9 0 5.5.3 5.8.8s-3.6 13.5-8.5 29.2-9.2 30-9.5 31.9c-.8 4.2.4 5.1 7.3 5.1 6.4 0 6.9-.6 10.9-14.4l2.9-9.9 14.9.7c8.2.3 18.3.6 22.4.6h7.5l-.7 12.3c-.8 14.2-.8 14.1 7.1 15.1 6.3.8 11.9-1.2 13.2-4.6.4-1.3 1.6-16 2.5-32.8 1.6-29 3-41 4.7-41q.7-.2 1.2-1.8.3-2 1-.2c.3.8 3.6 17.2 7.4 36.5l6.8 35 6.3.3c4.9.2 6.4 0 6.8-1.3.6-1.4-3.9-27.1-7.2-41-.8-3.3-4.3-20.2-7.9-37.6l-6.4-31.6 2.9-18.9 3.6-21.5c.4-2.1-.2-3.6-2.6-6.3l-3.2-3.6H97.4C86.7 36 86 35.9 86 34c0-1.1-.9-2.9-2.1-4.1-2-2-2-2.6-1.1-9.2 1.4-8.9.8-9.7-6.9-9.7-4.7 0-6 .4-6.8 1.9m10 1.6c.3.2-.3 6.4-1.2 13.7-1 7.3-1.6 13.5-1.3 13.9.6 1-8.2 2.3-10.2 1.5q-1.6-.5-1-2.9c.3-1.2.6-3.2.6-4.5q0-2.2 1.9-2.2c1.5 0 2-1.4 3.1-9.3.7-5 1.4-9.5 1.7-10 .5-.8 5.7-1 6.4-.2m2.6 20.7q-.5 1.1-.6-.6t.5-1.3c.3.3.4 1.2.1 1.9m-20.1 6.4a6 6 0 0 0-.1 3.5c.6 1.7 1.7 1.9 9.5 1.9 9.2 0 10-.4 10-5.1 0-1.8.8-1.9 12.1-1.9h12.1l-.7 4.2-6.8 40.7-6.2 36.3-15.5-.1c-8.5-.1-23.1-.4-32.3-.7l-16.8-.7.5-2.6a3619 3619 0 0 0 13.6-73c0-3.3 2.2-4.1 11.8-4.1 8.3 0 9.3.2 8.8 1.6m48.7 1.6c.5 1.5.6.7-6.7 46.6a494 494 0 0 1-6 33.9q-.6.5-1.6-.3c-1-1 11.9-81.4 13.1-81.4q.7.1 1.2 1.2m-.2 72.3c3.3 15.7 15.9 77.6 15.9 78.2a9 9 0 0 1-2.9.3q-3 0-3.5-1.8c-.3-.9-3.9-18.6-8.1-39.2-6.6-32.4-7.6-38.4-7-44 .3-3.6.9-7.6 1.3-9q.7-3.2 1-.5zm-21.2 10.1c.2.2 0 1.9-.3 3.9l-.7 3.5-25.7-.5c-14.1-.3-30.3-.8-35.8-1.1-11-.6-10.6-.4-8.8-6.2.3-1.1 7-1.2 35.6-.6 19.4.4 35.5.8 35.7 1m6.4 4.9q-.6 2.5-2.5 2.5c-1.6 0-1.9-.5-1.4-2.3.3-1.2.6-2.8.6-3.5q-.1-1.3 1.9-.3 1.9 1 1.4 3.6M37 136.8c0 .4-4.2 14.2-9.4 30.7l-9.3 30-3.7.3c-3.3.3-3.7.1-3.2-1.5l14.2-46.1 4.5-14.2h3.4c1.9 0 3.5.4 3.5.8m38.2 10.7c-.2 6-.6 12.3-.9 13.9l-.5 2.8-19.7-.7c-10.8-.4-19.8-.9-20-1.1s1.3-6.2 3.5-13.4l3.9-13 17 .2 17 .3zm11.3-1.3c-.4 5.1-1.2 19.9-1.8 32.8l-1.2 23.5-3.4-.3c-1.9-.1-3.6-.4-3.8-.6s.5-14.7 1.4-32.4l1.7-32.2h7.8zm6.5-6.5c0 1.6-.7 15.9-1.7 32-1.3 23.5-2 29.3-3.1 29.8q-1.4.5-1.7.3c-.1-.3 3.2-64 3.4-64.6l1.6-.2q1.5 0 1.5 2.7m-22.2 28.2c3.2.1 3.3.2 3 3.8l-.3 3.8-11-.3c-6-.1-15.9-.5-21.8-.8l-10.8-.7.7-3.1c.3-1.7.8-3.3.9-3.6.2-.3 8.3-.2 18.2.1z"/></symbol>
+    <symbol id="c-market" viewBox="0 0 163 151"><path d="m19.5 9.2-6 16.3A101 101 0 0 0 8 44.3c0 4.9 2.4 9.1 6.7 11.4l3.3 1.8v41.4l-3.7.3-3.8.3-.3 5.8c-.2 3.4.1 5.7.7 5.7s1.2 6 1.3 16.2l.3 16.3h138l.3-16.3c.1-10.2.6-16.2 1.3-16.2.6 0 .9-2.3.7-5.8-.3-5.7-.3-5.7-3.7-6.2l-3.5-.5-.4-20.2-.4-20.1 4.2-2.7c4.1-2.6 7-7.3 7-11.5 0-1.2-2.3-8.5-5.1-16.3l-6.1-17-1-2.7H81.9c-48.7 0-62.1.3-62.4 1.2M36 19.7l-3 13.5-1.1 5.8h-9.6c-7.2 0-9.4-.3-9.1-1.3l4.9-13.4L22.5 12h15.2zm22-6.5-1.5 13.3L55 38.7c0 .2-4.3.3-9.5.3-6.9 0-9.5-.3-9.5-1.3 0-.6 1.1-5.8 2.5-11.5S41 15 41 13.9c0-1.7.8-1.9 8.5-1.9 6.1 0 8.5.3 8.5 1.2m22 12.3V39H58.8l.6-3.8 1.7-13.5 1.1-9.7H80zm21.9-2.3c.6 6.2 1.4 12.3 1.7 13.5.4 2.3.3 2.3-10.1 2.3H83V12h17.7zm20.4-8 3 13.5 2.5 10.3h-20.5l-.6-7.3-1.3-13.5-.7-6.2h17zm19.8-.5 4.9 13.6 3.9 10.8-9.7-.3-9.6-.3-2.8-11.5c-3.8-16.1-4.2-15 4.7-15 7.3 0 7.6.1 8.6 2.7M31 44c0 .6-.7 2.5-1.6 4.1a11 11 0 0 1-10.7 5.2c-3.3-.6-6.7-4.7-6.7-7.9 0-2.4.2-2.4 9.5-2.4 6 0 9.5.4 9.5 1m24 0c0 2.1-3 7-4.9 8-5.6 2.9-13.3-.4-14.7-6.3l-.6-2.7h10.1c6.4 0 10.1.4 10.1 1m24 1.1c0 1.1-1.3 3.4-2.9 5A11 11 0 0 1 63.9 52C62 51 59 46.1 59 44c0-.6 3.7-1 10-1 9.5 0 10 .1 10 2.1m25-1.5c0 .3-.7 2.1-1.6 3.9-2 4.2-7.5 6.7-11.6 5.3-3.3-1.2-6.8-5.3-6.8-7.9 0-1.7.9-1.9 10-1.9 5.5 0 10 .3 10 .6m24 1.5c0 1.1-1.3 3.4-2.9 5a11 11 0 0 1-12.2 1.9c-1.9-1-4.9-5.9-4.9-8 0-.6 3.7-1 10-1 9.5 0 10 .1 10 2.1m24-.5c0 2-1.9 5.6-3.9 7.1s-8.6 1.7-11.3.2c-1.6-.9-4.8-6.4-4.8-8.4 0-.3 4.5-.5 10-.5 8.4 0 10 .2 10 1.6M39.7 55.9c4.8 2.5 14.3-.2 15.9-4.4.5-1.2 1.3-.9 4 1.5 6.1 5.3 13.4 5.3 19-.1 3.1-3 3.3-3 4.3-1.1C84.3 54.4 90 57 94.2 57c3.6 0 9.5-3.1 10.4-5.5.5-1.2 1.3-.9 4 1.5 6 5.3 13.6 5.3 18.8.1l2.9-3 2.8 3c1.5 1.6 4.1 3.2 5.8 3.5l3.1.6V99h-4.6c-4 0-4.5-.2-3.8-1.8.4-.9.7-3.2.6-5a75 75 0 0 1 0-9.7c.3-2.5-.1-3.1-2-3.3q-2-.5-1.9-1.5c.7-1.9-1.2-4.7-3.2-4.7-.9 0-2.8 1.1-4 2.4-2.1 2.3-2.5 2.4-4.5 1.1-1.9-1.3-2.5-1.3-4.5.1-1.7 1.2-2.1 2.3-1.7 4.2.4 2.1-.2 3.6-2.8 6.4l-3.3 3.7-2.2-3c-1.2-1.7-2-3.7-1.7-4.5.3-.9.1-2.5-.5-3.6-.9-1.6-1.7-1.9-4.6-1.3q-3.3.6-4.9-.6c-1.1-.9-2.1-.9-4 0-2.1.9-2.5 1.7-2.2 4.3.2 2.4-.4 3.8-2.4 5.9-2.2 2.1-2.8 3.7-2.8 6.8 0 4-.1 4.1-3.4 4.1-2.9 0-3.3-.3-2.9-2 .7-2.7-1.4-7.7-4.4-10-2-1.6-2.2-2.2-1.2-3.8 1.4-2.2.5-5.6-1.4-5-.6.3-1.8 1.7-2.5 3.1-1.5 3-5.2 3.7-5.2 1q0-1.9 1.2-.5 1.2 1.1 2.1 1.2c1.5 0 .3-4.2-1.5-5.4-2.5-1.5-6.1 2-5.4 5.4.3 1.9-.1 2.9-1.6 3.9-1.1.7-2.1 1.1-2.1.9l-3-3.4c-2.5-2.7-2.7-3.4-1.6-5.2.7-1.1.9-2.8.5-3.8-.7-1.7-1-1.6-3.2 1.1l-2.4 3v-4.3c0-3.6-.3-4.3-1.7-4s-1.7 1.2-1.5 4.3l.4 4-2.5-2.4c-3.9-3.5-6.6-.8-3.1 3.1 1.6 1.7 1.5 2-1.1 4.5A14 14 0 0 0 29 95.6c0 3.2-.2 3.4-3.5 3.4H22V57.4l3.5-1.3c1.9-.7 4.3-2.3 5.3-3.6l1.7-2.3 2.5 2.3c1.4 1.2 3.5 2.8 4.7 3.4m86.7 22.8c-.4 1-.8 3.3-1 5.1s-.6 3.8-1.1 4.5c-1.9 2.4-2.3 4.7-.8 4.7q1.3-.2 2.1-2.5c.7-2.8.8-2.9 3.5-1.5 2.3 1.3 2.5 4.7.3 7.8-1.4 2-2.3 2.2-11.3 2.2h-9.8l.5-2.8c.7-3.4 4-8 6.4-8.8 1.5-.4 1.7-1.2 1.2-4-.7-4 .8-4.5 2.5-.8q2.1 4.6 5.1-2.6c.7-1.7 1.7-3 2.2-3q1 .1.2 1.7m-34.8 5.1q-3.4.6-2.1-1.8.6-1.2 2.2.2c1.5 1.2 1.4 1.3-.1 1.6m7.4-.3q-.1 1.3-1.4 1.5c-2 0-2.9-1.7-1.4-2.3 2.2-.9 2.8-.7 2.8.8m32-.5q-.2 1-2 2c-2.2 1.2-2.7.1-.8-1.8 1.4-1.4 2.8-1.6 2.8-.2m-82.2 6q2.2 3.5 2 6.5l-.3 3-8.3.3c-7.7.3-8.3.1-9-1.9q-1.7-5 2.4-9.4c2-2.2 3.2-2.6 6.6-2.3 3.6.3 4.6.9 6.6 3.8m19.8 1.5q2.5 2.5 2.2 5.3c-.3 2.7-.3 2.7-8.3 2.7h-8l-.3-3.1c-.6-6.6 9.3-10 14.4-4.9m30.2-1.9c2.8.8 5.3 5.3 4.5 8.2-.5 2-1.2 2.2-9.3 2.2-7.8 0-8.9-.2-9.5-1.9-.7-2.4.9-6.7 3.2-8 2-1.2 7.6-1.4 11.1-.5m50.2 16.9v2.5H14v-5h135zm-2 20.5v14H16v-28h131z"/></symbol>
+    <symbol id="c-beauty" viewBox="0 0 172 198"><path d="M58.9 12.3c-4.9 3.3-5.9 6-5.9 16.8v9.7L50 40a9 9 0 0 0-4 3.1c-.6 1-1 6.9-1 13.1v11.3l-6.6 3.4a59 59 0 0 0-28 36.1c-4.3 15.7-1.1 40.1 7.7 57.9 5.3 10.8 9.6 15.5 16.5 18.1 17.8 6.6 53.9 6.6 69.5-.1 6.6-2.9 11.3-8.4 16.5-19.3a78 78 0 0 0 8.8-39.1 56 56 0 0 0-2.7-21.2Q119 80.6 98.3 70.4L91 66.9V55.5c0-9-.3-11.7-1.6-12.9-1.4-1.5-1.3-1.6.9-1.6q5.6.1 5.7 2.6c0 5.1 9.2 16.6 17 21.2 10.1 5.9 26 6.8 35.6 1.9 20.6-10.5 18.7-36.8-3.4-47-3.9-1.8-6.6-2.2-16.2-2.2-10.8 0-11.9.2-18 3.1a37 37 0 0 0-9.2 6l-2.8 3-8-1.6c-7.7-1.4-8-1.6-8-4.3 0-4.5-2.6-9.5-6.2-11.7a19 19 0 0 0-17.9.3m15.3 2.9c2.7 1 4.6 4.3 3.3 5.6a39 39 0 0 1-17.9 0c-2.7-1.4-2.7-1.5-.9-3.7 3.1-3.8 8.8-4.5 15.5-1.9m66.4 7.3c15.8 4.7 23.3 21.6 14.8 33.7a23 23 0 0 1-7.9 6.7c-4.3 2.3-6.2 2.6-14.5 2.6-8.2 0-10.3-.4-15.2-2.7-3.2-1.5-8-4.9-10.7-7.6-7.8-7.8-9.5-16.4-4.6-23.8a34 34 0 0 1 14.8-8.9 51 51 0 0 1 23.3 0m-72.3 2.3c4-.2 8-.8 9-1.2 1.6-.7 1.7 0 1.7 9.2v9.9l-3.1.7a57 57 0 0 1-15.8 0l-3.1-.7v-9.9c0-9.7 0-9.8 2.1-8.8 1.2.7 5.1 1 9.2.8m28.2 8.4c.2.2.1 1.4-.2 2.7-.5 2-1 2.2-4.2 1.7l-6.3-.6c-2.5 0-2.8-.4-2.8-3.3v-3.4l6.6 1.2c3.6.7 6.7 1.5 6.9 1.7M61 47.2c6.7.9 10.3.8 17.2-.3l8.7-1.5.3 11.9c.2 7.2-.1 12.2-.7 12.7-4 3.3-27.8 4-34 .9l-3-1.4-.3-12.4c-.2-11.5-.1-12.3 1.5-11.6 1 .3 5.6 1.1 10.3 1.7M110.1 84q6.5 6.5 9.7 13c9 18.2 7.7 43.4-3.4 65.6-5.5 11.2-9.4 15.5-16.4 17.7-17.2 5.6-54 4.3-66.9-2.3-4.7-2.4-9.8-10.1-14.1-21.3a77 77 0 0 1-6.3-31.7c0-12.1 1.7-19.9 6.4-29.2 3.7-7.3 14.1-18 21.1-21.7 4.4-2.3 4.7-2.4 8-.8q8.9 4.2 24 3.5c7.9-.4 10.6-1 14.5-3l4.8-2.5 6 3.1c3.3 1.7 9 6 12.6 9.6"/><path d="M48.9 87.5c-12 1.7-17.1 4.2-20.9 10.2-5.4 8.4-6.5 13.4-6.5 28.3.1 24.9 6.7 40.3 19.5 45 2.3.9 10.6 1.5 24 1.7 32.5.7 39.2-1.5 45.6-15.1 8.1-17.1 9.3-40.4 2.8-54.6-4.2-9.1-8.7-12.6-19.4-15-8.4-1.8-33.9-2.2-45.1-.5m46.2 4.1c9.5 2.2 13.9 6.4 16.8 16.2 4.3 14.3 2 37.2-5.1 50.5-2.6 4.8-4.1 6.4-7.4 7.8-11.4 5.1-50.5 5.3-61 .3-4.2-2-7.7-7.7-11.2-18.2a53 53 0 0 1-2.6-21.7c0-12.3.2-14.7 2.3-19.8q4-10 10-13.1c2.3-1.2 12.9-3 23.6-4 7.7-.8 27.6.4 34.6 2"/></symbol>
+    <symbol id="c-tech" viewBox="0 0 147 148"><path d="M48.2 9.2c-.7.7-1.2 4.3-1.2 9V26h-6c-11.5 0-16 4.7-16 16.7V50h-7.9q-7.8 0-8.9 1.3c-2.1 2.5.3 3.6 8.3 3.9l8 .3.3 7.7.3 7.8h-7.9Q4 71 8.6 75.4c1.3 1.3 3.2 1.6 8.8 1.4l7.1-.3.3 7.7.3 7.8h-7.9c-6.1 0-8.3.4-9.3 1.6-2.3 2.8 1.4 4.4 9.8 4.4H25v7.2c0 12 4.1 16.3 16.5 17.5l6.4.6.3 8.1c.3 7.3.5 8.1 2.3 8.1s2-.8 2.3-8.3l.3-8.2H70v7.2c0 8.1.8 10.2 3.6 9.6 1.6-.3 1.9-1.4 2.2-8.6l.3-8.2h16.4l-.3 6.1c-.5 8.3.3 11.1 3.1 10.7 2-.3 2.2-.9 2.5-8.4l.3-8.1 6.7-.5c12.9-.9 17.2-5.3 17.2-17.4V98h8c6.8 0 8.1-.3 9-2 1.5-2.8-1.4-4-10-4h-7.1l.3-7.3.3-7.2 7.5-.3c7.7-.3 10.3-1.3 9.3-3.7-.3-1-2.8-1.5-8.6-1.7l-8.2-.3-.3-7.6-.3-7.7 8-.3c8.6-.4 11.3-1.7 9.1-4.4-.9-1.1-3.2-1.5-9.1-1.5H122v-6.8c0-12.4-4.4-17.2-16.4-18l-7.6-.5v-7.9c0-6.1-.3-8-1.5-8.4-3.2-1.2-4.5 1.5-4.5 9.2V25H76.1l-.3-8.3c-.3-7.4-.5-8.2-2.3-8.2s-2 .8-2.3 8.2l-.3 8.2-8.9.3-9 .3v-7.6q0-10-3-9.9-.6 0-1.8 1.2m65.5 24.2 2.8 2.4v76.4l-2.8 2.4-2.8 2.4h-75l-2.4-2.4a14 14 0 0 1-3-5.7c-.3-1.9-.5-19-.3-38 .3-36.8.3-37 5.3-38.9a457 457 0 0 1 38.7-.9l36.7-.1z"/><path d="M57 52.7c-4.8 1.8-5 2.6-5 21.2 0 9.7.4 18.1.8 18.7 1.8 2.8 5.6 3.4 20.6 3.4 17.2 0 19.9-.7 21.6-5.3 1.3-3.9 1.3-29.5 0-33.4a8 8 0 0 0-3.6-4.2C88.9 52 60 51.6 57 52.7M90 74v16l-16.2-.2-16.3-.3-.3-14.5c-.1-7.9 0-15 .2-15.7.4-1 4.4-1.3 16.6-1.3h16z"/></symbol>
+    <symbol id="c-other" viewBox="0 0 153 148"><path d="M72.1 11c-1 1.8-4.9 11.1-8.6 20.9s-7.1 18-7.5 18.4-9.9 1.5-21.1 2.3C11.7 54.2 8 55.2 8 59.9c0 3.4 4.2 7.5 22.8 22.1A68 68 0 0 1 43 93c0 .9-2.5 9.9-5.5 20-6.9 23.3-7 27-.7 27 3.1 0 3.9-.5 23.5-13.2L77 115.9l16.5 10.5a653 653 0 0 0 19.6 12.2c6.6 3.3 10.9-1 8.8-8.9-.5-2.3-3.1-11.8-5.6-21.1-3.8-14-4.3-17-3.2-18L126 79.8c15.8-13.2 20-17.4 20-20.2 0-4.6-2.8-5.7-17.6-6.7l-22-1.5-8.1-.6-6.8-18c-8-21.1-9.8-24.2-14.3-24.6-2.6-.3-3.5.2-5.1 2.8m12.7 17.3L92.3 48c2.9 7.6 1.5 7.1 24.8 8.6 22.4 1.5 23.9 1.7 23.9 3.3 0 .6-7.6 7.6-17 15.6s-17 15-17 15.6c0 .8 6.9 26.5 10 36.9q2.1 7-.3 7c-.7 0-8.7-4.8-17.7-10.6-21-13.5-21.5-13.7-24-12.4l-19 12.1a121 121 0 0 1-18.4 10.7c-1.1-.2-.2-4.8 4.5-20.8 3.2-11.3 5.9-21.2 5.9-22.1s-7.4-7.6-16.8-15.2C12.7 61.8 11.3 60.5 13 59.5c.7-.4 11-1.5 23.1-2.4 16.3-1.2 22.2-2 23.2-3.1.8-.8 4.4-9.6 8.1-19.5 7-18.6 9.1-23 10.6-22 .5.3 3.5 7.4 6.8 15.8"/></symbol>
+  </defs>
+</svg>
+
+<div class="stage" id="stage">
+  <aside class="notes">
+    <div>
+      <div class="eyebrow">Phone preview</div>
+      <h1>Built for the pavement</h1>
+      <p class="intro" style="font-size:14px">People find pop-ups while they are out, so the phone layout is the main one. Everything in the frame works.</p>
+    </div>
+    <ol>
+      <li><span class="k"><svg class="i"><use href="#i-list"/></svg></span><span><b>Bottom tabs instead of a hamburger</b>The five things people do most are one thumb tap away. A hamburger hides them and they get used less.</span></li>
+      <li><span class="k"><svg class="i"><use href="#i-plus"/></svg></span><span><b>Add sits in the middle</b>Posting is what keeps the platform alive, so it gets the raised button.</span></li>
+      <li><span class="k"><svg class="i"><use href="#i-sparkle"/></svg></span><span><b>Paste a link, AI fills the form</b>Instagram, TikTok, Eventbrite or a screenshot. Blue fields came from AI and need a quick check.</span></li>
+      <li><span class="k"><svg class="i"><use href="#i-map"/></svg></span><span><b>Map with swipeable cards</b>Tap a pin and its card slides into view, like a maps app.</span></li>
+      <li><span class="k"><svg class="i"><use href="#i-bookmark"/></svg></span><span><b>Details open as a bottom sheet</b>Save and Directions stay pinned at the bottom, where your thumb is.</span></li>
+      <li><span class="k"><svg class="i"><use href="#i-user"/></svg></span><span><b>Less used things live in Me</b>Review queue, newsletter, notifications and account settings.</span></li>
+    </ol>
+    <div>
+      <div class="eyebrow" style="margin-bottom:8px">Jump to a screen</div>
+      <div class="jump">
+        <button class="btn sm" data-jump="explore">Explore</button>
+        <button class="btn sm" data-jump="sheet">Pop-up sheet</button>
+        <button class="btn sm" data-jump="map">Map</button>
+        <button class="btn sm" data-jump="ai">Add with AI</button>
+        <button class="btn sm" data-jump="me">Me</button>
+        <button class="btn sm" data-jump="queue">Review queue</button>
+      </div>
+    </div>
+    <div class="notice note small"><svg class="i"><use href="#i-info"/></svg><span>All pop-ups are example data. Votes and approvals run the real scoring rules from the spec, in your browser only.</span></div>
+  </aside>
+
+  <div class="device" id="device">
+    <div class="statusbar" aria-hidden="true">
+      <span class="num">14:00</span><span class="island"></span>
+      <span class="sbicons">
+        <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="var(--ink)"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="var(--ink)"/><rect x="10" y="3" width="3" height="9" rx="1" fill="var(--ink)"/><rect x="15" y="0" width="3" height="12" rx="1" fill="var(--ink)"/></svg>
+        <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".75" y=".75" width="22.5" height="11.5" rx="3.5" fill="none" stroke="var(--ink)" stroke-width="1.5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="var(--ink)"/><rect x="24.5" y="4.5" width="2" height="4" rx="1" fill="var(--ink)"/></svg>
+      </span>
+    </div>
+    <div class="app" id="app">
+      <div class="shell">
+        <aside class="side">
+          <div class="brand">
+            <div class="logo"><svg class="i" style="width:20px;height:20px"><use href="#i-pin"/></svg></div>
+            <div><b>Spotted</b><span>London pop-ups, checked by locals</span></div>
+          </div>
+          <nav class="sidenav" id="nav"></nav>
+          <div class="sidenote"><b>Prototype</b>Everything here is example data. Votes, check-ins and approvals run the real scoring rules from the spec, in your browser only.</div>
+          <div>
+            <div class="eyebrow" style="margin:0 6px 8px">Viewing as</div>
+            <div class="chips" id="roleSwitch" style="padding:0 6px"></div>
+          </div>
+        </aside>
+        <div class="main">
+          <header class="topbar">
+            <div class="mbrand m-only">
+              <div class="logo"><svg class="i" style="width:17px;height:17px"><use href="#i-pin"/></svg></div>
+              <b>Spotted</b><span class="tag t-out" style="margin-left:2px">London</span>
+            </div>
+            <label class="search" for="q">
+              <svg class="i"><use href="#i-search"/></svg>
+              <input id="q" type="search" placeholder="Search pop-ups, hosts, areas" autocomplete="off">
+            </label>
+            <div class="me">
+              <div class="karma d-only"><b class="num" id="myKarma">58</b> karma<br><span class="muted" id="myWeight">vote weight 3.1x</span></div>
+              <div class="avatar d-only" title="Your profile">ZC</div>
+              <button class="kpill m-only" data-view="profile" aria-label="Your karma"><span class="avatar">ZC</span><span class="num" id="myKarmaM">58</span></button>
+            </div>
+          </header>
+          <main class="page" id="view"></main>
+        </div>
+      </div>
+    </div>
+    <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
+    <div id="drawerRoot"></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+  </div>
+</div>
+<div class="modeswitch" id="modeswitch" hidden>
+  <button data-mode="phone"><svg class="i"><use href="#i-phone"/></svg>Phone</button>
+  <button data-mode="full"><svg class="i"><use href="#i-desktop"/></svg>Desktop</button>
+</div>
+
+<script>
+(() => {
+/* ---------- fixed demo clock ---------- */
+const H = 36e5, D = 24 * H;
+const DAY0 = Date.parse('2026-09-30T00:00:00+01:00'); // Wed 30 Sep 2026, London
+const NOW = DAY0 + 14 * H;
+const at = (d, h = 10) => DAY0 + d * D + h * H;
+const fmtDay = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+
+const CATS = { food: 'Food & Drink', fashion: 'Fashion', sample: 'Sample Sale', art: 'Art & Culture', market: 'Market', beauty: 'Beauty', tech: 'Tech', other: 'Other' };
+
+const me = { name: 'Zack C.', karma: 58, trust: 0, ageDays: 31, emailVerified: true, verifiedPosts: 3, badPosts: 0 };
+const trustScore = () => Math.round(me.karma * 0.5) + me.verifiedPosts * 5 - me.badPosts * 15;
+me.trust = trustScore();
+const baseWeight = () => {
+  const k = me.karma;
+  const b = k < 0 ? 0.2 : Math.min(4, Math.max(0.2, 1 + Math.log10(Math.max(k, 1))));
+  const age = me.ageDays < 1 ? 0 : me.ageDays < 7 ? 0.5 : 1;
+  return b * age * (me.emailVerified ? 1.2 : 1);
+};
+
+/* ---------- example pop-ups (fictional) ---------- */
+const P = [
+  { id: 'matcha', title: 'Matcha Lab Pop-up', host: 'Kumo Tea', cat: 'food', area: 'Soho', lng: -0.134, lat: 51.5135, start: at(-2, 11), end: at(5, 19), hours: 'Daily 11:00 to 19:00', price: 'Free entry, drinks from £4', status: 'verified_admin', pos: 24.2, neg: 1, voters: 17, checkins: 9, qp: 141, qn: 9, by: 'soho_sips', byKarma: 310, src: 'instagram.com/kumotea', desc: 'Ceremonial matcha tasting flight, whisking demos every hour and a small shop of Uji tea. Expect a queue at lunch on weekdays.' },
+  { id: 'denim', title: 'Archive Denim Sample Sale', host: 'Loom & Rivet', cat: 'sample', area: 'Shoreditch', lng: -0.078, lat: 51.5262, start: at(2, 10), end: at(4, 18), hours: 'Fri to Sun 10:00 to 18:00', price: 'Free entry, up to 70% off', status: 'verified_community', pos: 18.4, neg: 2, voters: 12, checkins: 0, qp: 96, qn: 8, by: 'threadcount', byKarma: 128, src: 'loomandrivet.co.uk/sale', desc: 'Past season selvedge denim, jackets and deadstock fabric by the metre. Card only. Last entry 30 minutes before close.' },
+  { id: 'arches', title: 'Night Market under the Arches', host: 'Arches Collective', cat: 'market', area: 'Bermondsey', lng: -0.0735, lat: 51.4975, start: at(2, 17), end: at(3, 23), hours: 'Fri and Sat 17:00 to 23:00', price: 'Free', status: 'community', pos: 7.5, neg: 0.8, voters: 4, checkins: 0, qp: 38, qn: 3, by: 'se1_nights', byKarma: 22, src: 'instagram.com/archescollective', desc: 'Twenty street food traders, a vinyl stall and a DJ in the railway arches. Dog friendly.' },
+  { id: 'riso', title: 'Riso Print Studio Open Days', host: 'Inkwell Press', cat: 'art', area: 'Hackney', lng: -0.0555, lat: 51.5455, start: at(1, 12), end: at(11, 18), hours: 'Thu to Sun 12:00 to 18:00', price: 'Free, workshops £25', status: 'verified_community', pos: 14.1, neg: 0.5, voters: 9, checkins: 3, qp: 57, qn: 2, by: 'e8_arts', byKarma: 76, src: 'inkwellpress.london', desc: 'Watch zines being printed, buy limited run posters, or book a two hour print workshop.' },
+  { id: 'corndog', title: 'Korean Corn Dog Truck', host: 'Dog Days', cat: 'food', area: 'Camden', lng: -0.1435, lat: 51.5395, start: at(0, 12), end: at(0, 21), hours: 'Today 12:00 to 21:00', price: 'From £6', status: 'community', pos: 3.1, neg: 0, voters: 2, checkins: 1, qp: 22, qn: 1, by: 'nw1_bites', byKarma: 9, src: '', desc: 'One day only by the lock. Mozzarella, potato crust and a spicy cheese option.' },
+  { id: 'kilo', title: 'Vintage Kilo Sale', host: 'Second Spin', cat: 'fashion', area: 'Brixton', lng: -0.1145, lat: 51.4625, start: at(3, 11), end: at(4, 17), hours: 'Sat and Sun 11:00 to 17:00', price: '£20 per kilo, £2 entry', status: 'verified_admin', pos: 20.3, neg: 1.4, voters: 14, checkins: 0, qp: 88, qn: 11, by: 'secondspin', byKarma: 205, src: 'secondspin.co.uk', desc: 'Two tonnes of 80s and 90s clothing. Bring a bag. Early bird slot at 10:00 needs a ticket.' },
+  { id: 'ceramics', title: 'Ceramics Seconds Sale', host: 'Rye Lane Pottery', cat: 'market', area: 'Peckham', lng: -0.0690, lat: 51.4735, start: at(3, 10), end: at(3, 16), hours: 'Sat 10:00 to 16:00', price: 'Free entry', status: 'community', pos: 5.2, neg: 0.4, voters: 4, checkins: 0, qp: 31, qn: 1, by: 'peckhampots', byKarma: 54, src: 'instagram.com/ryelanepottery', desc: 'Slightly wonky mugs, bowls and vases at half price. Cash and card.' },
+  { id: 'plants', title: 'Plant Swap and Coffee', host: 'Green Thumb Club', cat: 'other', area: 'Dalston', lng: -0.0755, lat: 51.5485, start: at(4, 10), end: at(4, 14), hours: 'Sun 10:00 to 14:00', price: 'Free', status: 'verified_community', pos: 11.8, neg: 0.3, voters: 8, checkins: 2, qp: 29, qn: 0, by: 'greenthumb', byKarma: 61, src: 'greenthumb.club', desc: 'Bring a cutting, take a cutting. Free coffee for the first 50 swappers.' },
+  { id: 'sneaker', title: 'Sneaker Raffle Store', host: 'Unknown', cat: 'fashion', area: 'Covent Garden', lng: -0.1235, lat: 51.5125, start: at(1, 10), end: at(7, 20), hours: 'Daily 10:00 to 20:00', price: 'Raffle entry £5', status: 'community', pos: 2.4, neg: 3.9, voters: 5, checkins: 0, qp: 12, qn: 14, by: 'hypedrop_ldn', byKarma: 1, src: '', desc: 'Raffle for limited sneakers. Several people report the shop unit is empty.', reports: 3.2 },
+  { id: 'mooncake', title: 'Mooncake Bakery Pop-up', host: 'Full Moon Bakes', cat: 'food', area: "King's Cross", lng: -0.1245, lat: 51.5355, start: at(1, 9), end: at(6, 17), hours: 'Daily 09:00 to 17:00', price: 'Boxes from £18', status: 'verified_admin', pos: 16.9, neg: 0.6, voters: 11, checkins: 0, qp: 64, qn: 2, by: 'fullmoonbakes', byKarma: 140, src: 'fullmoonbakes.com', desc: 'Lotus seed, black sesame and salted egg yolk mooncakes, plus a tasting counter.' },
+  { id: 'perfume', title: 'Indie Perfume Lab', host: 'Nose Studio', cat: 'beauty', area: 'Marylebone', lng: -0.1515, lat: 51.5195, start: at(5, 11), end: at(18, 19), hours: 'Tue to Sun 11:00 to 19:00', price: 'Free, blend your own £45', status: 'verified_admin', pos: 9.8, neg: 0.2, voters: 7, checkins: 0, qp: 41, qn: 3, by: 'nosestudio', byKarma: 88, src: 'nosestudio.co', desc: 'Sample 40 independent perfumes and blend a 30ml bottle with a perfumer.' },
+  { id: 'boardgame', title: 'Board Game Café Takeover', host: 'Roll & Brew', cat: 'other', area: 'South Bank', lng: -0.1160, lat: 51.5065, start: at(8, 12), end: at(10, 22), hours: 'Thu to Sat 12:00 to 22:00', price: '£6 table fee', status: 'community', pos: 4.4, neg: 0.5, voters: 3, checkins: 0, qp: 19, qn: 1, by: 'rollbrew', byKarma: 33, src: 'rollandbrew.london', desc: 'A 300 game library takes over a riverside café for three days.' },
+  { id: 'repair', title: 'Retro Tech Repair Pop-up', host: 'Fix Club', cat: 'tech', area: 'Notting Hill', lng: -0.2050, lat: 51.5115, start: at(2, 10), end: at(3, 16), hours: 'Fri and Sat 10:00 to 16:00', price: 'Pay what you can', status: 'community', pos: 6.2, neg: 0.9, voters: 5, checkins: 0, qp: 27, qn: 2, by: 'fixclub', byKarma: 47, src: 'fixclub.org.uk', desc: 'Volunteers fix Walkmans, Game Boys and film cameras. Bring your broken gadgets.' },
+  { id: 'gelato', title: 'Summer Gelato Kiosk', host: 'Freddo', cat: 'food', area: 'Soho', lng: -0.133, lat: 51.512, start: at(-40), end: at(-3, 20), hours: '', price: '', status: 'ended', pos: 12, neg: 0, voters: 8, checkins: 5, qp: 50, qn: 2, by: 'soho_sips', byKarma: 310, src: '', desc: '' },
+  { id: 'noodle', title: 'Hand Pulled Noodle Pop-up', host: 'Lanzhou Lane', cat: 'food', area: 'Soho', lng: -0.132, lat: 51.5125, start: at(2, 12), end: at(9, 21), hours: 'Daily 12:00 to 21:00', price: 'From £9', status: 'pending', pos: 0, neg: 0, voters: 0, checkins: 0, qp: 0, qn: 0, by: 'noodlefan88', byKarma: 0, src: '', desc: 'Hand pulled noodles for one week only.', flags: ['New account (12 hours)', 'No source link'] },
+  { id: 'matcha2', title: 'Matcha Lab Soho', host: 'Kumo Tea', cat: 'food', area: 'Soho', lng: -0.1342, lat: 51.5134, start: at(-2, 11), end: at(5, 19), hours: '', price: '', status: 'pending', pos: 0, neg: 0, voters: 0, checkins: 0, qp: 0, qn: 0, by: 'tealover', byKarma: 14, src: 'instagram.com/kumotea', desc: 'Matcha pop up in Soho', flags: ['Possible duplicate of Matcha Lab Pop-up (same street, 94% match)'] },
+  { id: 'skate', title: 'Skate Deck Art Show', host: 'Concrete Wave', cat: 'art', area: 'Shoreditch', lng: -0.0765, lat: 51.5245, start: at(9, 18), end: at(16, 22), hours: 'Evenings 18:00 to 22:00', price: 'Free', status: 'pending', pos: 0, neg: 0, voters: 0, checkins: 0, qp: 0, qn: 0, by: 'concretewave', byKarma: 19, src: 'concretewave.art', desc: '40 artists paint skate decks. Auction on closing night.', flags: ['Trust 20, below auto approve (50)'] }
+];
+P.forEach(p => Object.assign(p, { myE: 0, myEw: 0, myQ: 0, saved: false, reported: false }));
+P.find(p => p.id === 'denim').saved = true;
+P.find(p => p.id === 'kilo').saved = true;
+
+/* ---------- AI autofill samples (what the Worker would return) ---------- */
+const AI_SAMPLES = {
+  noodle: { via: 'the Instagram caption and first image', url: 'instagram.com/p/C9lanzhoulane', f: { title: 'Hand Pulled Noodle Week', host: 'Lanzhou Lane', cat: 'food', where: 'Old Compton Street, Soho, W1D', start: '2026-10-02', end: '2026-10-09', hours: 'Daily 12:00 to 21:00', price: 'Bowls from £9', desc: 'Chefs pulling noodles by hand in the window all week. Beef noodle soup, chilli oil noodles and cucumber salad. Walk in only.' }, check: ['end', 'where'] },
+  flower: { via: "the event's structured data", url: 'eventbrite.co.uk/e/autumn-flower-market', f: { title: 'Autumn Flower Market', host: 'Bloom & Stem', cat: 'market', where: 'Columbia Road, Bethnal Green, E2', start: '2026-10-04', end: '2026-10-04', hours: 'Sun 08:00 to 14:00', price: 'Free', desc: 'Thirty growers selling dahlias, dried flowers and autumn bulbs. Coffee cart and live jazz.' }, check: [] },
+  arches: { via: 'the TikTok description', url: 'tiktok.com/@archescollective/video/741', f: { title: 'Night Market under the Arches', host: 'Arches Collective', cat: 'market', where: 'Druid Street arches, Bermondsey, SE1', start: '2026-10-02', end: '2026-10-03', hours: 'Fri and Sat 17:00 to 23:00', price: 'Free', desc: 'Street food, vinyl and a DJ in the railway arches.' }, check: ['hours'] }
+};
+const pickSample = url => { const u = url.toLowerCase(); return u.includes('lanzhou') || u.includes('noodle') ? 'noodle' : u.includes('flower') ? 'flower' : u.includes('arches') ? 'arches' : null; };
+
+/* ---------- scoring ---------- */
+function wilson(pos, neg) {
+  const n = pos + neg; if (!n) return 0;
+  const z = 1.28, p = pos / n;
+  return (p + z * z / (2 * n) - z * Math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)) / (1 + z * z / n);
+}
+const conf = p => wilson(p.pos, p.neg);
+const isLive = p => p.start <= NOW && p.end >= NOW;
+function hot(p) {
+  const q = p.qp - p.qn;
+  const order = Math.log10(Math.max(Math.abs(q), 1)) * Math.sign(q);
+  const bonus = p.status === 'verified_admin' ? 2 : p.status === 'verified_community' ? 1 : 0;
+  return order + bonus + (isLive(p) ? 1.5 : 0) - (p.start > NOW ? (p.start - NOW) / H / 48 : 0);
+}
+function criteria(p) {
+  const c = conf(p), n = p.pos + p.neg, started = p.start <= NOW;
+  const evidence = started ? (p.checkins >= 1 || p.voters >= 3) : p.voters >= 5;
+  return { c, n, evidence, list: [
+    { ok: c >= 0.75, text: `Confidence at least 75% (now ${Math.round(c * 100)}%)` },
+    { ok: n >= 8, text: `Weighted votes at least 8 (now ${n.toFixed(1)})` },
+    started ? { ok: evidence, text: `One check-in or 3 voters (now ${p.checkins} check-ins, ${p.voters} voters)` }
+            : { ok: evidence, text: `Not started yet, so 5 voters needed (now ${p.voters})` }
+  ] };
+}
+function evaluate(p) {
+  if (['verified_admin', 'pending', 'removed', 'ended'].includes(p.status)) return null;
+  const k = criteria(p), before = p.status;
+  if (k.c >= 0.75 && k.n >= 8 && k.evidence) p.status = 'verified_community';
+  else if (k.c <= 0.3 && k.n >= 5) p.status = 'hidden';
+  else if (p.status === 'verified_community' && k.c < 0.5) p.status = 'community';
+  else if (p.status === 'hidden' && k.c > 0.3) p.status = 'community';
+  return before !== p.status ? p.status : null;
+}
+
+/* ---------- state ---------- */
+const S = { view: 'explore', when: 'week', cat: 'all', verifiedOnly: false, q: '', open: null, admin: false, hl: null, reportOpen: false, m: false, mode: 'phone', nl: false, notif: true };
+const karmaLog = [
+  { d: +10, why: 'Your pop-up <b>Plant Swap and Coffee</b> was verified', when: 'Mon' },
+  { d: +1, why: 'Your vote on <b>Riso Print Studio Open Days</b> matched the result', when: 'Mon' },
+  { d: +2, why: 'Checked in at <b>Matcha Lab Pop-up</b>', when: 'Sun' },
+  { d: -2, why: 'Your vote on <b>Pop-up Poke Bar</b> did not match the result', when: 'Sat' },
+  { d: +10, why: 'Your pop-up <b>Riso Print Studio Open Days</b> was verified', when: 'Fri' },
+  { d: +3, why: 'Your report on <b>Free iPhone Giveaway</b> was upheld', when: 'Thu' }
+];
+try { S.view = localStorage.getItem('spotted.view') || S.view; S.mode = localStorage.getItem('spotted.mode') || S.mode; } catch (e) {}
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ic = (id, cls = 'i') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+const byId = id => P.find(p => p.id === id);
+const stage = $('#stage'), app = $('#app');
+function toast(msg, icon = 'i-check') {
+  const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = ic(icon) + `<span>${msg}</span>`;
+  $('#toasts').appendChild(t); setTimeout(() => t.remove(), 3200);
+}
+const dateRange = p => { const a = fmtDay(p.start), b = fmtDay(p.end); return a === b ? a : `${a} to ${b}`; };
+function statusTag(p) {
+  return {
+    verified_admin: `<span class="tag t-ink">${ic('i-shield')}Verified</span>`,
+    verified_community: `<span class="tag t-eng">${ic('i-checkc')}Community verified</span>`,
+    community: `<span class="tag t-watch">Being checked</span>`,
+    pending: `<span class="tag t-mute">Waiting for review</span>`,
+    hidden: `<span class="tag t-err">Hidden</span>`,
+    removed: `<span class="tag t-err">Removed</span>`,
+    ended: `<span class="tag t-mute">Ended</span>`
+  }[p.status];
+}
+function whenTag(p) {
+  if (isLive(p)) return `<span class="tag t-new live">On now</span>`;
+  if (Math.floor((p.start - DAY0) / D) === 1) return `<span class="tag t-out live">Tomorrow</span>`;
+  return '';
+}
+function meter(p, extra = '') {
+  const c = conf(p), cls = c < 0.4 ? 'low' : c < 0.75 ? 'mid' : '';
+  return `<div class="meter ${cls} ${extra}" role="img" aria-label="Confidence ${Math.round(c * 100)}%"><i style="width:${Math.max(4, c * 100)}%"></i></div>`;
+}
+const PUBLIC = ['verified_admin', 'verified_community', 'community'];
+function inWindow(p) {
+  if (p.end < NOW) return false;
+  const [a, b] = { today: [NOW, DAY0 + D], weekend: [DAY0 + 2 * D, DAY0 + 5 * D], week: [NOW, DAY0 + 7 * D], all: [NOW, Infinity] }[S.when];
+  return p.start < b && p.end > a;
+}
+function visible() {
+  const q = S.q.trim().toLowerCase();
+  return P.filter(p => PUBLIC.includes(p.status) && inWindow(p)
+    && (S.cat === 'all' || p.cat === S.cat)
+    && (!S.verifiedOnly || p.status.startsWith('verified'))
+    && (!q || (p.title + ' ' + p.host + ' ' + p.area + ' ' + CATS[p.cat]).toLowerCase().includes(q)))
+    .sort((a, b) => hot(b) - hot(a));
+}
+const queueItems = () => P.filter(p => p.status === 'pending' || p.status === 'hidden' || ((p.reports || 0) >= 3 && PUBLIC.includes(p.status)));
+
+/* ---------- mode ---------- */
+function computeM() {
+  const wide = innerWidth >= 900;
+  const phone = wide && S.mode === 'phone';
+  stage.dataset.mode = phone ? 'phone' : 'full';
+  const m = phone || !wide, changed = m !== S.m;
+  S.m = m; stage.classList.toggle('m', m);
+  $('#modeswitch').hidden = !wide;
+  document.querySelectorAll('#modeswitch [data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === (phone ? 'phone' : 'full')));
+  return changed;
+}
+
+/* ---------- nav ---------- */
+function renderNav() {
+  const items = [['explore', 'i-list', 'Explore'], ['map', 'i-map', 'Map'], ['submit', 'i-plus', 'Add a pop-up'], ['saved', 'i-bookmark', 'Saved', P.filter(p => p.saved).length], ['profile', 'i-user', 'Me']];
+  if (S.admin) items.push(['queue', 'i-inbox', 'Review queue', queueItems().length, 'hot']);
+  $('#nav').innerHTML = items.map(([v, i, l, ct, cls]) =>
+    `<button class="nav" data-view="${v}" ${S.view === v ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${ct ? `<span class="ct ${cls || ''}">${ct}</span>` : ''}</button>`).join('');
+  $('#roleSwitch').innerHTML = roleChips();
+  $('#myKarma').textContent = me.karma; $('#myKarmaM').textContent = me.karma;
+  $('#myWeight').textContent = `vote weight ${baseWeight().toFixed(1)}x`;
+  const cur = S.view === 'queue' ? 'profile' : S.view, saved = P.filter(p => p.saved).length;
+  const tabs = [['explore', 'i-list', 'Explore'], ['map', 'i-map', 'Map'], ['submit', 'i-plus', 'Add'], ['saved', 'i-bookmark', 'Saved'], ['profile', 'i-user', 'Me']];
+  $('#tabbar').innerHTML = tabs.map(([v, i, l]) => v === 'submit'
+    ? `<button class="tab add" data-view="submit" ${cur === v ? 'aria-current="page"' : ''}><span class="plus">${ic(i)}</span><span>${l}</span></button>`
+    : `<button class="tab" data-view="${v}" ${cur === v ? 'aria-current="page"' : ''}><span class="ti">${ic(i)}${v === 'saved' && saved ? `<span class="badge num">${saved}</span>` : ''}${v === 'profile' && S.admin && queueItems().length ? `<span class="badge num">${queueItems().length}</span>` : ''}</span><span>${l}</span></button>`).join('');
+}
+const roleChips = () => `<button class="chip" data-role="user" aria-pressed="${!S.admin}">Member</button><button class="chip" data-role="admin" aria-pressed="${S.admin}">Admin</button>`;
+
+/* ---------- card ---------- */
+function card(p) {
+  return `<article class="card" data-open="${p.id}" tabindex="0" aria-label="${esc(p.title)}">
+    <div class="thumb pat-${p.cat}">${ic('c-' + p.cat, 'i big')}${whenTag(p)}
+      <button class="save" data-save="${p.id}" aria-pressed="${p.saved}" aria-label="${p.saved ? 'Remove from saved' : 'Save'}">${ic('i-bookmark')}</button></div>
+    <div class="cbody">
+      <div class="row" style="gap:6px">${statusTag(p)}<span class="tag t-mute cattag">${CATS[p.cat]}</span></div>
+      <h3>${esc(p.title)}</h3>
+      <div class="meta">${ic('i-pin')}<span class="t">${esc(p.area)} · ${esc(p.host)}</span></div>
+      <div class="meta">${ic('i-clock')}<span class="t num">${dateRange(p)}</span></div>
+    </div>
+    <div class="cfoot">
+      <span class="small muted num">${Math.round(conf(p) * 100)}% real</span>${meter(p)}
+      <div class="score">
+        <button class="vote" data-q="${p.id}" data-v="1" aria-pressed="${p.myQ === 1}" aria-label="Upvote">${ic('i-up')}</button>
+        <span class="num">${p.qp - p.qn}</span>
+        <button class="vote" data-q="${p.id}" data-v="-1" aria-pressed="${p.myQ === -1}" aria-label="Downvote">${ic('i-down')}</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+/* ---------- views ---------- */
+function filtersHTML() {
+  const whens = [['today', 'Today'], ['weekend', 'This weekend'], ['week', 'Next 7 days'], ['all', 'All upcoming']];
+  const base = P.filter(p => PUBLIC.includes(p.status) && inWindow(p));
+  const cats = [['all', 'All']].concat(Object.entries(CATS));
+  return `<div class="filters">
+    <div class="chips noscroll" role="group" aria-label="When">${whens.map(([k, l]) => `<button class="chip" data-when="${k}" aria-pressed="${S.when === k}">${l}</button>`).join('')}</div>
+    <div class="chips noscroll" role="group" aria-label="Category">${cats.map(([k, l]) => {
+      const n = k === 'all' ? base.length : base.filter(p => p.cat === k).length;
+      return n || k === 'all' ? `<button class="chip" data-cat="${k}" aria-pressed="${S.cat === k}">${k !== 'all' ? ic('c-' + k) : ''}${l}<span class="n num">${n}</span></button>` : '';
+    }).join('')}</div>
+  </div>`;
+}
+const vSwitch = () => `<button class="switch" role="switch" id="vonly" aria-checked="${S.verifiedOnly}"><span class="track"></span>Verified only</button>`;
+function viewExplore() {
+  const list = visible(), live = list.filter(isLive);
+  return `<div class="eyebrow">London · Wed 30 Sep</div>
+    <h1>${S.m ? "What's on this week" : "What's popping up this week"}</h1>
+    <p class="intro d-only">Pop-ups added by locals and checked by the people who went. Live and verified ones come first, then the ones starting soon.</p>
+    ${filtersHTML()}
+    ${S.m && live.length && S.when !== 'today' ? `<div class="lh"><h2>Happening now</h2><span class="muted small">${live.length} open</span></div>
+      <div class="carousel noscroll">${live.map(card).join('')}</div>` : ''}
+    <div class="lh"><h2>${list.length} pop-ups</h2><span class="muted small d-only">${live.length} on right now</span><span class="spacer"></span>${vSwitch()}</div>
+    ${list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty"><h2>Nothing here yet</h2><p style="margin-top:6px">Try a wider date range, or be the first to <a href="#" data-view="submit">add one</a>.</p></div>`}
+    ${nlBox()}`;
+}
+const nlBox = () => S.nl
+  ? `<div class="notice good" style="margin-top:24px">${ic('i-mail')}<span>Check your inbox to confirm. The first issue lands Thursday morning.</span></div>`
+  : `<div class="notice note" style="margin-top:24px;align-items:center;flex-wrap:wrap">
+      ${ic('i-mail')}<div style="flex:1;min-width:180px"><b>This Weekend in London Pop-ups</b><br><span class="small">The ten best verified pop-ups, every Thursday.</span></div>
+      <form class="row nlform" id="nlform" style="gap:8px;flex-wrap:nowrap"><input class="input" id="nlemail" type="email" required placeholder="you@email.com" style="width:210px;min-height:38px;border-radius:999px"><button class="btn primary sm">Subscribe</button></form>
+    </div>`;
+
+// map
+const BOX = { w: 900, h: 620, lng0: -0.235, lng1: 0.005, lat0: 51.448, lat1: 51.562 };
+const px = lng => (lng - BOX.lng0) / (BOX.lng1 - BOX.lng0) * BOX.w;
+const py = lat => (BOX.lat1 - lat) / (BOX.lat1 - BOX.lat0) * BOX.h;
+const THAMES = [[-0.235, 51.468], [-0.215, 51.47], [-0.195, 51.478], [-0.175, 51.482], [-0.16, 51.483], [-0.145, 51.486], [-0.13, 51.489], [-0.122, 51.496], [-0.12, 51.504], [-0.113, 51.508], [-0.1, 51.508], [-0.085, 51.507], [-0.07, 51.504], [-0.055, 51.5015], [-0.045, 51.505], [-0.03, 51.508], [-0.02, 51.5025], [-0.012, 51.492], [-0.004, 51.4875], [0.005, 51.4935]];
+const AREAS = [['Camden', -0.1435, 51.5445], ['Hackney', -0.05, 51.553], ['Soho', -0.1335, 51.5168], ['Shoreditch', -0.08, 51.5305], ['Brixton', -0.116, 51.456], ['Peckham', -0.068, 51.467], ['Notting Hill', -0.2, 51.518], ['Marylebone', -0.157, 51.5245], ['Bermondsey', -0.07, 51.491], ["King's Cross", -0.124, 51.542], ['South Bank', -0.108, 51.5015], ['Dalston', -0.076, 51.555]];
+function viewMap() {
+  const list = visible(), k = S.m ? 1.75 : 1;
+  const vb = S.m ? '90 20 660 600' : `0 0 ${BOX.w} ${BOX.h}`;
+  const river = THAMES.map(([x, y], i) => `${i ? 'L' : 'M'}${px(x).toFixed(1)} ${py(y).toFixed(1)}`).join(' ');
+  const font = 'font-family="Instrument Sans, sans-serif"';
+  const pins = list.map(p => {
+    const fill = p.status === 'verified_admin' ? 'var(--ink)' : p.status === 'verified_community' ? 'var(--eng)' : 'var(--watch-bg)';
+    const stroke = p.status === 'community' ? 'var(--watch)' : 'var(--ink)';
+    const glyph = p.status === 'community' ? 'var(--watch)' : 'var(--card)';
+    return `<g class="pin ${S.hl === p.id ? 'hl' : ''}" data-pin="${p.id}" data-hl="${p.id}" transform="translate(${px(p.lng).toFixed(1)} ${py(p.lat).toFixed(1)}) scale(${k})" tabindex="0" role="button" aria-label="${esc(p.title)}">
+      <circle class="ring" r="17" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <circle r="12" cx="2.5" cy="2.5" fill="var(--ink)"/>
+      <circle r="11" fill="${fill}" stroke="${stroke}" stroke-width="2" ${p.status === 'community' ? 'stroke-dasharray="3 2.5"' : ''}/>
+      <svg x="-7.5" y="-7.5" width="15" height="15" fill="${glyph}"><use href="#c-${p.cat}"/></svg>
+      ${isLive(p) ? `<circle r="4.5" cx="9" cy="-9" fill="var(--accent)" stroke="var(--ink)" stroke-width="1.5"/>` : ''}
+    </g>`;
+  }).join('');
+  return `<div class="eyebrow">London · Wed 30 Sep</div>
+    <h1>Pop-up map</h1>
+    <p class="intro d-only">Solid pins are verified. Dashed pins are still being checked, so tap one and help confirm it if you pass by.</p>
+    ${filtersHTML()}
+    <div class="mapwrap">
+      <div class="mapbox">
+        <svg viewBox="${vb}" role="img" aria-label="Sketch map of central London with pop-up pins">
+          <rect x="-100" y="-100" width="${BOX.w + 200}" height="${BOX.h + 200}" fill="var(--card)"/>
+          <g stroke="var(--hair)" stroke-width="1" stroke-dasharray="2 6">${[1, 2, 3, 4, 5, 6, 7, 8].map(i => `<line x1="${i * 100}" y1="0" x2="${i * 100}" y2="${BOX.h}"/>`).join('')}${[1, 2, 3, 4, 5, 6].map(i => `<line x1="0" y1="${i * 100}" x2="${BOX.w}" y2="${i * 100}"/>`).join('')}</g>
+          <ellipse cx="${px(-0.162)}" cy="${py(51.5075)}" rx="46" ry="24" fill="var(--eng-bg)" stroke="var(--eng)" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="${px(-0.162)}" y="${py(51.5075) + 4}" text-anchor="middle" font-size="${11 * (S.m ? 1.3 : 1)}" font-weight="600" fill="var(--eng)" ${font}>Hyde Park</text>
+          <ellipse cx="${px(-0.155)}" cy="${py(51.531)}" rx="30" ry="20" fill="var(--eng-bg)" stroke="var(--eng)" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <path d="${river}" fill="none" stroke="var(--water)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="${river}" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".55" transform="translate(0 -11)"/>
+          <path d="${river}" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".55" transform="translate(0 11)"/>
+          <text x="${px(-0.2)}" y="${py(51.4755) + 4}" font-size="${13 * (S.m ? 1.4 : 1)}" font-style="italic" fill="var(--ai)" ${font}>River Thames</text>
+          ${AREAS.map(([n, x, y]) => `<text x="${px(x)}" y="${py(y)}" text-anchor="middle" font-size="${12 * (S.m ? 1.45 : 1)}" font-weight="700" letter-spacing="1" fill="var(--ink3)" ${font}>${esc(n.toUpperCase())}</text>`).join('')}
+          ${pins}
+        </svg>
+        <div class="legend"><span class="tag t-ink">${ic('i-shield')}Verified</span><span class="tag t-eng">${ic('i-checkc')}Community</span><span class="tag t-watch">Being checked</span><span class="tag t-new">On now</span></div>
+      </div>
+      <div class="maplist noscroll" id="maplist">
+        ${list.length ? list.map(p => `<button class="mini ${S.hl === p.id ? 'hl' : ''}" data-open="${p.id}" data-hl="${p.id}" id="mini-${p.id}">
+          <span class="sw pat-${p.cat}">${ic('c-' + p.cat)}</span>
+          <span style="min-width:0"><b>${esc(p.title)}</b><span>${esc(p.area)} · ${fmtDay(p.start)}${isLive(p) ? ' · on now' : ''}</span></span></button>`).join('') : `<div class="empty" style="flex:1">No pop-ups match these filters.</div>`}
+      </div>
+    </div>
+    ${S.m ? `<p class="small muted" style="margin-top:6px">Tap a pin to find its card. Tap the card for details.</p>` : ''}`;
+}
+
+function viewSaved() {
+  const list = P.filter(p => p.saved);
+  return `<div class="eyebrow">Your list</div><h1>Saved</h1>
+    <p class="intro">We remind you the day before each one starts, and again on its last day.</p>
+    <div class="lh"><h2>${list.length} saved</h2></div>
+    ${list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty"><h2>Nothing saved</h2><p style="margin-top:6px">Tap the bookmark on any pop-up to keep it here.</p></div>`}`;
+}
+
+function viewSubmit() {
+  const fld = (id, label, input, hint = '') => `<div class="field"><label class="lbl" for="${id}">${label}<span id="fl-${id}"></span></label>${input}${hint ? `<span class="hint">${hint}</span>` : ''}</div>`;
+  return `<div class="eyebrow">Contribute</div><h1>Add a pop-up</h1>
+    <p class="intro">Seen something worth sharing? You earn 10 karma when it gets verified.</p>
+    <div class="form">
+      <form class="fields panel" id="subform" novalidate>
+        <section class="aibox" aria-labelledby="aih">
+          <div class="row" style="gap:8px"><span class="tag t-ai">${ic('i-sparkle')}AI</span><h2 id="aih">Paste a link, we fill it in</h2></div>
+          <div class="ailine">
+            <input class="input" id="f-src" placeholder="Instagram, TikTok, Eventbrite or website" autocomplete="off" inputmode="url">
+            <button type="button" class="btn primary sm" id="aiGo">${ic('i-sparkle')}Autofill</button>
+          </div>
+          <div class="chips noscroll" style="flex-wrap:nowrap;overflow-x:auto">
+            <span class="small muted" style="align-self:center;flex:none">Try:</span>
+            ${Object.entries(AI_SAMPLES).map(([k, s]) => `<button type="button" class="chip ai" data-sample="${k}">${ic('i-link')}${s.url.split('/')[0]}</button>`).join('')}
+          </div>
+          <div class="row" style="gap:8px">
+            <span class="btn sm filebtn">${ic('i-image')}Upload a screenshot<input type="file" id="f-shot" accept="image/*" aria-label="Upload a screenshot"></span>
+            <span class="small muted">Works best for Instagram stories.</span>
+          </div>
+          <div id="aistatus" aria-live="polite"></div>
+        </section>
+        ${fld('f-title', 'Name of the pop-up', '<input class="input" id="f-title" placeholder="e.g. Matcha Lab Pop-up" autocomplete="off">')}
+        <div id="dupe"></div>
+        ${fld('f-host', 'Host or brand', '<input class="input" id="f-host" placeholder="Who is running it" autocomplete="off">')}
+        <div class="field"><span class="lbl" id="catlbl">Category<span id="fl-f-cat"></span></span>
+          <div class="chips" role="radiogroup" aria-labelledby="catlbl">${Object.entries(CATS).map(([k, l], i) => `<button type="button" class="chip" role="radio" data-fcat="${k}" aria-pressed="${i === 0}" aria-checked="${i === 0}">${ic('c-' + k)}${l}</button>`).join('')}</div></div>
+        ${fld('f-where', 'Where', '<input class="input" id="f-where" placeholder="Start typing an address or venue" autocomplete="off">', 'Address search fills in the area and map pin.')}
+        <div class="two">
+          ${fld('f-start', 'Starts', '<input class="input" id="f-start" type="date" value="2026-10-02">')}
+          ${fld('f-end', 'Ends', '<input class="input" id="f-end" type="date" value="2026-10-04">')}
+        </div>
+        <div class="two">
+          ${fld('f-hours', 'Opening hours', '<input class="input" id="f-hours" placeholder="e.g. Sat 10:00 to 16:00">')}
+          ${fld('f-price', 'Price', '<input class="input" id="f-price" placeholder="Free, £5 entry, from £9">')}
+        </div>
+        ${fld('f-desc', 'What to expect <span class="muted small">(optional)</span>', '<textarea class="input" id="f-desc" placeholder="Queues, what to bring, anything useful"></textarea>')}
+        <div class="field"><span class="lbl">Photos</span><div class="drop">${ic('i-image')}<br>Add 1 to 5 photos. We shrink them before upload.</div></div>
+        <div class="row"><button class="btn primary ${S.m ? 'block' : ''}" type="submit">${ic('i-plus')}Submit pop-up</button><span class="small muted">Protected by a quick bot check.</span></div>
+      </form>
+      <div class="sticky" id="trustbox"></div>
+    </div>`;
+}
+function trustBox() {
+  const src = ($('#f-src')?.value || '').trim();
+  const bonus = src ? 10 : 0, total = me.trust + bonus, auto = total >= 50;
+  return `<div class="panel">
+    <div class="eyebrow">Your trust score</div>
+    <div class="confrow"><b class="num">${total}</b><span class="muted">/ 50 to skip review</span></div>
+    <div class="meter bigmeter ${auto ? '' : 'mid'}" style="margin:10px 0 12px"><i style="width:${Math.min(100, total / 50 * 100)}%"></i></div>
+    ${auto ? `<div class="notice good small">${ic('i-bolt')}<span>This goes live straight away and the community starts checking it.</span></div>`
+    : `<div class="notice watch small">${ic('i-clock')}<span>An admin reviews this first, usually within 12 hours.${src ? '' : ' A source link adds 10.'}</span></div>`}
+    <table class="log small" style="margin-top:12px"><tbody>
+      <tr><td>Karma ${me.karma} × 0.5</td><td class="d num">${Math.round(me.karma * 0.5)}</td></tr>
+      <tr><td>${me.verifiedPosts} verified posts × 5</td><td class="d num">${me.verifiedPosts * 5}</td></tr>
+      <tr><td>Hidden or removed posts × 15</td><td class="d num">0</td></tr>
+      <tr><td>Source link</td><td class="d num ${bonus ? 'pos' : ''}">+${bonus}</td></tr>
+    </tbody></table>
+  </div>`;
+}
+function similarity(a, b) {
+  const t = s => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(w => w.length > 2 && !['pop', 'popup', 'the', 'and', 'under'].includes(w)));
+  const A = t(a), B = t(b); if (!A.size || !B.size) return 0;
+  let n = 0; A.forEach(w => B.has(w) && n++); return n / Math.min(A.size, B.size);
+}
+function dupeCheck() {
+  const v = $('#f-title')?.value || ''; let best = null, s = 0;
+  P.filter(p => p.end >= NOW && PUBLIC.includes(p.status)).forEach(p => { const x = similarity(v, p.title); if (x > s) { s = x; best = p; } });
+  $('#dupe').innerHTML = best && s >= 0.5 && v.length > 3
+    ? `<div class="notice watch small">${ic('i-search')}<span>Is it <a href="#" data-open="${best.id}"><b>${esc(best.title)}</b></a> in ${esc(best.area)}? If so, vote on that one instead of adding a copy.</span></div>` : '';
+}
+
+/* AI autofill: in production this calls POST /api/v1/extract (see spec 3.8) */
+const AI_FIELDS = { title: 'f-title', host: 'f-host', where: 'f-where', start: 'f-start', end: 'f-end', hours: 'f-hours', price: 'f-price', desc: 'f-desc' };
+function autofill(key, via) {
+  const form = $('#subform'); if (!form) return;
+  const s = AI_SAMPLES[key];
+  $('#aistatus').innerHTML = `<div class="notice ai small"><span class="spin"></span><span>Reading ${via || s.via}. Looking for dates, place and price.</span></div>`;
+  form.classList.add('filling'); $('#aiGo').disabled = true;
+  setTimeout(() => {
+    if (!$('#subform')) return;
+    form.classList.remove('filling'); $('#aiGo').disabled = false;
+    if (!$('#f-src').value) $('#f-src').value = s.url;
+    Object.entries(AI_FIELDS).forEach(([k, id]) => {
+      const el = $('#' + id); el.value = s.f[k]; el.classList.add('ai');
+      $('#fl-' + id).innerHTML = s.check.includes(k) ? `<span class="tag t-watch">Check this</span>` : `<span class="tag t-ai">AI</span>`;
+    });
+    document.querySelectorAll('[data-fcat]').forEach(b => { const on = b.dataset.fcat === s.f.cat; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); });
+    $('#fl-f-cat').innerHTML = `<span class="tag t-ai">AI</span>`;
+    const n = Object.keys(AI_FIELDS).length + 1;
+    $('#aistatus').innerHTML = `<div class="notice ai small">${ic('i-sparkle')}<span>Filled ${n} fields from ${via || s.via}. Blue fields came from AI${s.check.length ? `, and ${s.check.length} need a closer look` : ''}. Check them before you submit.</span></div>`;
+    $('#trustbox').innerHTML = trustBox();
+    dupeCheck();
+  }, 1500);
+}
+function aiFail() {
+  $('#aistatus').innerHTML = `<div class="notice err small">${ic('i-info')}<span>We could not read that link. Instagram often blocks previews of posts. Upload a screenshot instead, or fill in the form yourself.</span></div>`;
+}
+
+function viewProfile() {
+  const w = baseWeight(), qn = queueItems().length;
+  return `<div class="hero-me"><div class="avatar">ZC</div><div><div class="eyebrow">Member since Aug 2026</div><h1 style="font-size:${S.m ? 26 : 34}px">${me.name}</h1></div></div>
+    <div class="kpis">
+      <div class="kpi"><span class="eyebrow">Karma</span><b class="num">${me.karma}</b></div>
+      <div class="kpi"><span class="eyebrow">Vote weight</span><b class="num">${w.toFixed(2)}x</b></div>
+      <div class="kpi"><span class="eyebrow">Trust</span><b class="num">${me.trust}</b></div>
+      <div class="kpi"><span class="eyebrow">Verified posts</span><b class="num">${me.verifiedPosts}</b></div>
+    </div>
+    <div class="lh"><h2>Account</h2></div>
+    <div class="menu">
+      ${S.admin ? `<button class="mrow" data-view="queue">${ic('i-inbox')}<span>Review queue<span class="sub">${qn} posts waiting</span></span>${qn ? `<span class="tag t-new num" style="margin-left:auto">${qn}</span>` : ''}${ic('i-down', 'i chev')}</button>` : ''}
+      <div class="mrow static">${ic('i-user')}<span>Viewing as<span class="sub">Switch to Admin to try the review queue</span></span><span class="row" style="margin-left:auto;gap:6px;flex-wrap:nowrap">${roleChips()}</span></div>
+      <button class="mrow" data-nl>${ic('i-mail')}<span>Weekend newsletter<span class="sub">${S.nl ? 'Subscribed, every Thursday' : 'Not subscribed'}</span></span>${ic('i-down', 'i chev')}</button>
+      <button class="mrow" data-notif>${ic('i-bell')}<span>Reminders<span class="sub">${S.notif ? 'Day before start and on the last day' : 'Off'}</span></span><span class="switch" role="switch" aria-checked="${S.notif}" style="margin-left:auto"><span class="track"></span></span></button>
+    </div>
+    <div class="lh"><h2>How your vote weight is worked out</h2></div>
+    <div class="rules">
+      <div class="panel"><div class="eyebrow">Karma</div><p style="margin-top:6px"><code>1 + log10(${me.karma})</code> = <b class="num">${(1 + Math.log10(Math.max(me.karma, 1))).toFixed(2)}</b></p><p class="small muted" style="margin-top:6px">Capped at 4. Negative karma drops to 0.2.</p></div>
+      <div class="panel"><div class="eyebrow">Account age</div><p style="margin-top:6px">${me.ageDays} days old, <b>× 1.0</b></p><p class="small muted" style="margin-top:6px">Under a day counts 0. Under a week counts half.</p></div>
+      <div class="panel"><div class="eyebrow">Email verified</div><p style="margin-top:6px"><b>× 1.2</b></p><p class="small muted" style="margin-top:6px">A check-in within 200 m multiplies your vote by 3.</p></div>
+    </div>
+    <div class="lh"><h2>Recent karma</h2></div>
+    <div class="panel" style="padding:6px 16px"><table class="log"><tbody>
+      ${karmaLog.map(k => `<tr><td>${k.why}</td><td class="muted small" style="white-space:nowrap">${k.when}</td><td class="d num ${k.d > 0 ? 'pos' : 'neg'}">${k.d > 0 ? '+' : ''}${k.d}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function viewQueue() {
+  const items = queueItems();
+  return `${S.m ? `<button class="btn sm subtle" data-view="profile" style="margin:-6px 0 8px -10px"><svg class="i" style="rotate:90deg"><use href="#i-down"/></svg><span>Back to Me</span></button>` : ''}
+    <div class="eyebrow">Admin</div><h1>Review queue</h1>
+    <p class="intro">New posts below trust 50, posts the community voted down, and posts with several reports. Your decision overrides community votes.</p>
+    <div class="lh"><h2>${items.length} to review</h2><span class="muted small">Target: under 12 hours</span></div>
+    <div class="stack">${items.length ? items.map(p => {
+      const reason = p.status === 'pending' ? (p.flags || []) : p.status === 'hidden' ? [`Community confidence ${Math.round(conf(p) * 100)}%`] : [`Reported ${Math.round(p.reports)} times`, `Confidence ${Math.round(conf(p) * 100)}%`];
+      return `<div class="qitem">
+        <div class="sw pat-${p.cat}">${ic('c-' + p.cat)}</div>
+        <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div class="row" style="gap:6px">${statusTag(p)}</div>
+          <h3 style="font-family:var(--display);font-size:17px;font-weight:800"><a href="#" data-open="${p.id}" style="color:var(--ink)">${esc(p.title)}</a></h3>
+          <div class="small muted">${esc(p.area)} · ${dateRange(p)} · by <b>${esc(p.by)}</b> (karma ${p.byKarma})</div>
+          <div class="row" style="gap:6px">${reason.map(r => `<span class="tag t-err" style="white-space:normal">${ic('i-flag')}${esc(r)}</span>`).join('')}</div>
+        </div>
+        <div class="qactions">
+          ${p.flags && p.flags[0].startsWith('Possible duplicate') ? `<button class="btn sm" data-act="merge" data-id="${p.id}">Merge</button>` : ''}
+          <button class="btn sm primary" data-act="approve" data-id="${p.id}">${ic('i-shield')}Verify</button>
+          <button class="btn sm danger-outline" data-act="reject" data-id="${p.id}">${ic('i-x')}Remove</button>
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty"><h2>All clear</h2><p style="margin-top:6px">Nothing waiting for review.</p></div>`}</div>`;
+}
+
+/* ---------- drawer / sheet ---------- */
+function drawer(p) {
+  const k = criteria(p), w = baseWeight(), c = k.c, pub = PUBLIC.includes(p.status) || p.status === 'hidden';
+  const checkedIn = p.myEw > w + 0.01;
+  return `<div class="scrim" data-close></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-label="${esc(p.title)}">
+    <div class="dhead pat-${p.cat}"><span class="handle"></span>${ic('c-' + p.cat, 'i big')}
+      <button class="btn sm dclose" data-close aria-label="Close">${ic('i-x')}${S.m ? '' : 'Close'}</button></div>
+    <div class="dbody">
+      <div class="row" style="gap:6px">${statusTag(p)}<span class="tag t-mute">${CATS[p.cat]}</span>${isLive(p) ? '<span class="tag t-new">On now</span>' : ''}</div>
+      <div><h1 style="font-size:32px">${esc(p.title)}</h1><p class="muted" style="margin-top:4px">by ${esc(p.host)}</p></div>
+      <dl class="facts">
+        <dt>${ic('i-clock')}When</dt><dd class="num">${dateRange(p)}${p.hours ? `<br><span class="muted">${esc(p.hours)}</span>` : ''}</dd>
+        <dt>${ic('i-pin')}Where</dt><dd>${esc(p.area)}, London</dd>
+        ${p.price ? `<dt>${ic('i-pound')}Price</dt><dd>${esc(p.price)}</dd>` : ''}
+        <dt>${ic('i-ext')}Source</dt><dd>${p.src ? `<a href="https://${esc(p.src)}" target="_blank" rel="noopener">${esc(p.src)}</a>` : '<span class="muted">No link given</span>'}</dd>
+      </dl>
+      ${p.desc ? `<p>${esc(p.desc)}</p>` : ''}
+      <div class="row">
+        <span class="small muted">Worth going?</span>
+        <div class="score">
+          <button class="vote" data-q="${p.id}" data-v="1" aria-pressed="${p.myQ === 1}" aria-label="Upvote">${ic('i-up')}</button>
+          <span class="num">${p.qp - p.qn}</span>
+          <button class="vote" data-q="${p.id}" data-v="-1" aria-pressed="${p.myQ === -1}" aria-label="Downvote">${ic('i-down')}</button>
+        </div>
+      </div>
+      ${pub ? `<section class="panel">
+        <div class="row"><h2>Is this real?</h2><span class="spacer"></span><span class="small muted num">${p.voters} voters · ${p.checkins} check-ins</span></div>
+        <div class="confrow"><b class="num">${Math.round(c * 100)}%</b><span class="muted small">confidence from weighted votes</span></div>
+        ${meter(p, 'bigmeter')}
+        ${p.status !== 'verified_admin' ? `<ul class="checklist">${k.list.map(x => `<li class="${x.ok ? 'ok' : 'no'}">${ic(x.ok ? 'i-checkc' : 'i-clock')}<span>${x.text}</span></li>`).join('')}</ul>`
+          : `<div class="notice small" style="margin-top:12px">${ic('i-shield')}<span>An admin checked this with the host.</span></div>`}
+        <div class="split" style="margin-top:14px">
+          <button class="btn yes ${p.myE === 1 ? 'on' : ''}" data-e="${p.id}" data-v="1">${ic('i-check')}It's real</button>
+          <button class="btn no ${p.myE === -1 ? 'on' : ''}" data-e="${p.id}" data-v="-1">${ic('i-x')}Fake</button>
+        </div>
+        <button class="btn block" style="margin-top:10px" data-checkin="${p.id}" ${!isLive(p) || checkedIn ? 'disabled' : ''}>${ic('i-locate')}${checkedIn ? 'Checked in' : isLive(p) ? "I'm here, check me in" : 'Check-in opens when it starts'}</button>
+        <p class="weightnote" style="margin-top:10px">Your vote counts <b class="num">${w.toFixed(1)}x</b>. Checked in within 200 m it counts <b class="num">${(w * 3).toFixed(1)}x</b>. Match the final result for +1 karma, miss it for −2.</p>
+      </section>` : `<div class="notice watch">${ic('i-clock')}<span>This post is waiting for an admin, so voting is closed for now.</span></div>`}
+      <div class="small muted">Added by <b>${esc(p.by)}</b> · karma ${p.byKarma}</div>
+      <div>
+        ${p.reported ? `<span class="tag t-mute">${ic('i-flag')}Reported. An admin will take a look.</span>`
+        : S.reportOpen ? `<div class="panel" style="padding:14px"><h3>What's wrong?</h3><div class="chips" style="margin-top:10px">${['It does not exist', 'Cancelled or closed', 'Wrong details', 'Duplicate', 'Spam or advert'].map(r => `<button class="chip" data-report="${p.id}">${r}</button>`).join('')}</div></div>`
+        : `<button class="btn sm subtle" data-reportopen>${ic('i-flag')}Report a problem</button>`}
+      </div>
+    </div>
+    <div class="dfoot">
+      <button class="btn" data-save="${p.id}" aria-pressed="${p.saved}">${ic('i-bookmark')}${p.saved ? 'Saved' : 'Save'}</button>
+      <a class="btn primary" href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener">${ic('i-route')}Directions</a>
+    </div>
+  </aside>`;
+}
+
+/* ---------- render ---------- */
+function render() {
+  renderNav();
+  const v = { explore: viewExplore, map: viewMap, submit: viewSubmit, saved: viewSaved, profile: viewProfile, queue: viewQueue }[S.view] || viewExplore;
+  $('#view').innerHTML = v();
+  if (S.view === 'submit') $('#trustbox').innerHTML = trustBox();
+  renderDrawer();
+}
+function renderDrawer() {
+  const p = S.open && byId(S.open);
+  const keep = document.querySelector('.drawer')?.scrollTop || 0;
+  $('#drawerRoot').innerHTML = p ? drawer(p) : '';
+  if (p && keep) document.querySelector('.drawer').scrollTop = keep;
+  stage.classList.toggle('locked', !!p);
+  document.body.style.overflow = p && stage.dataset.mode !== 'phone' ? 'hidden' : '';
+}
+function go(view) {
+  if (view === 'queue' && !S.admin) view = 'explore';
+  S.view = view; S.open = null; S.hl = null;
+  try { localStorage.setItem('spotted.view', view); } catch (e) {}
+  render(); app.scrollTop = 0; window.scrollTo(0, 0);
+}
+
+/* ---------- actions ---------- */
+function voteExist(p, v, weight) {
+  if (p.myE === 1) p.pos -= p.myEw; else if (p.myE === -1) p.neg -= p.myEw;
+  const first = p.myE === 0;
+  if (p.myE === v && Math.abs(weight - p.myEw) < 0.01) { p.myE = 0; p.myEw = 0; p.voters--; }
+  else { p.myE = v; p.myEw = weight; if (v === 1) p.pos += weight; else p.neg += weight; if (first) p.voters++; }
+  const changed = evaluate(p);
+  if (changed === 'verified_community') toast(`Your vote verified <b>${esc(p.title)}</b>`, 'i-checkc');
+  else if (changed === 'hidden') toast(`<b>${esc(p.title)}</b> is hidden and sent to an admin`, 'i-flag');
+  else if (changed === 'community') toast(`<b>${esc(p.title)}</b> is being checked again`);
+  else if (p.myE) toast(`Vote counted at ${weight.toFixed(1)}x`);
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-view],[data-open],[data-pin],[data-save],[data-q],[data-e],[data-checkin],[data-when],[data-cat],#vonly,[data-close],[data-role],[data-act],[data-fcat],[data-report],[data-reportopen],[data-mode],[data-jump],[data-sample],#aiGo,[data-nl],[data-notif]');
+  if (!t) return;
+  if (t.matches('a:not([target])')) e.preventDefault();
+  if (t.dataset.mode) { S.mode = t.dataset.mode; try { localStorage.setItem('spotted.mode', S.mode); } catch (er) {} computeM(); return render(); }
+  if (t.dataset.jump) {
+    const j = t.dataset.jump;
+    if (j === 'queue') { S.admin = true; return go('queue'); }
+    if (j === 'sheet') { go('explore'); S.open = 'arches'; return renderDrawer(); }
+    if (j === 'ai') { go('submit'); return setTimeout(() => autofill('noodle'), 250); }
+    return go(j === 'me' ? 'profile' : j);
+  }
+  if (t.dataset.view) return go(t.dataset.view);
+  if (t.dataset.save) { e.stopPropagation(); const p = byId(t.dataset.save); p.saved = !p.saved; toast(p.saved ? `Saved. We'll remind you the day before.` : 'Removed from saved', 'i-bookmark'); return render(); }
+  if (t.dataset.q) { e.stopPropagation(); const p = byId(t.dataset.q), v = +t.dataset.v;
+    if (p.myQ === 1) p.qp--; if (p.myQ === -1) p.qn--;
+    p.myQ = p.myQ === v ? 0 : v; if (p.myQ === 1) p.qp++; if (p.myQ === -1) p.qn++;
+    return render(); }
+  if (t.dataset.e) { const p = byId(t.dataset.e), v = +t.dataset.v;
+    const w = p.myE === v && p.myEw > baseWeight() + 0.01 ? p.myEw : baseWeight();
+    voteExist(p, v, w); return render(); }
+  if (t.dataset.checkin) { const p = byId(t.dataset.checkin); p.checkins++; me.karma += 2;
+    karmaLog.unshift({ d: +2, why: `Checked in at <b>${esc(p.title)}</b>`, when: 'Today' });
+    voteExist(p, 1, baseWeight() * 3); toast(`Checked in. Your vote counts 3x and you earned 2 karma.`, 'i-locate'); return render(); }
+  if (t.dataset.pin) {
+    const id = t.dataset.pin;
+    if (S.m) { S.hl = id; document.querySelectorAll('[data-hl]').forEach(el => el.classList.toggle('hl', el.dataset.hl === id));
+      const c = $('#mini-' + id), list = $('#maplist'); if (c && list) list.scrollTo({ left: c.offsetLeft - 16, behavior: 'smooth' }); return; }
+    S.open = id; S.reportOpen = false; return renderDrawer();
+  }
+  if (t.dataset.open) { S.open = t.dataset.open; S.reportOpen = false; return renderDrawer(); }
+  if (t.hasAttribute('data-close')) { S.open = null; return renderDrawer(); }
+  if (t.hasAttribute('data-reportopen')) { S.reportOpen = true; return renderDrawer(); }
+  if (t.dataset.report) { const p = byId(t.dataset.report); p.reported = true; p.reports = (p.reports || 0) + baseWeight(); S.reportOpen = false; toast('Report sent to the admins', 'i-flag'); return render(); }
+  if (t.dataset.when) { S.when = t.dataset.when; return render(); }
+  if (t.dataset.cat) { S.cat = t.dataset.cat; return render(); }
+  if (t.id === 'vonly') { S.verifiedOnly = !S.verifiedOnly; return render(); }
+  if (t.dataset.role) { S.admin = t.dataset.role === 'admin'; if (!S.admin && S.view === 'queue') S.view = 'profile';
+    toast(S.admin ? 'Viewing as admin. Review queue unlocked.' : 'Viewing as a member'); return render(); }
+  if (t.hasAttribute('data-nl')) { S.nl = !S.nl; toast(S.nl ? 'Subscribed. Check your inbox to confirm.' : 'Unsubscribed', 'i-mail'); return render(); }
+  if (t.hasAttribute('data-notif')) { S.notif = !S.notif; return render(); }
+  if (t.dataset.fcat) { document.querySelectorAll('[data-fcat]').forEach(b => { const on = b === t; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); $('#fl-f-cat').innerHTML = ''; return; }
+  if (t.dataset.sample) { const s = AI_SAMPLES[t.dataset.sample]; $('#f-src').value = s.url; return autofill(t.dataset.sample); }
+  if (t.id === 'aiGo') { const v = $('#f-src').value.trim(); if (!v) { $('#f-src').focus(); return toast('Paste a link first', 'i-link'); } const k = pickSample(v); return k ? autofill(k) : (autofillFailing(v)); }
+  if (t.dataset.act) { const p = byId(t.dataset.id), a = t.dataset.act;
+    if (a === 'approve') { p.status = 'verified_admin'; p.reports = 0; toast(`<b>${esc(p.title)}</b> verified. The poster gets 10 karma.`, 'i-shield'); }
+    if (a === 'reject') { p.status = 'removed'; toast(`<b>${esc(p.title)}</b> removed. The poster loses 20 karma.`, 'i-x'); }
+    if (a === 'merge') { p.status = 'removed'; toast(`Merged into <b>Matcha Lab Pop-up</b>`); }
+    S.open = null; return render(); }
+});
+function autofillFailing() {
+  const form = $('#subform');
+  $('#aistatus').innerHTML = `<div class="notice ai small"><span class="spin"></span><span>Reading the link.</span></div>`;
+  form.classList.add('filling');
+  setTimeout(() => { form.classList.remove('filling'); aiFail(); }, 1100);
+}
+document.addEventListener('change', e => {
+  if (e.target.id === 'f-shot' && e.target.files.length) autofill('noodle', 'your screenshot');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.open) { S.open = null; renderDrawer(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.card,[role="button"]')) { e.preventDefault(); e.target.click(); }
+  if (e.key === 'Enter' && e.target.id === 'f-src') { e.preventDefault(); $('#aiGo').click(); }
+});
+document.addEventListener('mouseover', e => {
+  if (S.view !== 'map' || S.m) return;
+  const t = e.target.closest('[data-hl]'), id = t ? t.dataset.hl : null;
+  if (id === S.hl) return; S.hl = id;
+  document.querySelectorAll('[data-hl]').forEach(el => el.classList.toggle('hl', el.dataset.hl === id));
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'q') { S.q = t.value; if (!['explore', 'map'].includes(S.view)) S.view = 'explore'; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); return; }
+  if (t.id === 'f-src') $('#trustbox').innerHTML = trustBox();
+  if (t.classList.contains('ai')) { t.classList.remove('ai'); const f = $('#fl-' + t.id); if (f) f.innerHTML = ''; }
+  if (t.id === 'f-title') dupeCheck();
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'nlform') { const em = $('#nlemail'); if (!em.checkValidity()) { em.reportValidity(); return; } S.nl = true; toast(`Check your inbox to confirm`, 'i-mail'); return render(); }
+  if (e.target.id === 'subform') {
+    const title = $('#f-title').value.trim(), where = $('#f-where').value.trim();
+    if (!title || !where) { toast('Add a name and a location first', 'i-flag'); ($('#f-title').value ? $('#f-where') : $('#f-title')).focus(); return; }
+    const src = $('#f-src').value.trim(), auto = me.trust + (src ? 10 : 0) >= 50;
+    const cat = document.querySelector('[data-fcat][aria-pressed="true"]').dataset.fcat;
+    const s = Date.parse($('#f-start').value + 'T10:00:00+01:00') || at(2), en = Date.parse($('#f-end').value + 'T18:00:00+01:00') || at(4);
+    const id = 'u' + Date.now();
+    P.push({ id, title, host: $('#f-host').value.trim() || 'Unknown host', cat, area: where.split(',').slice(-2, -1)[0]?.trim() || where, lng: -0.11, lat: 51.515, start: s, end: en,
+      hours: $('#f-hours').value.trim(), price: $('#f-price').value.trim(), status: auto ? 'community' : 'pending',
+      pos: 0, neg: 0, voters: 0, checkins: 0, qp: 1, qn: 0, by: 'you', byKarma: me.karma, src, desc: $('#f-desc').value.trim(),
+      myE: 0, myEw: 0, myQ: 1, saved: false, reported: false, flags: ['New post from a member below trust 50'] });
+    toast(auto ? `Live now. The community will start checking it.` : `Submitted. An admin will review it soon.`, auto ? 'i-bolt' : 'i-clock');
+    S.when = 'all'; S.cat = 'all'; go('explore'); S.open = id; renderDrawer();
+  }
+});
+addEventListener('resize', () => { if (computeM()) render(); });
+
+computeM();
+render();
+})();
+</script>

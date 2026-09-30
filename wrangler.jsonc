@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spotted-london",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Safe default. Local dev switches to "development" through .dev.vars.
+  "vars": {
+    "ENVIRONMENT": "production",
+    "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  },
+
+  // IDs are filled in by `wrangler deploy` auto-provisioning (or `wrangler d1 create`).
+  "d1_databases": [
+    { "binding": "DB", "database_name": "spotted-db", "migrations_dir": "./migrations" }
+  ],
+  "kv_namespaces": [{ "binding": "CACHE" }],
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+
+  // Workers AI needs `wrangler login` even in local dev. Uncomment after logging in:
+  // "ai": { "binding": "AI", "remote": true },
+
+  "triggers": {
+    "crons": [
+      "*/10 * * * *", // recompute hot, end expired pop-ups
+      "0 * * * *",    // reminders
+      "0 4 * * *"     // settle karma, abuse scan, purge old check-in coordinates
+    ]
+  }
+}

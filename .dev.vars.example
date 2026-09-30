@@ -1,0 +1,4 @@
+ENVIRONMENT=development
+IP_SALT=local-dev-salt
+# TURNSTILE_SECRET=
+# MAPBOX_TOKEN=

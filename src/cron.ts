@@ -1,0 +1,86 @@
+// Scheduled jobs (SPEC §13.1). Plain deterministic code, no AI agent.
+
+import type { Bindings, PopupRow } from './types';
+import { DAY, hot, KARMA } from './lib/scoring';
+import { awardKarma } from './db/karma';
+
+export async function runCron(cron: string, env: Bindings, now = Date.now()) {
+  switch (cron) {
+    case '*/10 * * * *':
+      await endExpired(env.DB, now);
+      await recomputeHot(env.DB, now);
+      break;
+    case '0 * * * *':
+      await reminders(env.DB, now);
+      break;
+    case '0 4 * * *':
+      await settleKarma(env.DB, now);
+      await purgeCheckinCoordinates(env.DB, now);
+      break;
+    default:
+      console.warn('unknown cron', cron);
+  }
+}
+
+/** Past pop-ups leave the lists. The community verdict becomes final if no admin ruled. */
+export async function endExpired(db: D1Database, now: number) {
+  await db.batch([
+    db.prepare("UPDATE popups SET final_verdict = 'real' WHERE end_at < ? AND status IN ('verified_community', 'verified_admin') AND final_verdict IS NULL").bind(now),
+    db.prepare("UPDATE popups SET final_verdict = 'fake' WHERE end_at < ? AND status = 'hidden' AND confidence <= 0.3 AND final_verdict IS NULL").bind(now),
+    db.prepare("UPDATE popups SET status = 'ended', updated_at = ? WHERE end_at < ? AND status IN ('pending', 'community', 'verified_community', 'verified_admin', 'hidden')").bind(now, now),
+  ]);
+}
+
+/** Hot decays with time, so it is refreshed for everything still upcoming or live. */
+export async function recomputeHot(db: D1Database, now: number) {
+  const { results } = await db.prepare(
+    "SELECT id, status, quality_pos, quality_neg, start_at, end_at FROM popups WHERE end_at >= ? AND status IN ('community', 'verified_community', 'verified_admin')",
+  ).bind(now).all<Pick<PopupRow, 'id' | 'status' | 'quality_pos' | 'quality_neg' | 'start_at' | 'end_at'>>();
+  const stmts = results.map(p =>
+    db.prepare('UPDATE popups SET hot = ? WHERE id = ?').bind(hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, startAt: p.start_at, endAt: p.end_at }, now), p.id),
+  );
+  for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+  return results.length;
+}
+
+/**
+ * Votes that matched the final verdict earn +1, misses cost -2.
+ * Posters also earn +1 per 10 upvotes, up to +20 per post (SPEC §4.5).
+ */
+export async function settleKarma(db: D1Database, now: number) {
+  const { results: votes } = await db.prepare(
+    `SELECT v.user_id, v.popup_id, v.value, p.final_verdict FROM votes v JOIN popups p ON p.id = v.popup_id
+     WHERE v.kind = 'existence' AND v.settled = 0 AND p.final_verdict IS NOT NULL AND p.status IN ('ended', 'removed', 'verified_admin')
+     LIMIT 1000`,
+  ).all<{ user_id: string; popup_id: string; value: number; final_verdict: 'real' | 'fake' }>();
+  for (const v of votes) {
+    const matched = (v.value === 1) === (v.final_verdict === 'real');
+    await awardKarma(db, v.user_id, matched ? KARMA.voteMatched : KARMA.voteMissed, matched ? 'vote_matched' : 'vote_missed', v.popup_id, now);
+    await db.prepare("UPDATE votes SET settled = 1 WHERE user_id = ? AND popup_id = ? AND kind = 'existence'").bind(v.user_id, v.popup_id).run();
+  }
+
+  const { results: ended } = await db.prepare(
+    `SELECT id, created_by, quality_pos FROM popups WHERE status = 'ended' AND quality_pos >= 10
+       AND id NOT IN (SELECT ref_id FROM karma_log WHERE reason = 'upvotes') LIMIT 500`,
+  ).all<{ id: string; created_by: string; quality_pos: number }>();
+  for (const p of ended) {
+    const delta = Math.min(KARMA.upvoteCapPerPost, Math.floor(p.quality_pos / 10) * KARMA.per10Upvotes);
+    await awardKarma(db, p.created_by, delta, 'upvotes', p.id, now);
+  }
+  return { votes: votes.length, posts: ended.length };
+}
+
+/** Check-in coordinates are kept for 30 days, then only distance and validity remain (SPEC §8). */
+export async function purgeCheckinCoordinates(db: D1Database, now: number) {
+  await db.prepare('UPDATE checkins SET lat = NULL, lng = NULL WHERE created_at < ? AND lat IS NOT NULL').bind(now - 30 * DAY).run();
+}
+
+/** Finds saves due a reminder. TODO(email): send through Resend once the account exists. */
+export async function reminders(db: D1Database, now: number) {
+  const { results } = await db.prepare(
+    `SELECT s.user_id, p.id, p.title FROM saves s JOIN popups p ON p.id = s.popup_id
+     WHERE s.remind = 1 AND p.start_at BETWEEN ? AND ? AND p.status IN ('community', 'verified_community', 'verified_admin')`,
+  ).bind(now + 23 * 3_600_000, now + 24 * 3_600_000).all();
+  if (results.length) console.log(`reminders due: ${results.length}`);
+  return results.length;
+}

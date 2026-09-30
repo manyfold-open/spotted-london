@@ -1,0 +1,135 @@
+import { Hono } from 'hono';
+import type { AppEnv, PopupRow } from '../types';
+import { requireAdmin } from '../middleware';
+import { ApiError, bad, newId } from '../lib/util';
+import { jsonBody, num, oneOf, text } from '../lib/validate';
+import { KARMA, type Status } from '../lib/scoring';
+import { onStatusChange, recompute, toPublic } from '../db/popups';
+import { awardKarma } from '../db/karma';
+
+export const admin = new Hono<AppEnv>();
+
+/** Pending posts, community-hidden posts, and public posts with open reports (SPEC §3.7). */
+admin.get('/queue', async c => {
+  requireAdmin(c);
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.*, u.display_name AS poster_name, u.karma AS poster_karma, u.created_at AS poster_created_at,
+       (SELECT COUNT(*) FROM reports r WHERE r.popup_id = p.id AND r.resolution IS NULL) AS open_reports
+     FROM popups p JOIN users u ON u.id = p.created_by
+     WHERE p.status IN ('pending', 'hidden')
+        OR (p.status IN ('community', 'verified_community', 'verified_admin') AND p.report_weight >= 3)
+     ORDER BY CASE p.status WHEN 'hidden' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, p.created_at
+     LIMIT 100`,
+  ).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number; open_reports: number }>();
+  const now = c.get('now');
+  return c.json({
+    items: results.map(p => toPublic(p, {
+      poster: { id: p.created_by, name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((now - p.poster_created_at) / 86_400_000) },
+      open_reports: p.open_reports,
+      flags: [
+        !p.source_url && 'no_source_link',
+        now - p.poster_created_at < 86_400_000 && 'new_account',
+        p.report_weight >= 3 && 'reported',
+        p.status === 'hidden' && 'community_hidden',
+      ].filter(Boolean),
+    })),
+  });
+});
+
+const ACTIONS = ['approve', 'reject', 'hide', 'restore', 'merge'] as const;
+
+admin.post('/popups/:id/decision', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  const action = oneOf(b, 'action', ACTIONS, { required: true })!;
+  const reason = text(b, 'reason', { max: 500 });
+  const db = c.env.DB;
+  const p = await db.prepare('SELECT * FROM popups WHERE id = ?').bind(c.req.param('id')).first<PopupRow>();
+  if (!p) throw new ApiError(404, 'not_found', 'This pop-up does not exist.');
+
+  let to: Status;
+  let mergeInto: string | null = null;
+  switch (action) {
+    case 'approve': to = 'verified_admin'; break;
+    case 'reject': to = 'removed'; break;
+    case 'hide': to = 'hidden'; break;
+    case 'restore': to = 'community'; break;
+    case 'merge': {
+      mergeInto = text(b, 'merge_into', { max: 40, required: true });
+      if (mergeInto === p.id) throw bad('merge_invalid', 'A pop-up cannot be merged into itself.');
+      const target = await db.prepare('SELECT id FROM popups WHERE id = ?').bind(mergeInto).first();
+      if (!target) throw bad('merge_invalid', 'The pop-up to merge into does not exist.');
+      to = 'removed';
+      break;
+    }
+  }
+
+  await db.prepare('UPDATE popups SET status = ?, merged_into = ?, updated_at = ? WHERE id = ?').bind(to, mergeInto, now, p.id).run();
+  // A duplicate is not bad faith, so merging skips the removal penalty.
+  if (action !== 'merge') await onStatusChange(db, p, to, now);
+  if (action === 'merge') {
+    await db.prepare('INSERT OR IGNORE INTO saves (user_id, popup_id, remind, created_at) SELECT user_id, ?, remind, created_at FROM saves WHERE popup_id = ?').bind(mergeInto, p.id).run();
+  }
+  if (action === 'approve' || action === 'reject') await resolveReports(db, p.id, action === 'reject' ? 'upheld' : 'rejected', now);
+  if (action === 'restore') await recompute(db, p.id, now);
+
+  await audit(db, a.id, `popup.${action}`, 'popup', p.id, { reason, merge_into: mergeInto, from: p.status, to }, now);
+  const after = await db.prepare('SELECT * FROM popups WHERE id = ?').bind(p.id).first<PopupRow>();
+  return c.json(toPublic(after!));
+});
+
+async function resolveReports(db: D1Database, popupId: string, resolution: 'upheld' | 'rejected', now: number) {
+  const { results } = await db.prepare('SELECT id, user_id FROM reports WHERE popup_id = ? AND resolution IS NULL').bind(popupId).all<{ id: string; user_id: string }>();
+  for (const r of results) {
+    await db.prepare('UPDATE reports SET resolution = ? WHERE id = ?').bind(resolution, r.id).run();
+    await awardKarma(db, r.user_id, resolution === 'upheld' ? KARMA.reportUpheld : KARMA.reportRejected, `report_${resolution}`, r.id, now);
+  }
+  if (results.length) await db.prepare('UPDATE popups SET report_weight = 0 WHERE id = ?').bind(popupId).run();
+}
+
+admin.post('/reports/:id/resolve', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  const resolution = oneOf(b, 'resolution', ['upheld', 'rejected'] as const, { required: true })!;
+  const db = c.env.DB;
+  const r = await db.prepare('SELECT * FROM reports WHERE id = ?').bind(c.req.param('id')).first<{ id: string; user_id: string; popup_id: string; resolution: string | null }>();
+  if (!r) throw new ApiError(404, 'not_found', 'This report does not exist.');
+  if (r.resolution) throw new ApiError(409, 'already_resolved', 'This report is already resolved.');
+  await db.prepare('UPDATE reports SET resolution = ? WHERE id = ?').bind(resolution, r.id).run();
+  await awardKarma(db, r.user_id, resolution === 'upheld' ? KARMA.reportUpheld : KARMA.reportRejected, `report_${resolution}`, r.id, now);
+  await recompute(db, r.popup_id, now);
+  await audit(db, a.id, `report.${resolution}`, 'report', r.id, null, now);
+  return c.json({ ok: true });
+});
+
+admin.post('/users/:id/action', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  const action = oneOf(b, 'action', ['shadowban', 'ban', 'unban', 'adjust_karma'] as const, { required: true })!;
+  const db = c.env.DB;
+  const id = c.req.param('id');
+  if (id === a.id) throw bad('self_action', 'You cannot do this to your own account.');
+  const target = await db.prepare('SELECT id FROM users WHERE id = ?').bind(id).first();
+  if (!target) throw new ApiError(404, 'not_found', 'This user does not exist.');
+  if (action === 'adjust_karma') {
+    const delta = num(b, 'delta', { required: true, min: -1000, max: 1000 })!;
+    await db.batch([
+      db.prepare('INSERT INTO karma_log (id, user_id, delta, reason, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(newId(), id, Math.round(delta), 'admin_adjust', newId(), now),
+      db.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').bind(Math.round(delta), id),
+    ]);
+  } else {
+    const status = action === 'unban' ? 'active' : action === 'ban' ? 'banned' : 'shadowbanned';
+    await db.prepare('UPDATE users SET status = ? WHERE id = ?').bind(status, id).run();
+    if (action === 'ban') await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id).run();
+  }
+  await audit(db, a.id, `user.${action}`, 'user', id, b, now);
+  return c.json({ ok: true });
+});
+
+async function audit(db: D1Database, adminId: string, action: string, type: string, target: string, detail: unknown, now: number) {
+  await db.prepare('INSERT INTO audit_log (id, admin_id, action, target_type, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(newId(), adminId, action, type, target, detail ? JSON.stringify(detail) : null, now).run();
+}
