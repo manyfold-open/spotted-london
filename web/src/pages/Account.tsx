@@ -158,7 +158,7 @@ export function MePage() {
       <div className="lh"><h2>Your pop-ups</h2></div>
       {mine.data?.items.length ? (
         <div className="stack">{mine.data.items.map(p => (
-          <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug); }}>
+          <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
             <Cover p={p} className="sw" />
             <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateRange(p)}</span></span><StatusTag status={p.status} />
           </Link>

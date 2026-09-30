@@ -219,12 +219,17 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 .spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: turn .7s linear infinite; flex: none; display: inline-block }
 @keyframes turn { to { rotate: 360deg } }
 
+@keyframes stamp { from { scale: 1.8; rotate: -14deg; opacity: 0 } 60% { opacity: 1 } }
+.stamp { animation: stamp .45s var(--ease-spring) backwards }
+
 /* ---------- sheet / drawer ---------- */
 .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 20; animation: fade var(--dur-2) }
 @keyframes fade { from { opacity: 0 } } @keyframes fadeout { to { opacity: 0 } }
 .scrim.out { animation: fadeout var(--dur-2) forwards; pointer-events: none }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--paper); border-left: 1.5px solid var(--ink); z-index: 21; overflow-y: auto; display: flex; flex-direction: column; animation: slide var(--dur-3) var(--ease-out); overscroll-behavior: contain; outline: 0 }
 @keyframes slide { from { translate: 48px 0; opacity: 0 } }
+.drawer.vt, .scrim.vt { animation: none }
+.drawer.vt { view-transition-name: sheet } .drawer.vt .dhead { view-transition-name: cover }
 .drawer.out { animation: slideout var(--dur-2) var(--ease-in) forwards; pointer-events: none }
 @keyframes slideout { to { translate: 48px 0; opacity: 0 } }
 .drawer .dbody > * { animation: rise .36s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 30ms + 60ms) }
@@ -263,6 +268,10 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing: content; line-height: 1.45 }
 .input:focus { outline: 3px solid var(--accent); outline-offset: 1px }
 .input.ai { border-color: var(--ai); background: var(--ai-bg) }
+.fields > :nth-child(2) { --i: 1 } .fields > :nth-child(3) { --i: 2 } .fields > :nth-child(4) { --i: 3 } .fields > :nth-child(5) { --i: 4 } .fields > :nth-child(6) { --i: 5 } .fields > :nth-child(7) { --i: 6 } .fields > :nth-child(8) { --i: 7 } .fields > :nth-child(9) { --i: 8 } .fields > :nth-child(n+10) { --i: 9 }
+.fields .input.ai, .fields .datebtn.ai { animation: aifill .6s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 90ms) }
+@keyframes aifill { from { color: transparent; background-color: var(--card); border-color: var(--hair) } 45% { color: transparent; box-shadow: 0 0 0 4px var(--ai-bg), 0 0 0 5.5px var(--ai) } }
+.fields .lbl .t-ai, .fields .lbl .t-watch { animation: stamp .4s var(--ease-spring) backwards; animation-delay: calc(var(--i, 0) * 90ms + 200ms) }
 .input.bad { border-color: var(--err) }
 .filling .input:not(.src) { color: transparent; border-color: var(--hair); background: linear-gradient(90deg, var(--soft) 0, var(--card) 50%, var(--soft) 100%); background-size: 200% 100%; animation: sheen 1.35s linear infinite }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
@@ -350,7 +359,10 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pinm.verified_community { background: var(--eng); color: var(--card) }
 .pinm.community { background: var(--watch-bg); color: var(--watch); border-style: dashed; border-color: var(--watch) }
 .pinm.live::after { content: ""; position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink) }
-.pinm.hl { scale: 1.3; box-shadow: 0 0 0 3px var(--accent), 2px 2px 0 var(--ink) }
+.pinm.hl { scale: 1.3; box-shadow: 0 0 0 3px var(--accent), 2px 2px 0 var(--ink); z-index: 2 }
+.pinm { transition: scale var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) }
+.pinm.in { animation: pindrop .45s var(--ease-spring) backwards }
+@keyframes pindrop { from { translate: 0 -14px; opacity: 0; scale: .6 } }
 .legend { position: absolute; left: 12px; top: 12px; right: 56px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 2 }
 /* MapLibre controls in the Sketchbook style */
 .maplibregl-ctrl.maplibregl-ctrl-group { background: var(--card); border: 1.5px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden }
@@ -365,6 +377,16 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .maplibregl-ctrl-attrib a { color: var(--ink2) }
 .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--card); border: 1.5px solid var(--ink); border-radius: 999px; min-height: 26px }
 .maplibregl-ctrl-attrib.maplibregl-compact-show { border-radius: 12px; padding: 3px 30px 3px 10px }
+
+/* ---------- submitted ---------- */
+.done { max-width: 520px; margin: 24px auto 0; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center }
+.done .seal { width: 88px; height: 88px; border-radius: 50%; border: 2.5px solid var(--ink); display: grid; place-items: center; box-shadow: var(--shadow); color: var(--card); background: var(--eng); animation: stamp .55s var(--ease-spring) backwards .1s }
+.done .seal.wait { background: var(--watch-bg); color: var(--watch); border-style: dashed; border-color: var(--watch) }
+.done .seal svg.i { width: 40px; height: 40px }
+.done > :not(.seal) { animation: rise .42s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 60ms + 250ms) }
+.done .mini { text-align: left; cursor: pointer }
+.done .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100% }
+@media (max-width: 899px) { .done { margin-top: 8px } .done .acts .btn { flex: 1 1 100% } }
 
 /* ---------- queue, me ---------- */
 .qitem { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px; border: 1.5px solid var(--ink); border-radius: 16px; background: var(--card) }
@@ -400,6 +422,22 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .toast { animation-timing-function: var(--ease-spring); animation-duration: var(--dur-3) }
 .toast.out { animation: tout var(--dur-2) var(--ease-in) forwards }
 @keyframes tout { to { opacity: 0; translate: 0 8px; scale: .96 } }
+
+/* ---------- page transitions ---------- */
+/* Pages cross-fade; the selected tab or nav item slides to its new place. */
+::view-transition-old(root) { animation: fadeout var(--dur-1) var(--ease-in) both }
+::view-transition-new(root) { animation: fade var(--dur-2) var(--ease-out) both }
+.tab.active .ti { view-transition-name: tab-pill }
+.nav.active { view-transition-name: nav-pill }
+::view-transition-group(tab-pill), ::view-transition-group(nav-pill) { animation-duration: var(--dur-3); animation-timing-function: var(--ease-spring) }
+::view-transition-group(tab-pill), ::view-transition-group(nav-pill), ::view-transition-group(cover) { z-index: 2 }
+/* A card's cover grows into the sheet's header while the sheet slides in under it. */
+::view-transition-group(cover) { animation-duration: .38s; animation-timing-function: var(--ease-out); overflow: clip; border-radius: 12px }
+::view-transition-old(cover), ::view-transition-new(cover) { height: 100%; object-fit: cover }
+::view-transition-new(sheet) { animation: vt-sheet .38s var(--ease-out) both }
+.vt-src > .tag, .vt-src > .save { visibility: hidden }
+@keyframes vt-sheet { from { translate: 48px 0; opacity: 0 } }
+@supports (view-transition-name: none) { .tab.active .ti { animation: none } }
 
 @media (max-width: 1180px) {
   .mapwrap { grid-template-columns: minmax(0, 1fr) 280px }
@@ -442,6 +480,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   @keyframes up { from { translate: 0 100% } }
   .drawer.out { animation: down var(--dur-2) var(--ease-in) forwards }
   @keyframes down { to { translate: 0 100% } }
+  @keyframes vt-sheet { from { translate: 0 100% } }
   .drawer.dragging { transition: none; user-select: none }
   .scrim { transition: opacity var(--dur-3) }
   .handle { display: block; position: absolute; top: 8px; pointer-events: none; left: 50%; translate: -50% 0; width: 44px; height: 5px; border-radius: 999px; background: var(--card); box-shadow: 0 0 0 1.5px var(--ink); opacity: .9; z-index: 2 }
@@ -462,7 +501,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .qactions .btn { flex: 1 }
   .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1.5px solid var(--ink); padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)) }
   .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; color: var(--ink2); padding: 2px 0; text-decoration: none; -webkit-touch-callout: none }
-  .tab .ti { position: relative; width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; transition: scale var(--dur-1), background-color var(--dur-2) }
+  .tab .ti { position: relative; width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; transition: scale var(--dur-1) }
   .tab:active .ti, .tab.add:active .plus { scale: .88 }
   .tab.active .ti { animation: tabpop var(--dur-3) var(--ease-spring) }
   @keyframes tabpop { from { scale: .6 } }
@@ -498,4 +537,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .busy::after { animation: none !important; width: 100%; opacity: .6 }
   .spin { animation: blink 1s ease-in-out infinite alternate !important }
   @keyframes blink { to { opacity: .35 } }
+  ::view-transition-group(*) { animation-duration: 0s !important }
+  ::view-transition-old(*) { animation: fadeout var(--dur-2) both !important }
+  ::view-transition-new(*) { animation: fade var(--dur-2) both !important }
 }

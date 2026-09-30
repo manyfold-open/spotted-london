@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { NavLink, Outlet, ScrollRestoration, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { initials } from '../lib/format';
 import { useMe, useToast } from '../lib/hooks';
 import { isPhone, scrollBehavior, useExit } from '../lib/motion';
 import { Icon, type IconName } from './Icon';
+import { Ticker } from './PopupBits';
 import { PopupSheet } from './PopupSheet';
 
 const LOGIN_ERRORS: Record<string, string> = {
@@ -66,8 +67,8 @@ export function Shell() {
         </NavLink>
         <nav className="sidenav" aria-label="Main">
           {items.map(([to, icon, label, ct, hot]) => (
-            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
-              <Icon name={icon} /><span>{label}</span>{ct ? <span className={`ct ${hot ? 'hot' : ''}`}>{ct}</span> : null}
+            <NavLink key={to} to={to} end={to === '/'} viewTransition className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
+              <Icon name={icon} /><span>{label}</span>{ct ? <span className={`ct ${hot ? 'hot' : ''}`}><Ticker value={ct} /></span> : null}
             </NavLink>
           ))}
         </nav>
@@ -89,7 +90,7 @@ export function Shell() {
           <div className="me">
             {me ? (
               <NavLink to="/me" className="kpill" aria-label={`Your profile, ${me.karma} karma`}>
-                <span className="avatar">{initials(me.name, me.email)}</span><span className="num">{me.karma}</span>
+                <span className="avatar">{initials(me.name, me.email)}</span><Ticker value={me.karma} />
                 <span className="d-only muted small">karma</span>
               </NavLink>
             ) : (
@@ -104,11 +105,13 @@ export function Shell() {
       <nav className="tabbar" aria-label="Main">
         <Tab to="/" icon="i-list" label="Explore" end alsoActive={loc.pathname.startsWith('/p/')} />
         <Tab to="/map" icon="i-map" label="Map" warm={loadMap} />
-        <NavLink to="/add" className={({ isActive }) => `tab add ${isActive ? 'active' : ''}`}><span className="plus"><Icon name="i-plus" /></span><span>Add</span></NavLink>
+        <NavLink to="/add" viewTransition className={({ isActive }) => `tab add ${isActive ? 'active' : ''}`}><span className="plus"><Icon name="i-plus" /></span><span>Add</span></NavLink>
         <Tab to="/saved" icon="i-bookmark" label="Saved" badge={savedCount} />
         <Tab to="/me" icon="i-user" label="Me" badge={queueCount} alsoActive={loc.pathname === '/admin'} />
       </nav>
 
+      {/* Each page keeps its own scroll position, so switching tabs and back lands where you were. */}
+      <ScrollRestoration getKey={l => l.pathname} />
       {shownSheet ? <PopupSheet key={shownSheet} slug={shownSheet} leaving={sheetLeaving} /> : null}
     </div>
   );
@@ -156,8 +159,8 @@ function Tab({ to, icon, label, badge, end, alsoActive, warm }: { to: string; ic
     window.scrollTo({ top: 0, behavior: scrollBehavior() });
   };
   return (
-    <NavLink to={to} end={end} onClick={onClick} onPointerDown={warm} className={({ isActive }) => `tab ${isActive || alsoActive ? 'active' : ''}`}>
-      <span className="ti"><Icon name={icon} />{badge ? <span className="badge num">{badge}</span> : null}</span>
+    <NavLink to={to} end={end} viewTransition onClick={onClick} onPointerDown={warm} className={({ isActive }) => `tab ${isActive || alsoActive ? 'active' : ''}`}>
+      <span className="ti"><Icon name={icon} />{badge ? <span className="badge"><Ticker value={badge} /></span> : null}</span>
       <span>{label}</span>
     </NavLink>
   );

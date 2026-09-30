@@ -5,6 +5,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Popup } from '../lib/api';
 import { catIcon, isLive } from '../lib/format';
+import { reducedMotion } from '../lib/motion';
 import type { IconName } from './Icon';
 
 // MapLibre finds its worker relative to its own file, which breaks once bundled. Point it at
@@ -31,6 +32,7 @@ export function PopupMap({ items, highlight, onPin }: { items: Popup[]; highligh
   const markers = useRef(new Map<string, { m: Marker; el: HTMLButtonElement }>());
   const onPinRef = useRef(onPin);
   onPinRef.current = onPin;
+  const fitted = useRef(false);
 
   useEffect(() => {
     map.current = newMap(el.current!);
@@ -41,9 +43,11 @@ export function PopupMap({ items, highlight, onPin }: { items: Popup[]; highligh
   useEffect(() => {
     const m = map.current!;
     const seen = new Set<string>();
+    let added = 0;
     for (const p of items) {
       seen.add(p.id);
       let entry = markers.current.get(p.id);
+      const fresh = !entry;
       if (!entry) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -53,23 +57,28 @@ export function PopupMap({ items, highlight, onPin }: { items: Popup[]; highligh
         entry = { m: mk, el: b };
         markers.current.set(p.id, entry);
       }
-      entry.el.className = `pinm ${p.status} ${isLive(p) ? 'live' : ''}`;
+      entry.el.className = `pinm ${p.status} ${isLive(p) ? 'live' : ''} ${fresh ? 'in' : ''}`;
+      // New pins drop in one after another.
+      entry.el.style.animationDelay = fresh ? `${Math.min(added++, 16) * 25}ms` : '';
       entry.el.innerHTML = iconMarkup(catIcon(p.category));
     }
     for (const [id, x] of markers.current) if (!seen.has(id)) { x.m.remove(); markers.current.delete(id); }
+    // The first fit is instant; later ones (new filters) glide so you can see where things went.
+    const duration = fitted.current && !reducedMotion() ? 700 : 0;
     if (items.length) {
       const b = new LngLatBounds();
       items.forEach(p => b.extend([p.location.lng, p.location.lat]));
-      m.fitBounds(b, { padding: 60, maxZoom: 14, duration: 0 });
+      m.fitBounds(b, { padding: 60, maxZoom: 14, duration });
+      fitted.current = true;
     } else {
-      m.fitBounds(LONDON_BOUNDS, { duration: 0 });
+      m.fitBounds(LONDON_BOUNDS, { duration });
     }
   }, [items]);
 
   useEffect(() => {
     for (const [id, x] of markers.current) x.el.classList.toggle('hl', id === highlight);
     const h = highlight && items.find(p => p.id === highlight);
-    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], duration: 400 });
+    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], duration: reducedMotion() ? 0 : 400 });
   }, [highlight, items]);
 
   return <div className="ml" ref={el} />;

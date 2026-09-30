@@ -92,6 +92,10 @@ Short and functional. Motion says where something came from, confirms a tap, or 
 - **Phones**: pull the sheet down to close it. The top bar tucks away while scrolling down. Tapping the current tab scrolls to the top. Press states use `:active` (scale down a little); hover lifts only apply on `@media (hover: hover)` so they never stick after a tap. Small buttons get a 44 px touch target with `::before`. Android gets a short `haptic()` buzz on save, vote and check in.
 - **Waiting**: skeletons have the same shape as what they replace and stay invisible for the first 150 ms, so fast loads never flash. Sheets open at once with the list copy of a pop-up and fill in the rest. Saves and votes update straight away and undo themselves if the server says no. Changing filters dims the old list and shows a thin line under the top bar.
 - **Small moments**: cards rise in one after another, meters grow, counts roll up or down (`Ticker`), buttons pop when they change state (`bump`), photos fade in over their category pattern.
+- **Page transitions** (View Transitions API, via React Router's `viewTransition` on the tabs and sidebar): pages cross-fade and the selected tab or nav item slides to its new place. Opening a pop-up from a card or mini row passes its cover to `useSheet().open(slug, cover)`; the cover grows into the sheet's header while the sheet slides in. Browsers without view transitions get the CSS animations instead. Each page keeps its scroll position (`ScrollRestoration` keyed by path).
+- **Map**: pins drop in one after another, later filter changes glide to the new bounds, and on phones the card row and the pins follow each other.
+- **Add**: fields filled by AI light up one after another, and posting ends on a screen that says what happens next instead of a toast.
+- **Status changes** stamp in (`.stamp`), for example when your vote verifies a pop-up.
 - **Reduced motion**: everything still fades, but nothing slides, grows, bounces or loops. Spinners pulse instead of turning.
 
 ## Copy

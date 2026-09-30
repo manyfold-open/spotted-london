@@ -8,15 +8,15 @@ import { useErrorToast, useRequireAuth, useSheet, useToast } from '../lib/hooks'
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
 
-export function StatusTag({ status }: { status: Popup['status'] }) {
+export function StatusTag({ status, className = '' }: { status: Popup['status']; className?: string }) {
   switch (status) {
-    case 'verified_admin': return <span className="tag t-ink"><Icon name="i-shield" />Verified</span>;
-    case 'verified_community': return <span className="tag t-eng"><Icon name="i-checkc" />Community verified</span>;
-    case 'community': return <span className="tag t-watch">Being checked</span>;
-    case 'pending': return <span className="tag t-mute">Waiting for review</span>;
-    case 'hidden': return <span className="tag t-err">Hidden</span>;
-    case 'removed': return <span className="tag t-err">Removed</span>;
-    case 'ended': return <span className="tag t-mute">Ended</span>;
+    case 'verified_admin': return <span className={`tag t-ink ${className}`}><Icon name="i-shield" />Verified</span>;
+    case 'verified_community': return <span className={`tag t-eng ${className}`}><Icon name="i-checkc" />Community verified</span>;
+    case 'community': return <span className={`tag t-watch ${className}`}>Being checked</span>;
+    case 'pending': return <span className={`tag t-mute ${className}`}>Waiting for review</span>;
+    case 'hidden': return <span className={`tag t-err ${className}`}>Hidden</span>;
+    case 'removed': return <span className={`tag t-err ${className}`}>Removed</span>;
+    case 'ended': return <span className={`tag t-mute ${className}`}>Ended</span>;
   }
 }
 
@@ -46,6 +46,12 @@ const shown = (e: { currentTarget: HTMLImageElement }) => e.currentTarget.classL
 
 /** A photo that fails to load is hidden, so the category pattern shows instead of a broken image. */
 export const hideBroken = (e: { currentTarget: HTMLImageElement }) => { e.currentTarget.style.display = 'none'; };
+
+/** True once `value` differs from what it was when the component mounted. */
+export function useChanged<T>(value: T) {
+  const first = useRef(value);
+  return value !== first.current;
+}
 
 /** A number that rolls up or down when it changes. */
 export function Ticker({ value }: { value: number }) {
@@ -116,7 +122,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
       </div>
       <div className="cbody">
         <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
-        <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</Link></h3>
+        <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.closest('.card')?.querySelector('.thumb')); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
       </div>

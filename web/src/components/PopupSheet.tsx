@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useLocation } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Popup } from '../lib/api';
 import { fromLists, patchPopup, popupQuery, withMe } from '../lib/cache';
@@ -6,7 +7,7 @@ import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { bump, haptic, isPhone } from '../lib/motion';
 import { Icon } from './Icon';
-import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, usePopupActions } from './PopupBits';
+import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
@@ -21,6 +22,9 @@ const REASONS: [string, string][] = [
 export function PopupSheet({ slug, leaving }: { slug: string; leaving: boolean }) {
   const { close } = useSheet();
   const qc = useQueryClient();
+  const loc = useLocation();
+  // Opened with a view transition, which animates the sheet in instead of CSS.
+  const [vt] = useState(() => !!(loc.state as { vt?: boolean } | null)?.vt);
   // Lists already hold most of a pop-up, so the sheet opens with that and fills in the rest.
   const q = useQuery({ ...popupQuery(slug), retry: false, initialData: () => fromLists(qc, slug), initialDataUpdatedAt: 0 });
   const drawer = useRef<HTMLElement>(null);
@@ -46,8 +50,8 @@ export function PopupSheet({ slug, leaving }: { slug: string; leaving: boolean }
   const notFound = q.error instanceof ApiError && q.error.status === 404;
   return (
     <>
-      <div ref={scrim} className={`scrim ${leaving ? 'out' : ''}`} onClick={close} />
-      <aside ref={drawer} tabIndex={-1} className={`drawer ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={q.data?.title ?? 'Pop-up'} aria-busy={q.isFetching}>
+      <div ref={scrim} className={`scrim ${vt ? 'vt' : ''} ${leaving ? 'out' : ''}`} onClick={close} />
+      <aside ref={drawer} tabIndex={-1} className={`drawer ${vt ? 'vt' : ''} ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={q.data?.title ?? 'Pop-up'} aria-busy={q.isFetching}>
         {q.isPending ? <SheetSkeleton onClose={close} />
           : q.isError && (notFound || !q.data) ? <SheetMissing onClose={close} notFound={notFound} />
           : <SheetBody p={q.data!} onClose={close} />}
@@ -156,6 +160,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const onError = useErrorToast();
   const requireAuth = useRequireAuth();
   const { toggleSave } = usePopupActions(p);
+  const statusChanged = useChanged(p.status);
   const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [reporting, setReporting] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -235,7 +240,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
-          <StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
+          <StatusTag key={p.status} status={p.status} className={statusChanged ? 'stamp' : ''} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
           {live ? <span className="tag t-new">On now</span> : null}
         </div>
         <div><h1 style={{ fontSize: 32 }}>{p.title}</h1>{p.host ? <p className="muted" style={{ marginTop: 4 }}>by {p.host}</p> : null}</div>
