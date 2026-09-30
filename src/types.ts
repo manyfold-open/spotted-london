@@ -13,6 +13,8 @@ export type Bindings = Cloudflare.Env & {
   GOOGLE_CLIENT_SECRET?: string;
   /** Seals the Manyfold caller tokens of the AI agents. 32+ characters. */
   AGENTS_KEY?: string;
+  /** Manyfold API for Connect A2A. Defaults to https://api.manyfold.ai. */
+  MANYFOLD_API_URL?: string;
 };
 
 export interface UserRow {

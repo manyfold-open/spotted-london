@@ -180,6 +180,56 @@ describe('agent settings', () => {
   });
 });
 
+describe('connect with Manyfold', () => {
+  function fakeConnect(pollAnswers: unknown[]) {
+    const answers = [...pollAnswers];
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === 'https://api.manyfold.ai/api/connect/a2a/start') {
+        return Response.json({ requestId: 'a2c_1', userCode: 'WXYZ-2345', authUrl: 'https://manyfold.ai/connect/a2a?request=a2c_1&code=WXYZ-2345', deviceCode: 'mf_cnx_device-secret', expiresAt: new Date(NOW + 15 * 60_000).toISOString() }, { status: 201 });
+      }
+      if (url === 'https://api.manyfold.ai/api/connect/a2a/poll') {
+        expect(JSON.parse(String(init!.body))).toEqual({ deviceCode: 'mf_cnx_device-secret' });
+        return Response.json(answers.shift() ?? { status: 'pending' });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  it('keeps the device code on the server and stores the approved agent', async () => {
+    const spy = fakeConnect([
+      { status: 'pending' },
+      { status: 'approved', userEmail: 'zack@test.dev', agents: [
+        { agentId: 'agt_1', name: 'Spotted Scout', rpcUrl: 'https://api.manyfold.ai/api/a2a/agents/agt_1/rpc', cardUrl: 'https://api.manyfold.ai/api/a2a/agents/agt_1/card', token: 'mf-granted-token-0123456789-abcd', expiresAt: null },
+        { agentId: 'agt_2', name: 'Other', rpcUrl: 'https://api.manyfold.ai/api/a2a/agents/agt_2/rpc', cardUrl: 'x', token: 'mf-other-token-000000000000', expiresAt: null },
+      ] },
+    ]);
+    const start = await call('POST', '/admin/agents/scout/connect', { user: admin });
+    expect(start.status).toBe(201);
+    expect(start.json).toMatchObject({ user_code: 'WXYZ-2345', auth_url: 'https://manyfold.ai/connect/a2a?request=a2c_1&code=WXYZ-2345' });
+    expect(JSON.stringify(start.json)).not.toContain('mf_cnx_');
+    expect(JSON.parse(String(spy.mock.calls[0][1]!.body))).toEqual({ clientName: 'Spotted London (Scout)' }); // APP_URL is http in tests
+
+    expect((await call('POST', '/admin/agents/scout/connect/poll', { user: admin })).json.status).toBe('pending');
+    const done = await call('POST', '/admin/agents/scout/connect/poll', { user: admin });
+    expect(done.json).toMatchObject({ status: 'approved', manyfold_agent: 'Spotted Scout', ignored: 1, agent: { connected: true, token_hint: '…abcd', rpc_url: 'https://api.manyfold.ai/api/a2a/agents/agt_1/rpc' } });
+    expect(JSON.stringify(done.json)).not.toContain('mf-granted-token');
+    const row = await env.DB.prepare("SELECT token_sealed FROM agents WHERE id = 'scout'").first<{ token_sealed: string }>();
+    expect(await unseal(env.AGENTS_KEY, row!.token_sealed)).toBe('mf-granted-token-0123456789-abcd');
+    // the request is used up
+    expect((await call('POST', '/admin/agents/scout/connect/poll', { user: admin })).json.status).toBe('expired');
+  });
+
+  it('reports a denied request and is admin only', async () => {
+    fakeConnect([{ status: 'denied' }]);
+    expect((await call('POST', '/admin/agents/triage/connect', { user: await user() })).status).toBe(403);
+    await call('POST', '/admin/agents/triage/connect', { user: admin });
+    expect((await call('POST', '/admin/agents/triage/connect/poll', { user: admin })).json.status).toBe('denied');
+    const a = await env.DB.prepare("SELECT rpc_url FROM agents WHERE id = 'triage'").first<{ rpc_url: string | null }>();
+    expect(a!.rpc_url).toBeNull();
+  });
+});
+
 describe('agent runs', () => {
   it('starts a run on Manyfold with a brief that carries the run id and admin notes', async () => {
     await connect('scout');

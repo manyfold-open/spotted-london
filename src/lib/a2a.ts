@@ -80,7 +80,7 @@ async function post(cred: AgentCred, method: string, params: unknown, accept: st
     throw new ApiError(502, 'agent_unreachable', `Could not reach the agent: ${safeErrorText(e)}. Check the A2A address and try again.`);
   }
   if (res.status === 401 || res.status === 403) {
-    throw new ApiError(502, 'agent_token_rejected', 'Manyfold rejected the agent token. It may have expired. Mint a new caller token in Manyfold and paste it here.');
+    throw new ApiError(502, 'agent_token_rejected', 'Manyfold rejected the agent token. It may have expired. Press Connect again on this agent to get a new one.');
   }
   // A probe only cares about auth: "no such task" may come back as any 4xx.
   if (!res.ok && !(probing && res.status < 500)) {

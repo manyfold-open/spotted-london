@@ -140,6 +140,7 @@ Nothing an agent writes is published without the admin. Drafts are always `pendi
 
 How it fits together:
 
+- **Connecting**: "Connect with Manyfold" on each agent card uses Manyfold's Connect A2A sign-in (a device-code flow, `POST /api/connect/a2a/start` then `/poll`). The admin checks the code in Manyfold, picks the agent and approves; Spotted receives the A2A address and a token for that one agent. The device code never leaves the Worker (sealed in KV for 15 minutes). Pasting an address and token by hand still works as a fallback.
 - **Spotted to agent**: the `*/10` cron starts agents that are due over A2A (`message/stream`), reads only until the task id arrives, and later checks with `tasks/get`. Runs that do not finish in 3 hours are marked failed. "Run now" starts one straight away.
 - **Agent to Spotted**: `POST /mcp` (MCP, Streamable HTTP, stateless). Without a key it offers `search_popups` and `get_popup` to anyone's AI assistant. With `Authorization: Bearer spk_...` it adds the tools for that agent's job. Keys are stored as SHA-256 and each agent has its own.
 - **What the agent knows**: `skills/spotted-london/SKILL.md`, installed on each agent from GitHub, plus a short brief per run with the run id, limits and the admin's instructions.
@@ -148,9 +149,9 @@ One-time setup:
 
 1. Set the secret that encrypts the Manyfold tokens: `npx wrangler secret put AGENTS_KEY` (32+ random characters, for example from `openssl rand -base64 32`). Changing it later means pasting the tokens again.
 2. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote`.
-3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, add the MCP server with the Spotted key, turn on A2A and paste its address and caller token, press Test, then Run now.
+3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, add the MCP server with the Spotted key, press Connect with Manyfold and approve, then Run now.
 
-Manyfold caller tokens last 90 days. When one expires, runs fail with "Manyfold rejected the agent token"; mint a new one and paste it in.
+When a Manyfold token expires or is revoked, runs fail with "Manyfold rejected the agent token"; press Connect again on that agent.
 
 ## What is not built yet
 
