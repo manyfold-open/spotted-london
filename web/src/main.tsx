@@ -13,6 +13,16 @@ import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/
 
 const MapPage = lazy(() => import('./pages/MapPage'));
 
+// iOS Safari only shows :active press states when the page listens for touches.
+document.addEventListener('touchstart', () => {}, { passive: true });
+
+const MapFallback = () => (
+  <div aria-busy="true" aria-label="Loading the map">
+    <div className="sk skl" style={{ width: 140 }} /><div className="sk" style={{ height: 36, width: 220, marginTop: 10 }} />
+    <div className="sk" style={{ height: 'min(620px, 58svh)', marginTop: 22, borderRadius: 16 }} />
+  </div>
+);
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
 });
@@ -24,7 +34,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <Explore /> },
       { path: '/p/:slug', element: <Explore /> }, // shared links open the sheet over Explore
-      { path: '/map', element: <Suspense fallback={<div className="sk" style={{ height: 600 }} />}><MapPage /></Suspense> },
+      { path: '/map', element: <Suspense fallback={<MapFallback />}><MapPage /></Suspense> },
       { path: '/add', element: <Submit /> },
       { path: '/saved', element: <Saved /> },
       { path: '/me', element: <MePage /> },

@@ -1,11 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Extracted, type Place, type Popup } from '../lib/api';
-import { CAT_LIST, CATS, catIcon, londonDate, londonTs } from '../lib/format';
-import { useDebounced, useErrorToast, useMe, useToast } from '../lib/hooks';
+import { CAT_LIST, CATS, catIcon, dateRange, londonDate, londonTs } from '../lib/format';
+import { useDebounced, useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
+import { haptic } from '../lib/motion';
 import { compressImage } from '../lib/image';
 import { Icon } from '../components/Icon';
+import { Cover } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
 
@@ -19,8 +21,53 @@ const today = () => londonDate(Date.now());
 const looksLikeUrl = (s: string) => /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(s.trim());
 
 export function Submit() {
+  const [done, setDone] = useState<Popup | null>(null);
+  const [round, setRound] = useState(0);
+  if (done) return <Submitted p={done} onAnother={() => { setDone(null); setRound(n => n + 1); window.scrollTo(0, 0); }} />;
+  return <SubmitForm key={round} onDone={p => { setDone(p); window.scrollTo(0, 0); }} />;
+}
+
+/** Shown after posting: what happens next, and a way to see, share or add another. */
+function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
+  const { open } = useSheet();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const live = p.status !== 'pending';
+  useEffect(() => {
+    haptic([12, 60, 12]);
+    // Seed the sheet so "See your pop-up" opens straight away.
+    if (!qc.getQueryData(['popup', p.slug])) qc.setQueryData(['popup', p.slug], p, { updatedAt: 0 });
+  }, [qc, p]);
+  const share = async () => {
+    const url = `${location.origin}/p/${p.slug}`;
+    try {
+      if (navigator.share) await navigator.share({ title: p.title, url });
+      else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }
+    } catch { /* cancelled */ }
+  };
+  const i = (n: number) => ({ '--i': n }) as CSSProperties;
+  return (
+    <div className="done">
+      <div className={`seal ${live ? '' : 'wait'}`} aria-hidden="true"><Icon name={live ? 'i-bolt' : 'i-clock'} /></div>
+      <div style={i(0)}><div className="eyebrow">{live ? 'Posted' : 'Submitted'}</div><h1>{live ? "It's live" : 'Sent for review'}</h1></div>
+      <p className="intro" style={{ ...i(1), marginTop: 0 }}>
+        {live ? 'People can see it now, and the community starts checking it.' : 'An admin usually looks at new posts within 12 hours.'} You earn 10 karma when it is verified.
+      </p>
+      <Link to={`/p/${p.slug}`} className="mini" style={i(2)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
+        <Cover p={p} className="sw" />
+        <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {dateRange(p)}</span></span>
+      </Link>
+      <div className="acts" style={i(3)}>
+        <button className="btn primary" onClick={() => open(p.slug)}><Icon name="i-list" />See your pop-up</button>
+        {live ? <button className="btn" onClick={share}><Icon name="i-link" />Share</button> : null}
+        <button className="btn subtle" onClick={onAnother}><Icon name="i-plus" />Add another</button>
+      </div>
+    </div>
+  );
+}
+
+function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const { data: me, isPending: meLoading } = useMe();
-  const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const onError = useErrorToast();
@@ -170,8 +217,7 @@ export function Submit() {
       }
       qc.invalidateQueries({ queryKey: ['popups'] });
       qc.invalidateQueries({ queryKey: ['me'] });
-      toast(created.status === 'pending' ? 'Submitted. An admin will review it soon.' : 'Live now. The community will start checking it.', created.status === 'pending' ? 'i-clock' : 'i-bolt');
-      nav(`/?p=${created.slug}`, { replace: true });
+      onDone(created);
     } catch (e) {
       setBotReset(n => n + 1); // tokens work once
       if (e instanceof ApiError && e.code === 'possible_duplicate') setDupes((e.data?.candidates as { id: string; slug: string; title: string }[]) ?? []);

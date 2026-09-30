@@ -1,5 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchPopup } from '../lib/cache';
+import { haptic, isPhone, scrollBehavior } from '../lib/motion';
 import { PopupMap } from '../components/maps';
 import { Icon } from '../components/Icon';
 import { Cover } from '../components/PopupBits';
@@ -12,17 +15,39 @@ export default function MapPage() {
   const q = usePopups();
   const items = q.data?.items ?? [];
   const { open } = useSheet();
+  const qc = useQueryClient();
   const [hl, setHl] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
-  const phone = () => window.matchMedia('(max-width: 899px)').matches;
-
   // On phones a pin tap brings its card into view; on desktop it opens the pop-up.
   const onPin = (p: Popup) => {
-    if (!phone()) return open(p.slug);
+    if (!isPhone()) return open(p.slug);
+    haptic(6);
     setHl(p.id);
-    const card = list.current?.querySelector<HTMLElement>(`[data-id="${p.id}"]`);
-    if (card && list.current) list.current.scrollTo({ left: card.offsetLeft - 16, behavior: 'smooth' });
+    const el = list.current, card = el?.querySelector<HTMLElement>(`[data-id="${p.id}"]`);
+    if (!el || !card) return;
+    const r = card.getBoundingClientRect(), box = el.getBoundingClientRect();
+    el.scrollBy({ left: r.left + r.width / 2 - (box.left + box.width / 2), behavior: scrollBehavior() });
   };
+
+  // And the other way round: when the card row stops on a card, its pin lights up and centres.
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    let t = 0;
+    const settle = () => {
+      if (!isPhone()) return;
+      const box = el.getBoundingClientRect(), mid = box.left + box.width / 2;
+      let best: HTMLElement | null = null, gap = Infinity;
+      for (const c of el.querySelectorAll<HTMLElement>('[data-id]')) {
+        const r = c.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid);
+        if (d < gap) { gap = d; best = c; }
+      }
+      if (best?.dataset.id) setHl(best.dataset.id);
+    };
+    const onScroll = () => { clearTimeout(t); t = window.setTimeout(settle, 120); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { el.removeEventListener('scroll', onScroll); clearTimeout(t); };
+  }, []);
 
   return (
     <>
@@ -43,11 +68,13 @@ export default function MapPage() {
           <div className="row d-only" style={{ justifyContent: 'space-between' }}><b className="small">{items.length} pop-ups</b><VerifiedSwitch /></div>
           {items.length ? items.map(p => (
             <Link key={p.id} data-id={p.id} to={`/p/${p.slug}`} className={`mini ${hl === p.id ? 'hl' : ''}`}
-              onMouseEnter={() => setHl(p.id)} onClick={e => { e.preventDefault(); open(p.slug); }}>
+              onMouseEnter={() => setHl(p.id)} onPointerDown={() => prefetchPopup(qc, p.slug)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
               <Cover p={p} className="sw" />
               <span style={{ minWidth: 0 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {fmtDay(p.start_at)}{isLive(p) ? ' · on now' : ''}</span></span>
             </Link>
-          )) : q.isPending ? <div className="sk" style={{ height: 64, flex: 1 }} /> : <div className="empty" style={{ flex: 1 }}><p>No pop-ups match these filters.</p></div>}
+          )) : q.isPending ? Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="mini skc" aria-hidden="true"><div className="sw sk" /><span style={{ flex: 1 }} className="sk-block"><span className="sk skl" style={{ width: '80%' }} /><span className="sk skl" style={{ width: '50%' }} /></span></div>
+          )) : <div className="empty" style={{ flex: 1 }}><p>No pop-ups match these filters.</p></div>}
         </div>
       </div>
       <p className="small muted m-only" style={{ display: 'block', marginTop: 6 }}>Tap a pin to find its card. Tap the card for details.</p>

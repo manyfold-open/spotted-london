@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { NavLink, Outlet, ScrollRestoration, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { initials } from '../lib/format';
 import { useMe, useToast } from '../lib/hooks';
+import { isPhone, scrollBehavior, useExit } from '../lib/motion';
 import { Icon, type IconName } from './Icon';
+import { Ticker } from './PopupBits';
 import { PopupSheet } from './PopupSheet';
 
 const LOGIN_ERRORS: Record<string, string> = {
@@ -21,6 +23,10 @@ export function Shell() {
   const [sp, setSp] = useSearchParams();
   const toast = useToast();
   const sheet = sp.get('p') ?? (loc.pathname.startsWith('/p/') ? decodeURIComponent(loc.pathname.slice(3)) : null);
+  const [shownSheet, sheetLeaving] = useExit(sheet, 220);
+  // A list is loading for new filters or a new search.
+  const busy = useIsFetching({ predicate: q => q.queryKey[0] === 'popups' && q.state.data === undefined }) > 0;
+  const topbar = useTucked();
 
   const saves = useQuery({ queryKey: ['saves'], queryFn: () => api<{ items: Popup[] }>('/me/saves'), enabled: !!me });
   const queue = useQuery({ queryKey: ['queue'], queryFn: () => api<{ items: Popup[] }>('/admin/queue'), enabled: me?.role === 'admin' });
@@ -61,8 +67,8 @@ export function Shell() {
         </NavLink>
         <nav className="sidenav" aria-label="Main">
           {items.map(([to, icon, label, ct, hot]) => (
-            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
-              <Icon name={icon} /><span>{label}</span>{ct ? <span className={`ct ${hot ? 'hot' : ''}`}>{ct}</span> : null}
+            <NavLink key={to} to={to} end={to === '/'} viewTransition className={({ isActive }) => `nav ${isActive || (to === '/' && loc.pathname.startsWith('/p/')) ? 'active' : ''}`}>
+              <Icon name={icon} /><span>{label}</span>{ct ? <span className={`ct ${hot ? 'hot' : ''}`}><Ticker value={ct} /></span> : null}
             </NavLink>
           ))}
         </nav>
@@ -70,12 +76,12 @@ export function Shell() {
       </aside>
 
       <div className="main">
-        <header className="topbar">
+        <header className="topbar" ref={topbar}>
           <NavLink to="/" className="mbrand">
             <Logo /><b>Spotted</b><span className="tag t-out">London</span>
           </NavLink>
           <label className="search">
-            <Icon name="i-search" />
+            {busy && q ? <span className="spin" aria-hidden="true" /> : <Icon name="i-search" />}
             <span className="sr">Search</span>
             <input type="search" value={q} onChange={e => onSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && q) onSearch(''); }}
               placeholder="Search pop-ups, hosts, areas" autoComplete="off" enterKeyHint="search" />
@@ -84,26 +90,29 @@ export function Shell() {
           <div className="me">
             {me ? (
               <NavLink to="/me" className="kpill" aria-label={`Your profile, ${me.karma} karma`}>
-                <span className="avatar">{initials(me.name, me.email)}</span><span className="num">{me.karma}</span>
+                <span className="avatar">{initials(me.name, me.email)}</span><Ticker value={me.karma} />
                 <span className="d-only muted small">karma</span>
               </NavLink>
             ) : (
               <NavLink to={`/signin?return_to=${encodeURIComponent(loc.pathname + loc.search)}`} className="btn sm">Sign in</NavLink>
             )}
           </div>
+          {busy ? <div className="busy" role="progressbar" aria-label="Loading" /> : null}
         </header>
         <main className="page"><Outlet /></main>
       </div>
 
       <nav className="tabbar" aria-label="Main">
         <Tab to="/" icon="i-list" label="Explore" end alsoActive={loc.pathname.startsWith('/p/')} />
-        <Tab to="/map" icon="i-map" label="Map" />
-        <NavLink to="/add" className={({ isActive }) => `tab add ${isActive ? 'active' : ''}`}><span className="plus"><Icon name="i-plus" /></span><span>Add</span></NavLink>
+        <Tab to="/map" icon="i-map" label="Map" warm={loadMap} />
+        <NavLink to="/add" viewTransition className={({ isActive }) => `tab add ${isActive ? 'active' : ''}`}><span className="plus"><Icon name="i-plus" /></span><span>Add</span></NavLink>
         <Tab to="/saved" icon="i-bookmark" label="Saved" badge={savedCount} />
         <Tab to="/me" icon="i-user" label="Me" badge={queueCount} alsoActive={loc.pathname === '/admin'} />
       </nav>
 
-      {sheet ? <PopupSheet slug={sheet} /> : null}
+      {/* Each page keeps its own scroll position, so switching tabs and back lands where you were. */}
+      <ScrollRestoration getKey={l => l.pathname} />
+      {shownSheet ? <PopupSheet key={shownSheet} slug={shownSheet} leaving={sheetLeaving} /> : null}
     </div>
   );
 }
@@ -117,10 +126,41 @@ export function Logo() {
   );
 }
 
-function Tab({ to, icon, label, badge, end, alsoActive }: { to: string; icon: IconName; label: string; badge?: number; end?: boolean; alsoActive?: boolean }) {
+/** The map code is big, so start fetching it when a finger lands on the Map tab. */
+const loadMap = () => { void import('../pages/MapPage'); };
+
+/** On phones the top bar slides away while you scroll down and comes back when you scroll up. */
+function useTucked() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    let last = window.scrollY, frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const el = ref.current, y = window.scrollY, d = y - last;
+        if (!el || Math.abs(d) < 8) return;
+        last = y;
+        const typing = el.contains(document.activeElement);
+        el.classList.toggle('tucked', isPhone() && d > 0 && y > 140 && !typing);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame); };
+  }, []);
+  return ref;
+}
+
+function Tab({ to, icon, label, badge, end, alsoActive, warm }: { to: string; icon: IconName; label: string; badge?: number; end?: boolean; alsoActive?: boolean; warm?: () => void }) {
+  const loc = useLocation();
+  // Tapping the tab you are already on scrolls back to the top and keeps your filters.
+  const onClick = (e: MouseEvent) => {
+    if (loc.pathname !== to) return;
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
+  };
   return (
-    <NavLink to={to} end={end} className={({ isActive }) => `tab ${isActive || alsoActive ? 'active' : ''}`}>
-      <span className="ti"><Icon name={icon} />{badge ? <span className="badge num">{badge}</span> : null}</span>
+    <NavLink to={to} end={end} viewTransition onClick={onClick} onPointerDown={warm} className={({ isActive }) => `tab ${isActive || alsoActive ? 'active' : ''}`}>
+      <span className="ti"><Icon name={icon} />{badge ? <span className="badge"><Ticker value={badge} /></span> : null}</span>
       <span>{label}</span>
     </NavLink>
   );

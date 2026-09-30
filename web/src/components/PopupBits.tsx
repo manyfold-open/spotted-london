@@ -1,19 +1,22 @@
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
+import { patchPopup, prefetchPopup, withMe } from '../lib/cache';
 import { CATS, catIcon, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
 import { useErrorToast, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
 
-export function StatusTag({ status }: { status: Popup['status'] }) {
+export function StatusTag({ status, className = '' }: { status: Popup['status']; className?: string }) {
   switch (status) {
-    case 'verified_admin': return <span className="tag t-ink"><Icon name="i-shield" />Verified</span>;
-    case 'verified_community': return <span className="tag t-eng"><Icon name="i-checkc" />Community verified</span>;
-    case 'community': return <span className="tag t-watch">Being checked</span>;
-    case 'pending': return <span className="tag t-mute">Waiting for review</span>;
-    case 'hidden': return <span className="tag t-err">Hidden</span>;
-    case 'removed': return <span className="tag t-err">Removed</span>;
-    case 'ended': return <span className="tag t-mute">Ended</span>;
+    case 'verified_admin': return <span className={`tag t-ink ${className}`}><Icon name="i-shield" />Verified</span>;
+    case 'verified_community': return <span className={`tag t-eng ${className}`}><Icon name="i-checkc" />Community verified</span>;
+    case 'community': return <span className={`tag t-watch ${className}`}>Being checked</span>;
+    case 'pending': return <span className={`tag t-mute ${className}`}>Waiting for review</span>;
+    case 'hidden': return <span className={`tag t-err ${className}`}>Hidden</span>;
+    case 'removed': return <span className={`tag t-err ${className}`}>Removed</span>;
+    case 'ended': return <span className={`tag t-mute ${className}`}>Ended</span>;
   }
 }
 
@@ -29,40 +32,65 @@ export function Meter({ value, big }: { value: number; big?: boolean }) {
 export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string }) {
   return (
     <div className={`${className} pat-${p.category}`}>
-      {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" onError={hideBroken} /> : <Icon name={catIcon(p.category)} className="i big" />}
+      {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
 }
 
+/** A photo that fades in once it has loaded, over the category pattern. */
+export function Img({ src }: { src: string }) {
+  return <img src={src} alt="" loading="lazy" className="fade" onLoad={shown} onError={hideBroken}
+    ref={el => { if (el?.complete && el.naturalWidth) el.classList.add('in'); }} />;
+}
+const shown = (e: { currentTarget: HTMLImageElement }) => e.currentTarget.classList.add('in');
+
 /** A photo that fails to load is hidden, so the category pattern shows instead of a broken image. */
 export const hideBroken = (e: { currentTarget: HTMLImageElement }) => { e.currentTarget.style.display = 'none'; };
 
-/** Keeps every list in sync after a save or vote. */
+/** True once `value` differs from what it was when the component mounted. */
+export function useChanged<T>(value: T) {
+  const first = useRef(value);
+  return value !== first.current;
+}
+
+/** A number that rolls up or down when it changes. */
+export function Ticker({ value }: { value: number }) {
+  const prev = useRef(value);
+  const dir = value > prev.current ? 'up' : value < prev.current ? 'down' : '';
+  useEffect(() => { prev.current = value; }, [value]);
+  return <span className="tick num"><span key={value} className={dir}>{value}</span></span>;
+}
+
+/**
+ * Save and quality votes. Both show the new state at once in every list and sheet, then undo
+ * it if the server says no.
+ */
 export function usePopupActions(p: Popup) {
   const qc = useQueryClient();
   const toast = useToast();
   const onError = useErrorToast();
   const requireAuth = useRequireAuth();
-  const refresh = (next?: Popup) => {
-    if (next) qc.setQueryData(['popup', p.slug], (old: Popup | undefined) => (old ? { ...old, ...next, me: old.me } : old));
-    qc.invalidateQueries({ queryKey: ['popups'] });
-    qc.invalidateQueries({ queryKey: ['popup', p.slug] });
-    qc.invalidateQueries({ queryKey: ['saves'] });
-  };
   const save = useMutation({
+    scope: { id: `save-${p.id}` },
     mutationFn: (on: boolean) => api(`/popups/${p.id}/save`, { method: on ? 'PUT' : 'DELETE', json: on ? {} : undefined }),
-    onSuccess: (_d, on) => { toast(on ? "Saved. We'll remind you the day before." : 'Removed from saved', 'i-bookmark'); refresh(); },
-    onError,
+    onMutate: on => { haptic(); return patchPopup(qc, p.id, x => withMe(x, { saved: on })); },
+    onSuccess: (_d, on) => toast(on ? "Saved. We'll remind you the day before." : 'Removed from saved', 'i-bookmark'),
+    onError: (e, _on, undo) => { undo?.(); onError(e); },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['saves'] }); qc.invalidateQueries({ queryKey: ['popups'], refetchType: 'none' }); },
   });
   const quality = useMutation({
+    scope: { id: `quality-${p.id}` },
     mutationFn: (value: number) => api<{ popup: Popup }>(`/popups/${p.id}/vote`, { method: 'PUT', json: { kind: 'quality', value } }),
-    onSuccess: d => refresh(d.popup),
-    onError,
+    onMutate: value => {
+      haptic();
+      return patchPopup(qc, p.id, x => withMe({ ...x, score: x.score + value - (x.me?.quality_vote ?? 0) }, { quality_vote: value }));
+    },
+    onSuccess: d => { patchPopup(qc, p.id, x => ({ ...x, score: d.popup.score })); },
+    onError: (e, _v, undo) => { undo?.(); onError(e); },
   });
   return {
-    toggleSave: requireAuth(() => save.mutate(!p.me?.saved), 'Sign in to save pop-ups'),
-    voteQuality: requireAuth((v: number) => quality.mutate(p.me?.quality_vote === v ? 0 : v), 'Sign in to vote'),
-    busy: save.isPending || quality.isPending,
+    toggleSave: requireAuth((e?: { currentTarget: Element }) => { bump(e?.currentTarget); save.mutate(!p.me?.saved); }, 'Sign in to save pop-ups'),
+    voteQuality: requireAuth((v: number, el?: Element) => { bump(el); quality.mutate(p.me?.quality_vote === v ? 0 : v); }, 'Sign in to vote'),
   };
 }
 
@@ -71,28 +99,30 @@ export function ScoreVotes({ p }: { p: Popup }) {
   const mine = p.me?.quality_vote ?? 0;
   return (
     <div className="score">
-      <button className="vote" aria-pressed={mine === 1} aria-label="Upvote" onClick={e => { e.stopPropagation(); voteQuality(1); }}><Icon name="i-up" /></button>
-      <span className="num">{p.score}</span>
-      <button className="vote" aria-pressed={mine === -1} aria-label="Downvote" onClick={e => { e.stopPropagation(); voteQuality(-1); }}><Icon name="i-down" /></button>
+      <button className="vote" aria-pressed={mine === 1} aria-label="Upvote" onClick={e => { e.stopPropagation(); voteQuality(1, e.currentTarget); }}><Icon name="i-up" /></button>
+      <Ticker value={p.score} />
+      <button className="vote" aria-pressed={mine === -1} aria-label="Downvote" onClick={e => { e.stopPropagation(); voteQuality(-1, e.currentTarget); }}><Icon name="i-down" /></button>
     </div>
   );
 }
 
-export function PopupCard({ p }: { p: Popup }) {
+export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
   const { open } = useSheet();
+  const qc = useQueryClient();
   const { toggleSave } = usePopupActions(p);
   const live = isLive(p);
+  const warm = () => prefetchPopup(qc, p.slug);
   return (
-    <article className="card">
+    <article className="card" style={{ '--i': Math.min(i, 8) } as CSSProperties}>
       <div className={`thumb pat-${p.category}`}>
-        {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" onError={hideBroken} /> : <Icon name={catIcon(p.category)} className="i big" />}
+        {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
         <span className="tag cattag">{CATS[p.category]}</span>
         {live ? <span className="tag t-new live">On now</span> : startsTomorrow(p) ? <span className="tag t-out live">Tomorrow</span> : null}
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
       </div>
       <div className="cbody">
         <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
-        <h3><Link className="stretch" to={`/p/${p.slug}`} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</Link></h3>
+        <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.closest('.card')?.querySelector('.thumb')); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
       </div>
@@ -105,6 +135,17 @@ export function PopupCard({ p }: { p: Popup }) {
   );
 }
 
+/** Placeholder cards with the same layout as the real ones, so nothing jumps when they land. */
 export function CardSkeletons({ n = 6 }: { n?: number }) {
-  return <div className="grid" aria-busy="true">{Array.from({ length: n }, (_, i) => <div key={i} className="sk sk-card" />)}</div>;
+  return (
+    <div className="grid" aria-busy="true" aria-label="Loading pop-ups">
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="card skc" aria-hidden="true">
+          <div className="thumb sk" />
+          <div className="cbody"><div className="sk skl pill" /><div className="sk skl h" style={{ width: '78%' }} /><div className="sk skl" style={{ width: '60%' }} /><div className="sk skl" style={{ width: '45%' }} /></div>
+          <div className="cfoot"><div className="sk skl" style={{ flex: 1 }} /></div>
+        </div>
+      ))}
+    </div>
+  );
 }

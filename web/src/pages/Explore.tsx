@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, listQuery, type Popup } from '../lib/api';
 import { CAT_LIST, CATS, catIcon, fmtDay, isLive, looksLikeEmail } from '../lib/format';
-import { currentPosition, useErrorToast, useFilters, useMe } from '../lib/hooks';
+import { currentPosition, useDebounced, useErrorToast, useFilters, useMe } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CardSkeletons, PopupCard } from '../components/PopupBits';
 
@@ -11,7 +11,8 @@ const WHENS = [['today', 'Today'], ['weekend', 'This weekend'], ['week', 'Next 7
 
 export function usePopups(near?: [number, number] | null) {
   const f = useFilters();
-  const params = { when: f.when, category: f.category, verified: f.verified, q: f.q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) };
+  const q = useDebounced(f.q, 250); // one request when typing pauses, not one per letter
+  const params = { when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) };
   return useQuery({
     queryKey: ['popups', params],
     queryFn: () => api<{ items: Popup[] }>(`/popups?${listQuery(params)}`),
@@ -69,7 +70,7 @@ export function Explore() {
       {live.length && f.when !== 'today' ? (
         <div className="m-only" style={{ display: 'block' }}>
           <div className="lh"><h2>Happening now</h2><span className="muted small">{live.length} open</span></div>
-          <div className="carousel noscroll">{live.map(p => <PopupCard key={p.id} p={p} />)}</div>
+          <div className="carousel noscroll">{live.map((p, i) => <PopupCard key={p.id} p={p} i={i} />)}</div>
         </div>
       ) : null}
 
@@ -81,7 +82,7 @@ export function Explore() {
       {q.isPending ? <CardSkeletons /> : q.isError ? (
         <div className="notice err"><Icon name="i-info" /><span>{q.error.message}</span><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>
       ) : items.length ? (
-        <div className="grid">{items.map(p => <PopupCard key={p.id} p={p} />)}</div>
+        <div className={`grid ${q.isPlaceholderData ? 'stale' : ''}`}>{items.map((p, i) => <PopupCard key={p.id} p={p} i={i} />)}</div>
       ) : (
         <div className="empty"><Icon name="i-search" className="i big" /><h2>Nothing here yet</h2><p>Try a wider date range or another category, or be the first to add one.</p><Link className="btn sm" to="/add"><Icon name="i-plus" />Add a pop-up</Link></div>
       )}

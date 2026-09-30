@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Me, type When } from './api';
+import { seedPopup } from './cache';
+import { reducedMotion } from './motion';
 import { Icon, type IconName } from '../components/Icon';
 
 /* ---------- current user ---------- */
@@ -32,7 +34,7 @@ export function useRequireAuth() {
 }
 
 /* ---------- toasts ---------- */
-type Toast = { id: number; msg: string; icon: IconName; err?: boolean };
+type Toast = { id: number; msg: string; icon: IconName; err?: boolean; out?: boolean };
 const ToastCtx = createContext<(msg: string, icon?: IconName, err?: boolean) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
@@ -42,13 +44,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((msg: string, icon: IconName = 'i-check', err = false) => {
     const id = ++n.current;
     setItems(t => [...t.slice(-2), { id, msg, icon, err }]);
+    setTimeout(() => setItems(t => t.map(x => (x.id === id ? { ...x, out: true } : x))), 3400);
     setTimeout(() => setItems(t => t.filter(x => x.id !== id)), 3600);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
       {children}
       <div className="toasts" aria-live="polite">
-        {items.map(t => <div key={t.id} className={`toast ${t.err ? 'err' : ''}`}><Icon name={t.icon} /><span>{t.msg}</span></div>)}
+        {items.map(t => <div key={t.id} className={`toast ${t.err ? 'err' : ''} ${t.out ? 'out' : ''}`}><Icon name={t.icon} /><span>{t.msg}</span></div>)}
       </div>
     </ToastCtx.Provider>
   );
@@ -82,11 +85,29 @@ export function useSheet() {
   const nav = useNavigate();
   const loc = useLocation();
   const qc = useQueryClient();
-  const open = useCallback((slug: string) => {
+  /**
+   * Opens a pop-up. Pass the cover it was opened from and, where the browser supports view
+   * transitions, that cover grows into the sheet's header.
+   */
+  const open = useCallback((slug: string, from?: Element | null) => {
+    seedPopup(qc, slug);
     const sp = new URLSearchParams(loc.search);
     sp.set('p', slug);
-    nav({ pathname: loc.pathname.startsWith('/p/') ? '/' : loc.pathname, search: sp.toString() }, { state: { sheet: true } });
-  }, [nav, loc]);
+    const to = { pathname: loc.pathname.startsWith('/p/') ? '/' : loc.pathname, search: sp.toString() };
+    const cover = from instanceof HTMLElement ? from : null;
+    if (!cover || !document.startViewTransition || reducedMotion() || !qc.getQueryData(['popup', slug])) {
+      void nav(to, { state: { sheet: true } });
+      return;
+    }
+    cover.style.viewTransitionName = 'cover';
+    cover.classList.add('vt-src'); // leave the card's tags and buttons out of the picture that flies
+    const t = document.startViewTransition(async () => {
+      cover.style.viewTransitionName = '';
+      cover.classList.remove('vt-src');
+      await nav(to, { state: { sheet: true, vt: true }, flushSync: true });
+    });
+    t.finished.finally(() => { cover.style.viewTransitionName = ''; cover.classList.remove('vt-src'); });
+  }, [nav, loc, qc]);
   const close = useCallback(() => {
     if ((loc.state as { sheet?: boolean } | null)?.sheet) return nav(-1);
     const sp = new URLSearchParams(loc.search);
