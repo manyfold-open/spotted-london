@@ -17,7 +17,7 @@ London pop-up discovery platform: anyone adds a pop-up, the community verifies i
 ## Stack
 
 - One Cloudflare Worker (`src/`, Hono) serves the API under `/api/v1`, a few server pages, and the SPA from `web/dist` as static assets.
-- D1 (SQLite) for data, KV for autofill cache and rate limits, R2 for photos (see status), Cron Triggers for background jobs, Turnstile for bot checks.
+- D1 (SQLite) for data, KV for autofill cache and rate limits, R2 bucket `spotted-images` for photos, Cron Triggers for background jobs, Turnstile for bot checks.
 - Web app in `web/`: Vite + React 19, React Router 8 (library mode), TanStack Query, MapLibre + OpenFreeMap tiles. No SSR: `/p/:slug` gets SEO/Open Graph/schema.org tags injected by the Worker with HTMLRewriter.
 - Free tier only. Workers Free has about 10 ms CPU per request, so keep request handlers light and push heavy work into cron.
 
@@ -88,13 +88,12 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples.
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2.
 
 Not done yet, roughly in priority order:
-1. Photos: R2 must be enabled on the account first (see README "Still to switch on").
-2. Workers AI for autofill from pasted text and screenshots (`ai` binding is commented out in `wrangler.jsonc`; `/extract/image` returns 501).
-3. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
-4. Hide quality votes on your own posts in the UI (the API already rejects them).
-5. Vote ring detection in the daily abuse scan.
-6. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
-7. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).
+1. Workers AI for autofill from pasted text and screenshots (`ai` binding is commented out in `wrangler.jsonc`; `/extract/image` returns 501).
+2. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
+3. Hide quality votes on your own posts in the UI (the API already rejects them).
+4. Vote ring detection in the daily abuse scan.
+5. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
+6. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).

@@ -540,7 +540,7 @@ CREATE TABLE audit_log (
 | Newsletter | Beehiiv 免費方案 |
 | 交易信 | Resend 免費方案 |
 | 圖片處理 | 前端壓縮，不用 Cloudflare Images |
-| 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線，只能瀏覽；登入待設定 Resend / Google，照片待啟用 R2） |
+| 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
 | 範例資料 | 線上放標示「Example」的虛構活動、noindex；正式上線前用 `seed/clear-examples.sql` 清除 |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |
 | Icons | [Koboyo hand-drawn icons](https://koboyo.com/icons)：手繪風格 SVG，`fill="currentColor"`，商用免費、免標註。限制：不可把 icon 當成產品功能讓用戶挑選或下載，也不可重新散布整套 icon 庫 |

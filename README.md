@@ -127,7 +127,6 @@ In the Google console, add `<APP_URL>/api/v1/auth/google/callback` as an authori
 - Emails other than sign-in: newsletter confirmation and reminders are found by the jobs but not sent yet.
 - Vote ring detection in the daily abuse scan.
 - Photo uploads by people other than the poster, and an image moderation step.
-- Photos in local development too: they need the R2 binding, which is switched off until R2 is enabled on the account.
 
 ## Production
 
@@ -138,6 +137,7 @@ Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zac
 | Worker | `spotted-london` | cron: every 10 min, hourly, daily 04:00 UTC |
 | D1 | `spotted-db` (WEUR) | id in `wrangler.jsonc` |
 | KV | `CACHE` | autofill cache and rate limits |
+| R2 | `spotted-images` (WEUR) | photos, served through `/api/v1/images/...` |
 | Turnstile | "Spotted London" | site key in `wrangler.jsonc`, secret in `TURNSTILE_SECRET` |
 | Secrets | `IP_SALT`, `TURNSTILE_SECRET` | set with `wrangler secret put`, never in the repo |
 
@@ -159,6 +159,5 @@ npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # 
 ### Still to switch on
 
 - **Sign in**: add `RESEND_API_KEY` and `EMAIL_FROM` (email links) and/or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Until then the site is browse-only.
-- **Photos**: enable R2 in the Cloudflare dashboard, then `npx wrangler r2 bucket create spotted-images` and uncomment `r2_buckets` in `wrangler.jsonc`.
 - **Workers AI** for autofill from pasted text: uncomment the `ai` binding.
 - **Custom domain**: add it to the Worker, update `APP_URL`, and add the domain to the Turnstile widget.

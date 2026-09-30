@@ -28,8 +28,8 @@
     { "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a", "migrations_dir": "./migrations" }
   ],
   "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
-  // Photos need R2, which has to be switched on in the Cloudflare dashboard first. Then uncomment:
-  // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+  // Photos (R2 enabled on the account on 2026-09-30)
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
 
   // Workers AI needs `wrangler login` even in local dev. Uncomment after logging in:
   // "ai": { "binding": "AI", "remote": true },
