@@ -141,6 +141,25 @@ Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zac
 | Turnstile | "Spotted London" | site key in `wrangler.jsonc`, secret in `TURNSTILE_SECRET` |
 | Secrets | `IP_SALT`, `TURNSTILE_SECRET` | set with `wrangler secret put`, never in the repo |
 
+### How deploys happen
+
+The Worker is connected to this repo with **Cloudflare Workers Builds** (no GitHub Actions). Settings live in the dashboard under Workers & Pages → spotted-london → Settings → Build:
+
+| Setting | Value |
+|---|---|
+| Git repository | `tldr0810/spotted-london` |
+| Production branch | `main` |
+| Build command | `npm ci && npm run build:web` |
+| Deploy command | `npx wrangler deploy` |
+| Non-production branches | preview builds on (default preview command) |
+| Build variable | `NODE_VERSION=22` |
+
+- A push to `main` builds and deploys production.
+- A push to any other branch makes a preview version. Previews use the **same** D1, KV and R2 as production.
+- The build token cannot touch D1. When a change adds a file to `migrations/`, apply it from a computer signed in with wrangler **before** merging: `npx wrangler d1 migrations apply spotted-db --remote`. Migrations must stay backwards compatible with the code already running.
+
+Manual deploy from a computer, if ever needed:
+
 ```bash
 npm run deploy                                                        # build web/ and deploy
 npx wrangler d1 migrations apply spotted-db --remote                  # after adding a migration
