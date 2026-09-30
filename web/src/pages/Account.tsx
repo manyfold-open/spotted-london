@@ -120,7 +120,7 @@ export function MePage() {
   });
   const newsletter = useMutation({ mutationFn: () => api('/newsletter/subscribe', { method: 'POST', json: { email: me!.email } }), onSuccess: () => toast('Check your inbox to confirm', 'i-mail'), onError });
 
-  if (isPending) return <div className="sk" style={{ height: 300 }} />;
+  if (isPending) return <MeSkeleton />;
   if (!me) return <SignInPrompt title="Your profile" text="Sign in to add pop-ups, vote, and build karma." to="/me" />;
   const factor = me.karma < 0 ? 0.2 : Math.min(4, 1 + Math.log10(Math.max(me.karma, 1)));
 
@@ -204,7 +204,7 @@ export function AdminQueue() {
     },
     onError,
   });
-  if (isPending) return <div className="sk" style={{ height: 300 }} />;
+  if (isPending) return <QueueSkeleton />;
   if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page is for the people who review new posts.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   const items = q.data?.items ?? [];
   return (
@@ -213,7 +213,7 @@ export function AdminQueue() {
       <div className="eyebrow">Admin</div><h1>Review queue</h1>
       <p className="intro">New posts below trust 50, posts the community voted down, and posts with several reports. Your decision overrides community votes.</p>
       <div className="lh"><h2>{items.length} to review</h2><span className="muted small">Target: under 12 hours</span></div>
-      {q.isPending ? <div className="sk" style={{ height: 200 }} /> : items.length ? (
+      {q.isPending ? <QueueSkeleton list /> : items.length ? (
         <div className="stack">{items.map(p => (
           <div className="qitem" key={p.id}>
             <Cover p={p} className="sw" />
@@ -233,6 +233,24 @@ export function AdminQueue() {
       ) : <div className="empty"><Icon name="i-checkc" className="i big" /><h2>All clear</h2><p>Nothing waiting for review.</p></div>}
     </>
   );
+}
+
+function MeSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading your profile">
+      <div className="hero-me"><div className="avatar sk" style={{ border: 0 }} /><div className="sk-block" style={{ flex: 1 }}><div className="sk skl" style={{ width: 130 }} /><div className="sk" style={{ height: 30, width: '55%' }} /></div></div>
+      <div className="kpis">{Array.from({ length: 4 }, (_, i) => <div key={i} className="sk-panel" style={{ padding: '14px 16px' }}><div className="sk skl" style={{ width: '60%' }} /><div className="sk" style={{ height: 28, width: '40%' }} /></div>)}</div>
+      <div className="sk-panel" style={{ marginTop: 28, height: 220 }} />
+    </div>
+  );
+}
+
+function QueueSkeleton({ list }: { list?: boolean }) {
+  const rows = <div className="stack">{Array.from({ length: 3 }, (_, i) => (
+    <div key={i} className="qitem skc"><div className="sw sk" /><div className="sk-block"><div className="sk skl pill" /><div className="sk skl h" style={{ width: '70%' }} /><div className="sk skl" style={{ width: '85%' }} /></div></div>
+  ))}</div>;
+  if (list) return rows;
+  return <div aria-busy="true" aria-label="Loading the review queue"><div className="sk skl" style={{ width: 80 }} /><div className="sk" style={{ height: 40, width: 260, margin: '10px 0 28px' }} />{rows}</div>;
 }
 
 export function NotFound() {

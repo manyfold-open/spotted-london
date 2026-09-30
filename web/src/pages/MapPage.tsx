@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchPopup } from '../lib/cache';
 import { PopupMap } from '../components/maps';
 import { Icon } from '../components/Icon';
 import { Cover } from '../components/PopupBits';
@@ -12,6 +14,7 @@ export default function MapPage() {
   const q = usePopups();
   const items = q.data?.items ?? [];
   const { open } = useSheet();
+  const qc = useQueryClient();
   const [hl, setHl] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const phone = () => window.matchMedia('(max-width: 899px)').matches;
@@ -43,11 +46,13 @@ export default function MapPage() {
           <div className="row d-only" style={{ justifyContent: 'space-between' }}><b className="small">{items.length} pop-ups</b><VerifiedSwitch /></div>
           {items.length ? items.map(p => (
             <Link key={p.id} data-id={p.id} to={`/p/${p.slug}`} className={`mini ${hl === p.id ? 'hl' : ''}`}
-              onMouseEnter={() => setHl(p.id)} onClick={e => { e.preventDefault(); open(p.slug); }}>
+              onMouseEnter={() => setHl(p.id)} onPointerDown={() => prefetchPopup(qc, p.slug)} onClick={e => { e.preventDefault(); open(p.slug); }}>
               <Cover p={p} className="sw" />
               <span style={{ minWidth: 0 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {fmtDay(p.start_at)}{isLive(p) ? ' · on now' : ''}</span></span>
             </Link>
-          )) : q.isPending ? <div className="sk" style={{ height: 64, flex: 1 }} /> : <div className="empty" style={{ flex: 1 }}><p>No pop-ups match these filters.</p></div>}
+          )) : q.isPending ? Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="mini skc" aria-hidden="true"><div className="sw sk" /><span style={{ flex: 1 }} className="sk-block"><span className="sk skl" style={{ width: '80%' }} /><span className="sk skl" style={{ width: '50%' }} /></span></div>
+          )) : <div className="empty" style={{ flex: 1 }}><p>No pop-ups match these filters.</p></div>}
         </div>
       </div>
       <p className="small muted m-only" style={{ display: 'block', marginTop: 6 }}>Tap a pin to find its card. Tap the card for details.</p>

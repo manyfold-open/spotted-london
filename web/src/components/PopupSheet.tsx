@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Popup } from '../lib/api';
+import { fromLists, patchPopup, popupQuery, withMe } from '../lib/cache';
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { bump, haptic, isPhone } from '../lib/motion';
 import { Icon } from './Icon';
-import { Cover, hideBroken, Meter, ScoreVotes, StatusTag, usePopupActions } from './PopupBits';
+import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
@@ -15,35 +17,124 @@ const REASONS: [string, string][] = [
   ['duplicate', 'Duplicate'], ['spam', 'Spam or advert'],
 ];
 
-export function PopupSheet({ slug }: { slug: string }) {
+/** The pop-up sheet: a drawer on desktop, a bottom sheet you can drag down on phones. */
+export function PopupSheet({ slug, leaving }: { slug: string; leaving: boolean }) {
   const { close } = useSheet();
-  const q = useQuery({ queryKey: ['popup', slug], queryFn: () => api<Popup>(`/popups/${encodeURIComponent(slug)}`), retry: false });
+  const qc = useQueryClient();
+  // Lists already hold most of a pop-up, so the sheet opens with that and fills in the rest.
+  const q = useQuery({ ...popupQuery(slug), retry: false, initialData: () => fromLists(qc, slug), initialDataUpdatedAt: 0 });
+  const drawer = useRef<HTMLElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
+  useDragToClose(drawer, scrim, close);
 
   useEffect(() => {
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
-  }, [close]);
+  }, [close, leaving]);
 
+  // Move focus into the sheet, and give it back to whatever opened it.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    drawer.current?.focus({ preventScroll: true });
+    return () => { if (before?.isConnected) before.focus({ preventScroll: true }); };
+  }, []);
+
+  const notFound = q.error instanceof ApiError && q.error.status === 404;
   return (
     <>
-      <div className="scrim" onClick={close} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={q.data?.title ?? 'Pop-up'}>
+      <div ref={scrim} className={`scrim ${leaving ? 'out' : ''}`} onClick={close} />
+      <aside ref={drawer} tabIndex={-1} className={`drawer ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={q.data?.title ?? 'Pop-up'} aria-busy={q.isFetching}>
         {q.isPending ? <SheetSkeleton onClose={close} />
-          : q.isError ? <SheetMissing onClose={close} notFound={q.error instanceof ApiError && q.error.status === 404} />
-          : <SheetBody p={q.data} onClose={close} />}
+          : q.isError && (notFound || !q.data) ? <SheetMissing onClose={close} notFound={notFound} />
+          : <SheetBody p={q.data!} onClose={close} />}
       </aside>
     </>
   );
 }
 
+/**
+ * On phones, pulling the sheet down from the top closes it: past a quarter of its height, or
+ * with a quick flick. Otherwise it springs back. Scrolling inside the sheet works as usual.
+ */
+function useDragToClose(sheet: RefObject<HTMLElement | null>, scrim: RefObject<HTMLElement | null>, onClose: () => void) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const el = sheet.current;
+    if (!el) return;
+    let state: 'idle' | 'maybe' | 'drag' = 'idle';
+    let y0 = 0, x0 = 0, dy = 0, sample = { y: 0, t: 0 }, last = { y: 0, t: 0 };
+    const start = (e: TouchEvent) => {
+      state = 'idle';
+      if (!isPhone() || e.touches.length !== 1 || el.scrollTop > 0) return;
+      const t = e.touches[0];
+      y0 = t.clientY; x0 = t.clientX; dy = 0;
+      sample = last = { y: t.clientY, t: e.timeStamp };
+      state = 'maybe';
+    };
+    const move = (e: TouchEvent) => {
+      if (state === 'idle') return;
+      const t = e.touches[0];
+      const d = t.clientY - y0, dx = t.clientX - x0;
+      if (state === 'maybe') {
+        if (Math.abs(d) < 8 && Math.abs(dx) < 8) return;
+        // Up, sideways (a photo row) or already scrolled: leave it to the browser.
+        if (d < 0 || Math.abs(dx) > Math.abs(d) || el.scrollTop > 0) { state = 'idle'; return; }
+        state = 'drag';
+        el.classList.add('dragging');
+      }
+      e.preventDefault();
+      dy = Math.max(0, d);
+      el.style.translate = `0 ${dy}px`;
+      if (scrim.current) scrim.current.style.opacity = String(Math.max(0, 1 - dy / el.offsetHeight));
+      if (e.timeStamp - sample.t > 60) sample = last;
+      last = { y: t.clientY, t: e.timeStamp };
+    };
+    const end = () => {
+      if (state !== 'drag') { state = 'idle'; return; }
+      state = 'idle';
+      el.classList.remove('dragging');
+      const speed = (last.y - sample.y) / Math.max(1, last.t - sample.t); // px per ms, down is positive
+      if (dy > el.offsetHeight * 0.25 || (speed > 0.5 && dy > 24)) {
+        haptic(6);
+        closeRef.current();
+      } else {
+        el.style.translate = '';
+        if (scrim.current) scrim.current.style.opacity = '';
+      }
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [sheet, scrim]);
+}
+
 function SheetSkeleton({ onClose }: { onClose: () => void }) {
   return (
     <>
-      <div className="dhead sk" style={{ borderRadius: 0 }}><span className="handle" /><button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /></button></div>
-      <div className="dbody"><div className="sk" style={{ height: 34, width: '70%' }} /><div className="sk" style={{ height: 80 }} /><div className="sk" style={{ height: 220 }} /></div>
+      <div className="dhead sk" style={{ borderRadius: 0 }} />
+      <span className="handle" />
+      <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /></button>
+      <div className="dbody" aria-hidden="true">
+        <div className="sk-block">
+          <div className="row" style={{ gap: 6 }}><div className="sk skl pill" /><div className="sk skl pill" style={{ width: 70 }} /></div>
+          <div className="sk" style={{ height: 34, width: '72%' }} />
+          <div className="sk skl" style={{ width: '35%' }} />
+        </div>
+        <div className="sk-block"><div className="sk skl" style={{ width: '60%' }} /><div className="sk skl" style={{ width: '75%' }} /><div className="sk skl" style={{ width: '50%' }} /></div>
+        <div className="sk-panel"><div className="sk skl h" style={{ width: '45%' }} /><div className="sk" style={{ height: 30, width: 90 }} /><div className="sk skl" /><div className="sk skl" style={{ width: '80%' }} /></div>
+      </div>
     </>
   );
 }
@@ -65,6 +156,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const onError = useErrorToast();
   const requireAuth = useRequireAuth();
   const { toggleSave } = usePopupActions(p);
+  const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [reporting, setReporting] = useState(false);
   const [locating, setLocating] = useState(false);
   const [botToken, setBotToken] = useState<string | null>(null);
@@ -87,15 +179,22 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       onClose();
       return;
     }
-    if (status_change?.to === 'verified_community') toast('Your vote verified this pop-up', 'i-checkc');
+    if (status_change?.to === 'verified_community') { haptic([12, 60, 12]); toast('Your vote verified this pop-up', 'i-checkc'); }
     qc.invalidateQueries({ queryKey: ['popup', p.slug] });
   };
 
   const exist = useMutation({
-    mutationFn: (value: number) => api<{ status_change: { from: string; to: string } | null }>(`/popups/${p.id}/vote`, { method: 'PUT', json: { kind: 'existence', value } }),
-    onSuccess: (d, value) => { if (value && !d.status_change) toast(`Vote counted at ${weight.toFixed(1)}x`); after(d.status_change); },
-    onError,
+    scope: { id: `exist-${p.id}` },
+    mutationFn: (value: number) => api<{ popup: Popup; status_change: { from: string; to: string } | null }>(`/popups/${p.id}/vote`, { method: 'PUT', json: { kind: 'existence', value } }),
+    onMutate: value => { haptic(); return patchPopup(qc, p.id, x => withMe(x, { existence_vote: value })); },
+    onSuccess: (d, value) => {
+      patchPopup(qc, p.id, x => ({ ...x, verification: d.popup.verification, status: d.popup.status }));
+      if (value && !d.status_change) toast(`Vote counted at ${weight.toFixed(1)}x`);
+      after(d.status_change);
+    },
+    onError: (e, _v, undo) => { undo?.(); onError(e); },
   });
+  const vote = (value: number) => (e: { currentTarget: Element }) => { bump(e.currentTarget); exist.mutate(mine === value ? 0 : value); };
   const checkin = useMutation({
     mutationFn: async () => {
       setLocating(true);
@@ -104,7 +203,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         return await api<{ valid: boolean; message: string; status_change: { from: string; to: string } | null }>(`/popups/${p.id}/checkin`, { method: 'POST', json: { lat, lng } });
       } finally { setLocating(false); }
     },
-    onSuccess: d => { toast(d.message, 'i-locate'); after(d.status_change); qc.invalidateQueries({ queryKey: ['me'] }); },
+    onSuccess: d => { haptic(d.valid ? [10, 50, 10] : 8); toast(d.message, 'i-locate'); after(d.status_change); qc.invalidateQueries({ queryKey: ['me'] }); },
     onError,
   });
   const report = useMutation({
@@ -146,7 +245,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           {p.price.text ? <><dt><Icon name="i-pound" />Price</dt><dd>{p.price.text}</dd></> : null}
           <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow">{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
         </dl>
-        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <img key={i.id} src={i.url} alt="" loading="lazy" onError={hideBroken} />)}</div> : null}
+        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <Img key={i.id} src={i.url} />)}</div> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
         <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /><span className="spacer" /><button className="btn sm subtle" onClick={share}><Icon name="i-link" />Share</button></div>
@@ -154,7 +253,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         {PUBLIC.includes(p.status) ? (
           <section className="panel">
             <div className="row"><h2>Is this real?</h2><span className="spacer" /><span className="small muted num">{v.voters} voters · {v.checkins} check-ins</span></div>
-            <div className="confrow"><b className="num">{Math.round(v.confidence * 100)}%</b><span className="muted small">confidence from weighted votes</span></div>
+            <div className="confrow"><b className="num"><Ticker value={Math.round(v.confidence * 100)} />%</b><span className="muted small">confidence from weighted votes</span></div>
             <Meter value={v.confidence} big />
             {p.status === 'verified_admin'
               ? <div className="notice small" style={{ marginTop: 12 }}><Icon name="i-shield" /><span>An admin checked this with the host.</span></div>
@@ -162,8 +261,8 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
             {own ? <p className="weightnote" style={{ marginTop: 14 }}>This is your post, so you cannot vote on it. You earn 10 karma when it is verified.</p> : (
               <>
                 <div className="split" style={{ marginTop: 14 }}>
-                  <button className={`btn yes ${mine === 1 ? 'on' : ''}`} disabled={!canVote || exist.isPending} onClick={requireAuth(() => exist.mutate(mine === 1 ? 0 : 1), 'Sign in to vote')}><Icon name="i-check" />It's real</button>
-                  <button className={`btn no ${mine === -1 ? 'on' : ''}`} disabled={!canVote || exist.isPending} onClick={requireAuth(() => exist.mutate(mine === -1 ? 0 : -1), 'Sign in to vote')}><Icon name="i-x" />Fake</button>
+                  <button className={`btn yes ${mine === 1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(1), 'Sign in to vote')}><Icon name="i-check" />It's real</button>
+                  <button className={`btn no ${mine === -1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(-1), 'Sign in to vote')}><Icon name="i-x" />Fake</button>
                 </div>
                 <button className="btn block" style={{ marginTop: 10 }} disabled={!live || checkin.isPending} onClick={requireAuth(() => checkin.mutate(), 'Sign in to check in')}>
                   {locating ? <span className="spin" /> : <Icon name="i-locate" />}
@@ -180,7 +279,8 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           <div className="notice watch"><Icon name="i-clock" /><span>This post is waiting for an admin, so voting is closed for now.</span></div>
         ) : null}
 
-        {p.posted_by ? <div className="small muted">Added by <b>{p.posted_by.name ?? 'a member'}</b> · karma {p.posted_by.karma}</div> : null}
+        {p.posted_by ? <div className="small muted">Added by <b>{p.posted_by.name ?? 'a member'}</b> · karma {p.posted_by.karma}</div>
+          : partial ? <div className="sk skl" style={{ width: 180 }} aria-hidden="true" /> : null}
         {!own && PUBLIC.includes(p.status) ? (
           reporting ? (
             <div className="panel" style={{ padding: 14 }}>
