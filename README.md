@@ -21,11 +21,11 @@ npm run db:reset
 npm run build:web
 ```
 
-Then `npm run dev` and `npm run dev:web` in two terminals, as below. Local development needs no Cloudflare account. To deploy or touch production, also run `npx wrangler login` and sign in as zack11712@gmail.com, then check with `npx wrangler whoami`.
+Then `npm run dev` and `npm run dev:web` in two terminals, as below. `npm run dev` needs `npx wrangler login` (sign in as zack11712@gmail.com, check with `npx wrangler whoami`) because AI autofill always runs on Cloudflare. Without an account, use `npm run dev:local` instead: everything works except autofill from pasted text and screenshots.
 
 ## Run it locally
 
-No Cloudflare account is needed for local development. D1, KV and R2 are simulated on your machine.
+D1, KV and R2 are simulated on your machine. Workers AI cannot be, so `npm run dev` connects to Cloudflare for it and needs `npx wrangler login`. `npm run dev:local` skips that; autofill from links still works, pasted text and screenshots show a friendly error.
 
 ```bash
 npm install                 # also installs web/
@@ -33,7 +33,7 @@ cp .dev.vars.example .dev.vars
 npm run db:migrate
 npm run db:seed
 npm run build:web           # the Worker serves web/dist, so build once
-npm run dev                 # terminal 1: Worker + API on :8787
+npm run dev                 # terminal 1: Worker + API on :8787 (or npm run dev:local without a login)
 npm run dev:web             # terminal 2: the app with hot reload on :5173
 ```
 
@@ -123,7 +123,6 @@ In the Google console, add `<APP_URL>/api/v1/auth/google/callback` as an authori
 
 ## What is not built yet
 
-- Workers AI for autofill. Link parsing works without it (JSON-LD and Open Graph). Pasted text and screenshots need `npx wrangler login` and the `ai` binding in `wrangler.jsonc`.
 - Emails other than sign-in: newsletter confirmation and reminders are found by the jobs but not sent yet.
 - Vote ring detection in the daily abuse scan.
 - Photo uploads by people other than the poster, and an image moderation step.
@@ -151,11 +150,11 @@ The Worker is connected to this repo with **Cloudflare Workers Builds** (no GitH
 | Production branch | `main` |
 | Build command | `npm ci && npm run build:web` |
 | Deploy command | `npx wrangler deploy` |
-| Non-production branches | preview builds on (default preview command) |
+| Non-production branches | preview builds on, deploy command `npx wrangler preview` (uses the `previews` block in `wrangler.jsonc`) |
 | Build variable | `NODE_VERSION=22` |
 
 - A push to `main` builds and deploys production.
-- A push to any other branch makes a preview version. Previews use the **same** D1, KV and R2 as production.
+- A push to any other branch makes a preview version. Previews use the **same** D1, KV and R2 as production. They take their vars and bindings from the `previews` block in `wrangler.jsonc`, so a new binding or var goes in both places. Previews have no secrets and a different address, so you are signed out there and sign in, adding a pop-up and reporting do not work. Browsing does.
 - The build token cannot touch D1. When a change adds a file to `migrations/`, apply it from a computer signed in with wrangler **before** merging: `npx wrangler d1 migrations apply spotted-db --remote`. Migrations must stay backwards compatible with the code already running.
 
 Manual deploy from a computer, if ever needed:
@@ -178,5 +177,4 @@ npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # 
 ### Still to switch on
 
 - **Sign in**: add `RESEND_API_KEY` and `EMAIL_FROM` (email links) and/or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Until then the site is browse-only.
-- **Workers AI** for autofill from pasted text: uncomment the `ai` binding.
 - **Custom domain**: add it to the Worker, update `APP_URL`, and add the domain to the Turnstile widget.

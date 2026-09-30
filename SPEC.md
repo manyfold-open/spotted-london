@@ -540,6 +540,8 @@ CREATE TABLE audit_log (
 | Newsletter | Beehiiv 免費方案 |
 | 交易信 | Resend 免費方案 |
 | 圖片處理 | 前端壓縮，不用 Cloudflare Images |
+| AI 自動填表 | Workers AI（2026-09-30 接上）。文字：`@cf/meta/llama-3.3-70b-instruct-fp8-fast`；截圖：`@cf/meta/llama-4-scout-17b-16e-instruct`（吃 base64 圖片、支援 JSON schema）。截圖在前端縮成長邊 1600px 的 JPEG 再上傳（≤ 2 MB），伺服器不存圖。免費額度用完回 503 `ai_quota`，請用戶自己填 |
+| 表單元件 | 全部自製，不用瀏覽器原生 UI：日期選擇器（英式格式、週一開始、手機為底部 sheet）、搜尋清除鈕、Email 驗證訊息、捲軸、地圖縮放鈕 |
 | 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
 | 範例資料 | 線上放標示「Example」的虛構活動、noindex；正式上線前用 `seed/clear-examples.sql` 清除 |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |

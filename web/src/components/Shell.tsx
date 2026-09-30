@@ -56,8 +56,8 @@ export function Shell() {
     <div className="shell">
       <aside className="side">
         <NavLink to="/" className="brand">
-          <span className="logo"><Icon name="i-pin" size={20} /></span>
-          <span><b>Spotted</b><span>London pop-ups, checked by locals</span></span>
+          <Logo />
+          <span className="brandtxt"><b>Spotted</b><small>London pop-ups, checked by locals</small></span>
         </NavLink>
         <nav className="sidenav" aria-label="Main">
           {items.map(([to, icon, label, ct, hot]) => (
@@ -72,12 +72,14 @@ export function Shell() {
       <div className="main">
         <header className="topbar">
           <NavLink to="/" className="mbrand">
-            <span className="logo"><Icon name="i-pin" size={17} /></span><b>Spotted</b><span className="tag t-out">London</span>
+            <Logo /><b>Spotted</b><span className="tag t-out">London</span>
           </NavLink>
           <label className="search">
             <Icon name="i-search" />
             <span className="sr">Search</span>
-            <input type="search" value={q} onChange={e => onSearch(e.target.value)} placeholder="Search pop-ups, hosts, areas" autoComplete="off" />
+            <input type="search" value={q} onChange={e => onSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && q) onSearch(''); }}
+              placeholder="Search pop-ups, hosts, areas" autoComplete="off" enterKeyHint="search" />
+            {q ? <button type="button" className="clear" aria-label="Clear search" onClick={() => onSearch('')}><Icon name="i-x" /></button> : null}
           </label>
           <div className="me">
             {me ? (
@@ -103,6 +105,15 @@ export function Shell() {
 
       {sheet ? <PopupSheet slug={sheet} /> : null}
     </div>
+  );
+}
+
+/** Same mark as the favicon: a paper pin on an orange dot. */
+export function Logo() {
+  return (
+    <span className="logo" aria-hidden="true">
+      <svg viewBox="0 0 64 64"><path d="M32 12c-8.3 0-14.5 6-14.5 13.9C17.5 36 32 51 32 51s14.5-15 14.5-25.1C46.5 18 40.3 12 32 12zm0 19.2a5.4 5.4 0 1 1 0-10.8 5.4 5.4 0 0 1 0 10.8z" /></svg>
+    </span>
   );
 }
 

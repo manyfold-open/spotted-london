@@ -21,7 +21,9 @@
     "APP_URL": "https://spotted-london.zack11712.workers.dev",
     // Public Turnstile site key (the secret goes in `wrangler secret put TURNSTILE_SECRET`)
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFKY6joZ7fjJGaI4",
-    "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    // Reads screenshots. Takes images as base64 data URIs and supports JSON schema output.
+    "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
   },
 
   "d1_databases": [
@@ -31,8 +33,27 @@
   // Photos (R2 enabled on the account on 2026-09-30)
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
 
-  // Workers AI needs `wrangler login` even in local dev. Uncomment after logging in:
-  // "ai": { "binding": "AI", "remote": true },
+  // Workers AI for autofill from pasted text and screenshots. It always runs on Cloudflare,
+  // so `npm run dev` needs `npx wrangler login` first. Free tier: 10,000 neurons a day.
+  "ai": { "binding": "AI", "remote": true },
+
+  // Branch builds on Workers Builds run `wrangler preview`, which needs its own copy of the
+  // vars and bindings. Previews share production data (see README "How deploys happen").
+  // Secrets are not copied: without TURNSTILE_SECRET, writes that need the bot check return
+  // 501, and Google sign in is off. Add them with `npx wrangler preview secret put` if needed.
+  "previews": {
+    "vars": {
+      "ENVIRONMENT": "production",
+      "APP_URL": "https://spotted-london.zack11712.workers.dev",
+      "TURNSTILE_SITE_KEY": "0x4AAAAAAFKY6joZ7fjJGaI4",
+      "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
+    },
+    "d1_databases": [{ "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a" }],
+    "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
+    "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+    "ai": { "binding": "AI" }
+  },
 
   "triggers": {
     "crons": [

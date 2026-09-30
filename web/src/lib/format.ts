@@ -52,3 +52,6 @@ export function londonTs(date: string, hour: number, minute = 0): number {
   };
   return guess - offset(guess - offset(guess));
 }
+
+/** Loose check, the server has the final say. */
+export const looksLikeEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());

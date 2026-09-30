@@ -27,7 +27,8 @@ London pop-up discovery platform: anyone adds a pop-up, the community verifies i
 npm install                  # root + web/ (postinstall)
 npm run db:reset             # local D1: migrate + seed
 npm run build:web            # needed once before `npm run dev`; the Worker serves web/dist
-npm run dev                  # Worker on :8787
+npm run dev                  # Worker on :8787 (needs `npx wrangler login` for Workers AI)
+npm run dev:local            # same without a Cloudflare login; AI autofill returns an error
 npm run dev:web              # Vite on :5173, proxies /api and /login to :8787
 npm test                     # builds web, then vitest inside workerd (unit + API tests)
 npm run typecheck && (cd web && npx tsc --noEmit)
@@ -66,6 +67,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx`. Licence forbids letting users pick or download icons.
+- No native browser UI: dates use `web/src/components/DatePicker.tsx`, forms use `noValidate` with our own `.ferr` messages, and inputs are 16 px on phones so iOS does not zoom.
 - Phone layout is under 900 px (`@media (max-width: 899px)`): bottom tabs, bottom sheets. Check every screen at 375 px.
 
 ## Gotchas
@@ -74,6 +76,9 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - `compatibility_date` is 2026-08-20 because `@cloudflare/vitest-pool-workers` bundles an older workerd. Raise it only together with that package.
 - MapLibre v6 must get its worker via `setWorkerUrl` from `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (see `web/src/components/maps.tsx`), or the map stays blank.
 - Map pins are plain DOM, not React roots (unmounting roots during render caused races).
+- Branch builds run `wrangler preview`, which reads only the `previews` block in `wrangler.jsonc`. Add every new var or binding there too, or preview builds fail.
+- Tests never reach Cloudflare: `vitest.config.ts` sets `remoteBindings: false` and `test/setup.ts` swaps `env.AI` for a stub; mock `env.AI.run` per test.
+- After `npm run build:web`, a running `wrangler dev` can serve 404s for every page. Restart it.
 - Tests share one D1 per file, so give each test its own titles and coordinates or the duplicate check (same place, similar title) returns 409.
 - Address search uses Photon (photon.komoot.io), a free fair-use service. Move to Mapbox's free tier if traffic grows.
 - On Zack's first Mac, `~/.zshrc` exports a `CLOUDFLARE_API_TOKEN` for a different (work) Cloudflare account. If `npx wrangler whoami` does not say zack11712@gmail.com, run `unset CLOUDFLARE_API_TOKEN` in that shell first.
@@ -90,12 +95,11 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2.
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots.
 
 Not done yet, roughly in priority order:
-1. Workers AI for autofill from pasted text and screenshots (`ai` binding is commented out in `wrangler.jsonc`; `/extract/image` returns 501).
-2. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
-3. Hide quality votes on your own posts in the UI (the API already rejects them).
-4. Vote ring detection in the daily abuse scan.
-5. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
-6. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).
+1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
+2. Hide quality votes on your own posts in the UI (the API already rejects them).
+3. Vote ring detection in the daily abuse scan.
+4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
+5. Reduce the main bundle (about 143 KB gzip; icon path data is a big part).

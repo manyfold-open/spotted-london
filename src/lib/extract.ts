@@ -1,6 +1,7 @@
 // Paste-a-link autofill (SPEC §3.8).
 // 1. deterministic parsing: JSON-LD Event, then Open Graph
 // 2. only if fields are still missing, and Workers AI is bound: an LLM pass
+//    (pasted text goes straight to the text model, screenshots to the vision model)
 // 3. deterministic post-processing (dates to London, category enum)
 
 import { londonDateString, londonParts } from './time';
@@ -244,19 +245,34 @@ export const LLM_SCHEMA = {
   required: ['title', 'category', 'address', 'start_date', 'end_date'],
 } as const;
 
-export function llmPrompt(text: string, now: number) {
+function systemPrompt(now: number, from: string) {
   const p = londonParts(now);
   const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][p.dow];
+  return {
+    role: 'system',
+    content:
+      `You extract details of a London pop-up event from ${from}. ` +
+      `Today is ${weekday} ${londonDateString(now)} in London. Resolve relative dates like "this Saturday" or "one week only" against today. ` +
+      `category must be one of: ${CATEGORIES.join(', ')}. Use null for anything it does not say. Never invent an address or a date. ` +
+      'List in "unsure" the field names you had to guess. Reply with JSON only.',
+  };
+}
+
+export function llmPrompt(text: string, now: number) {
+  return [systemPrompt(now, 'a social post or web page'), { role: 'user', content: text }];
+}
+
+/** Screenshot of a post (Instagram, TikTok, a poster). `image` is a data: URI. */
+export function llmVisionPrompt(image: string, now: number) {
   return [
+    systemPrompt(now, 'a screenshot of a social post, event page or poster'),
     {
-      role: 'system',
-      content:
-        'You extract details of a London pop-up event from a social post or web page. ' +
-        `Today is ${weekday} ${londonDateString(now)} in London. Resolve relative dates like "this Saturday" or "one week only" against today. ` +
-        `category must be one of: ${CATEGORIES.join(', ')}. Use null for anything the text does not say. Never invent an address or a date. ` +
-        'List in "unsure" the field names you had to guess. Reply with JSON only.',
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Read the text in this screenshot, including the caption and any text on the image, and extract the pop-up details.' },
+        { type: 'image_url', image_url: { url: image } },
+      ],
     },
-    { role: 'user', content: text },
   ];
 }
 

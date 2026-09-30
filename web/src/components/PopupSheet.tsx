@@ -4,7 +4,7 @@ import { api, ApiError, type Popup } from '../lib/api';
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { Icon } from './Icon';
-import { Cover, Meter, ScoreVotes, StatusTag, usePopupActions } from './PopupBits';
+import { Cover, hideBroken, Meter, ScoreVotes, StatusTag, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
@@ -52,7 +52,7 @@ function SheetMissing({ onClose, notFound }: { onClose: () => void; notFound: bo
   return (
     <div className="dbody">
       <div className="row"><span className="spacer" /><button className="btn sm" onClick={onClose}><Icon name="i-x" />Close</button></div>
-      <div className="empty"><h2>{notFound ? 'This pop-up is not available' : 'Could not load this pop-up'}</h2>
+      <div className="empty"><Icon name="i-info" className="i big" /><h2>{notFound ? 'This pop-up is not available' : 'Could not load this pop-up'}</h2>
         <p style={{ marginTop: 6 }}>{notFound ? 'It may have been removed, or it is still waiting for review.' : 'Check your connection and try again.'}</p></div>
     </div>
   );
@@ -146,7 +146,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           {p.price.text ? <><dt><Icon name="i-pound" />Price</dt><dd>{p.price.text}</dd></> : null}
           <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow">{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
         </dl>
-        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <img key={i.id} src={i.url} alt="" loading="lazy" />)}</div> : null}
+        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <img key={i.id} src={i.url} alt="" loading="lazy" onError={hideBroken} />)}</div> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
         <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /><span className="spacer" /><button className="btn sm subtle" onClick={share}><Icon name="i-link" />Share</button></div>

@@ -29,10 +29,13 @@ export function Meter({ value, big }: { value: number; big?: boolean }) {
 export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string }) {
   return (
     <div className={`${className} pat-${p.category}`}>
-      {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" /> : <Icon name={catIcon(p.category)} className="i big" />}
+      {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" onError={hideBroken} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
 }
+
+/** A photo that fails to load is hidden, so the category pattern shows instead of a broken image. */
+export const hideBroken = (e: { currentTarget: HTMLImageElement }) => { e.currentTarget.style.display = 'none'; };
 
 /** Keeps every list in sync after a save or vote. */
 export function usePopupActions(p: Popup) {
@@ -82,12 +85,13 @@ export function PopupCard({ p }: { p: Popup }) {
   return (
     <article className="card">
       <div className={`thumb pat-${p.category}`}>
-        {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" /> : <Icon name={catIcon(p.category)} className="i big" />}
+        {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" onError={hideBroken} /> : <Icon name={catIcon(p.category)} className="i big" />}
+        <span className="tag cattag">{CATS[p.category]}</span>
         {live ? <span className="tag t-new live">On now</span> : startsTomorrow(p) ? <span className="tag t-out live">Tomorrow</span> : null}
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
       </div>
       <div className="cbody">
-        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute cattag">{CATS[p.category]}</span></div>
+        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
         <h3><Link className="stretch" to={`/p/${p.slug}`} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>

@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useRouteError, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
-import { dateRange, initials } from '../lib/format';
+import { dateRange, initials, looksLikeEmail } from '../lib/format';
 import { useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CardSkeletons, Cover, PopupCard, StatusTag } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
+import { Logo } from '../components/Shell';
 
 /* ---------------- Saved ---------------- */
 export function Saved() {
@@ -22,7 +23,7 @@ export function Saved() {
       <p className="intro">We remind you the day before each one starts, and again on its last day.</p>
       <div className="lh"><h2>{upcoming.length} coming up</h2></div>
       {q.isPending ? <CardSkeletons n={3} /> : upcoming.length ? <div className="grid">{upcoming.map(p => <PopupCard key={p.id} p={p} />)}</div>
-        : <div className="empty"><h2>Nothing saved</h2><p style={{ marginTop: 6 }}>Tap the bookmark on any pop-up to keep it here. <Link to="/">Explore pop-ups</Link></p></div>}
+        : <div className="empty"><Icon name="i-bookmark" className="i big" /><h2>Nothing saved yet</h2><p>Tap the bookmark on any pop-up to keep it here.</p><Link className="btn sm" to="/">Explore pop-ups</Link></div>}
       {past.length ? <><div className="lh"><h2>Already ended</h2></div><div className="grid">{past.map(p => <PopupCard key={p.id} p={p} />)}</div></> : null}
     </>
   );
@@ -44,6 +45,7 @@ export function SignIn() {
   const returnTo = sp.get('return_to') ?? '/';
   const { data: me } = useMe();
   const [email, setEmail] = useState('');
+  const [bad, setBad] = useState(false);
   const onError = useErrorToast();
   const providers = useProviders();
   const needsBot = useNeedsTurnstile();
@@ -69,9 +71,11 @@ export function SignIn() {
           <button className="btn subtle" onClick={() => send.reset()}>Use a different email</button>
         </div>
       ) : (
-        <form className="stack" onSubmit={e => { e.preventDefault(); send.mutate(); }}>
+        <form className="stack" noValidate onSubmit={e => { e.preventDefault(); if (!looksLikeEmail(email)) return setBad(true); send.mutate(); }}>
           <label className="field"><span className="lbl">Email</span>
-            <input className="input" type="email" required autoComplete="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></label>
+            <input className={`input ${bad ? 'bad' : ''}`} type="email" autoComplete="email" inputMode="email" value={email} onChange={e => { setEmail(e.target.value); setBad(false); }}
+              placeholder="you@email.com" aria-invalid={bad} aria-describedby={bad ? 'emailerr' : undefined} />
+            {bad ? <span className="ferr" id="emailerr" role="alert">Enter an email address like name@example.com.</span> : null}</label>
           <Turnstile onToken={setBotToken} resetKey={botReset} />
           <button className="btn primary block" disabled={send.isPending || (needsBot && !botToken)}>{send.isPending ? <span className="spin" /> : <Icon name="i-mail" />}Email me a link</button>
         </form>
@@ -159,7 +163,7 @@ export function MePage() {
             <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateRange(p)}</span></span><StatusTag status={p.status} />
           </Link>
         ))}</div>
-      ) : <div className="empty">You have not added any pop-ups yet. <Link to="/add">Add one</Link></div>}
+      ) : <div className="empty"><p>You have not added any pop-ups yet.</p><Link className="btn sm" to="/add"><Icon name="i-plus" />Add a pop-up</Link></div>}
 
       <div className="lh"><h2>How your vote weight is worked out</h2></div>
       <div className="rules">
@@ -176,7 +180,7 @@ export function MePage() {
               <td className={`d num ${k.delta > 0 ? 'pos' : 'neg'}`}>{k.delta > 0 ? '+' : ''}{k.delta}</td></tr>
           ))}
         </tbody></table></div>
-      ) : <div className="empty">No karma yet. Vote on pop-ups you have seen, or add one.</div>}
+      ) : <div className="empty"><p>No karma yet. Vote on pop-ups you have seen, or add one.</p></div>}
     </>
   );
 }
@@ -201,7 +205,7 @@ export function AdminQueue() {
     onError,
   });
   if (isPending) return <div className="sk" style={{ height: 300 }} />;
-  if (me?.role !== 'admin') return <div className="empty"><h2>Admins only</h2><p style={{ marginTop: 6 }}><Link to="/">Back to Explore</Link></p></div>;
+  if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page is for the people who review new posts.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   const items = q.data?.items ?? [];
   return (
     <>
@@ -226,11 +230,38 @@ export function AdminQueue() {
             </div>
           </div>
         ))}</div>
-      ) : <div className="empty"><h2>All clear</h2><p style={{ marginTop: 6 }}>Nothing waiting for review.</p></div>}
+      ) : <div className="empty"><Icon name="i-checkc" className="i big" /><h2>All clear</h2><p>Nothing waiting for review.</p></div>}
     </>
   );
 }
 
 export function NotFound() {
-  return <div className="empty" style={{ marginTop: 24 }}><h2>Page not found</h2><p style={{ marginTop: 6 }}><Link to="/">Back to Explore</Link></p></div>;
+  return (
+    <div className="empty" style={{ marginTop: 24 }}>
+      <Icon name="i-map" className="i big" />
+      <h2>We could not find that page</h2>
+      <p>The link may be old or mistyped. Pop-ups that ended are still on Explore under All upcoming.</p>
+      <Link className="btn primary" to="/">Back to Explore</Link>
+    </div>
+  );
+}
+
+/** Shown instead of the router's default error screen when a page crashes. */
+export function CrashPage() {
+  const err = useRouteError();
+  // After a deploy, old tabs ask for script files that no longer exist.
+  const stale = err instanceof Error && /dynamically imported module|Failed to fetch|Importing a module script/i.test(err.message);
+  return (
+    <div className="crash">
+      <div className="panel">
+        <Logo />
+        <h1 style={{ fontSize: 28 }}>{stale ? 'Spotted has been updated' : 'Something went wrong'}</h1>
+        <p className="muted">{stale ? 'Reload the page to get the latest version.' : 'This page hit a problem. Reload to try again. If it keeps happening, go back to Explore.'}</p>
+        <div className="row">
+          <button className="btn primary" onClick={() => location.reload()}>Reload</button>
+          <a className="btn" href="/">Back to Explore</a>
+        </div>
+      </div>
+    </div>
+  );
 }

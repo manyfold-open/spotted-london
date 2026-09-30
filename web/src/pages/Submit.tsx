@@ -7,6 +7,7 @@ import { useDebounced, useErrorToast, useMe, useToast } from '../lib/hooks';
 import { compressImage } from '../lib/image';
 import { Icon } from '../components/Icon';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
+import { DatePicker } from '../components/DatePicker';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
@@ -39,6 +40,8 @@ export function Submit() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [flags, setFlags] = useState<Partial<Record<FieldKey, Flag>>>({});
   const [ai, setAi] = useState<{ state: 'idle' | 'busy' | 'done' | 'error'; msg?: string }>({ state: 'idle' });
+  const [shot, setShot] = useState<string | null>(null); // preview of the screenshot being read
+  const [drag, setDrag] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [dupes, setDupes] = useState<{ id: string; slug: string; title: string }[] | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -67,11 +70,18 @@ export function Submit() {
     } catch { /* keep the moved pin even if the address lookup fails */ }
   };
 
-  /* ----- AI autofill ----- */
-  const fill = async (input: string, via: 'link' | 'text') => {
-    setAi({ state: 'busy', msg: via === 'link' ? 'Reading the page. Looking for dates, place and price.' : 'Reading the text.' });
+  /* ----- AI autofill: a link, the post text, or a screenshot ----- */
+  type Input = { kind: 'link' | 'text'; value: string } | { kind: 'image'; file: File };
+  const fill = async (input: Input) => {
+    setAi({ state: 'busy', msg: input.kind === 'link' ? 'Reading the page. Looking for dates, place and price.' : input.kind === 'text' ? 'Reading the text.' : 'Reading your screenshot. This takes a few seconds.' });
     try {
-      const r = await api<{ fields: Extracted; platform: string | null }>('/extract', { method: 'POST', json: via === 'link' ? { url: input } : { text: input } });
+      let r: { fields: Extracted; platform: string | null };
+      if (input.kind === 'image') {
+        const blob = await compressImage(input.file, { maxEdge: 1600, maxBytes: 1_000_000, jpeg: true });
+        r = await api('/extract/image', { method: 'POST', body: blob, headers: { 'content-type': blob.type } });
+      } else {
+        r = await api('/extract', { method: 'POST', json: input.kind === 'link' ? { url: input.value } : { text: input.value } });
+      }
       const f = r.fields, c = f.confidence;
       const mark = (k: string): Flag => (c[k] === 'check' ? 'check' : c[k] ? 'ai' : undefined);
       const next: Partial<Record<FieldKey, Flag>> = {};
@@ -91,19 +101,25 @@ export function Submit() {
         if (places.items[0]) { setPlace(places.items[0]); setWhereText(places.items[0].label); }
         next.where = 'check';
       }
-      if (via === 'link' && !src) setSrc(input);
       setFlags(next);
       const checks = Object.values(next).filter(v => v === 'check').length;
-      setAi({ state: 'done', msg: `Filled ${n} fields. Blue fields came from AI${checks ? `, and ${checks} need a closer look` : ''}. Check them before you submit.` });
+      setAi({ state: 'done', msg: `Filled ${n} field${n === 1 ? '' : 's'}. Blue fields came from AI${checks ? `, and ${checks} need a closer look` : ''}. Check them before you submit.` });
     } catch (e) {
       setAi({ state: 'error', msg: e instanceof Error ? e.message : 'Autofill did not work. Fill in the form yourself.' });
-    }
+    } finally { setShot(null); }
   };
   const onAutofill = () => {
     const v = src.trim();
     if (!v) return toast('Paste a link or the post text first', 'i-link');
-    fill(v, looksLikeUrl(v) ? 'link' : 'text');
+    fill({ kind: looksLikeUrl(v) ? 'link' : 'text', value: v });
   };
+  const readShot = (file: File | undefined | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast('That is not an image. Use a screenshot of the post.', 'i-image', true);
+    setShot(URL.createObjectURL(file));
+    fill({ kind: 'image', file });
+  };
+  useEffect(() => () => { if (shot) URL.revokeObjectURL(shot); }, [shot]);
 
   /* ----- photos ----- */
   const addPhotos = (files: FileList | null) => {
@@ -174,11 +190,12 @@ export function Submit() {
     );
   }
 
-  const lbl = (k: FieldKey, text: string, extra?: string) => (
-    <span className="lbl">{text}{extra ? <span className="muted small">{extra}</span> : null}
+  const lbl = (k: FieldKey, text: string, extra?: string, id?: string) => (
+    <span className="lbl" id={id}>{text}{extra ? <span className="muted small">{extra}</span> : null}
       {flags[k] === 'check' ? <span className="tag t-watch">Check this</span> : flags[k] === 'ai' ? <span className="tag t-ai">AI</span> : null}</span>
   );
-  const cls = (k: FieldKey) => `input ${flags[k] ? 'ai' : ''} ${errors[k] ? 'bad' : ''}`;
+  const state = (k: FieldKey) => `${flags[k] ? 'ai' : ''} ${errors[k] ? 'bad' : ''}`;
+  const cls = (k: FieldKey) => `input ${state(k)}`;
   const err = (k: FieldKey) => (errors[k] ? <span className="ferr" role="alert">{errors[k]}</span> : null);
 
   return (
@@ -187,19 +204,29 @@ export function Submit() {
       <p className="intro">Seen something worth sharing? You earn 10 karma when it gets verified.</p>
       <div className="form">
         <form className={`fields panel ${ai.state === 'busy' ? 'filling' : ''}`} noValidate onSubmit={e => { e.preventDefault(); submit(); }}>
-          <section className="aibox" aria-labelledby="aih">
-            <div className="row" style={{ gap: 8 }}><span className="tag t-ai"><Icon name="i-sparkle" />AI</span><h2 id="aih">Paste a link, we fill it in</h2></div>
-            <div className="ailine">
-              <label style={{ flex: 1, minWidth: 0 }}><span className="sr">Link or post text</span>
-                <input className="input src" value={src} onChange={e => setSrc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAutofill(); } }}
-                  placeholder="Instagram, TikTok, Eventbrite, website, or the post text" autoComplete="off" /></label>
-              <button type="button" className="btn primary sm" onClick={onAutofill} disabled={ai.state === 'busy'}>{ai.state === 'busy' ? <span className="spin" /> : <Icon name="i-sparkle" />}Autofill</button>
+          <section className={`aibox ${drag ? 'drag' : ''}`} aria-labelledby="aih"
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDrag(true); } }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false); }}
+            onDrop={e => { e.preventDefault(); setDrag(false); readShot(e.dataTransfer.files[0]); }}>
+            <div className="row" style={{ gap: 8 }}><span className="tag t-ai"><Icon name="i-sparkle" />AI</span><h2 id="aih">Paste it, we fill it in</h2></div>
+            <label htmlFor="src" className="sr">Link or post text</label>
+            <textarea id="src" className="input src" rows={1} value={src} onChange={e => setSrc(e.target.value)} enterKeyHint="go" autoComplete="off" spellCheck={false}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onAutofill(); } }}
+              onPaste={e => { const f = [...e.clipboardData.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); readShot(f); } }}
+              placeholder="A link, or the post text" />
+            <div className="aiacts">
+              <span className="btn sm filebtn"><Icon name="i-image" />Screenshot
+                <input type="file" accept="image/*" aria-label="Upload a screenshot of the post" disabled={ai.state === 'busy'} onChange={e => { readShot(e.target.files?.[0]); e.target.value = ''; }} /></span>
+              <span className="small muted d-only">or drop one here</span>
+              <span className="spacer" />
+              <button type="button" className="btn primary sm" onClick={onAutofill} disabled={ai.state === 'busy' || !src.trim()}>{ai.state === 'busy' && !shot ? <span className="spin" /> : <Icon name="i-sparkle" />}Autofill</button>
             </div>
+            {shot ? <div className="shotprev"><img src={shot} alt="Your screenshot" /><span className="scan" /></div> : null}
             {ai.state !== 'idle' ? (
               <div className={`notice small ${ai.state === 'error' ? 'err' : 'ai'}`} aria-live="polite">
                 {ai.state === 'busy' ? <span className="spin" /> : <Icon name={ai.state === 'error' ? 'i-info' : 'i-sparkle'} />}<span>{ai.msg}</span>
               </div>
-            ) : <p className="small muted">Instagram often blocks previews. If a link does not work, paste the caption text instead.</p>}
+            ) : <p className="small muted">Works with Instagram, TikTok, Eventbrite and venue sites. Instagram often blocks links, so a screenshot of the post works best.</p>}
           </section>
 
           <label className="field">{lbl('title', 'Name of the pop-up')}
@@ -239,8 +266,12 @@ export function Submit() {
           </div>
 
           <div className="two">
-            <label className="field">{lbl('start', 'Starts')}<input className={cls('start')} type="date" value={start} min={londonDate(Date.now() - 7 * 86_400_000)} onChange={e => { setStart(e.target.value); if (end < e.target.value) setEnd(e.target.value); clearFlag('start'); }} />{err('start')}</label>
-            <label className="field">{lbl('end', 'Ends')}<input className={cls('end')} type="date" value={end} min={start} onChange={e => { setEnd(e.target.value); clearFlag('end'); }} />{err('end')}</label>
+            <div className="field">{lbl('start', 'Starts', undefined, 'startlbl')}
+              <DatePicker title="Starts" labelledBy="startlbl" value={start} today={today()} min={londonDate(Date.now() - 7 * 86_400_000)} range={[start, end]} className={state('start')}
+                onChange={v => { setStart(v); if (end < v) setEnd(v); clearFlag('start'); }} />{err('start')}</div>
+            <div className="field">{lbl('end', 'Ends', undefined, 'endlbl')}
+              <DatePicker title="Ends" labelledBy="endlbl" value={end} today={today()} min={start} range={[start, end]} className={state('end')}
+                onChange={v => { setEnd(v); clearFlag('end'); }} />{err('end')}</div>
           </div>
           <label className="field">{lbl('hours', 'Opening hours', ' (optional)')}
             <input className={cls('hours')} value={hours} onChange={e => { setHours(e.target.value); clearFlag('hours'); }} placeholder="e.g. Sat 10:00 to 16:00" /></label>
