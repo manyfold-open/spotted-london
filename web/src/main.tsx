@@ -9,7 +9,7 @@ import { Shell } from './components/Shell';
 import { ToastProvider } from './lib/hooks';
 import { Explore } from './pages/Explore';
 import { Submit } from './pages/Submit';
-import { AdminQueue, MePage, NotFound, Saved, SignIn } from './pages/Account';
+import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
 const MapPage = lazy(() => import('./pages/MapPage'));
 
@@ -20,6 +20,7 @@ const queryClient = new QueryClient({
 const router = createBrowserRouter([
   {
     element: <ToastProvider><Shell /></ToastProvider>,
+    errorElement: <CrashPage />,
     children: [
       { path: '/', element: <Explore /> },
       { path: '/p/:slug', element: <Explore /> }, // shared links open the sheet over Explore

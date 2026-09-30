@@ -47,7 +47,7 @@ export default function MapPage() {
               <Cover p={p} className="sw" />
               <span style={{ minWidth: 0 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {fmtDay(p.start_at)}{isLive(p) ? ' · on now' : ''}</span></span>
             </Link>
-          )) : q.isPending ? <div className="sk" style={{ height: 64, flex: 1 }} /> : <div className="empty" style={{ flex: 1 }}>No pop-ups match these filters.</div>}
+          )) : q.isPending ? <div className="sk" style={{ height: 64, flex: 1 }} /> : <div className="empty" style={{ flex: 1 }}><p>No pop-ups match these filters.</p></div>}
         </div>
       </div>
       <p className="small muted m-only" style={{ display: 'block', marginTop: 6 }}>Tap a pin to find its card. Tap the card for details.</p>

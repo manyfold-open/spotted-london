@@ -11,20 +11,31 @@ import { ApiError } from './lib/util';
 export const pages = new Hono<AppEnv>();
 
 const shell = (title: string, body: unknown) => html`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>${title}</title>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta name="theme-color" content="#f4efe6"><title>${title}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Instrument+Sans:wght@400;600&display=swap">
 <style>
-  :root{--paper:#f4efe6;--card:#fffdf8;--ink:#1d1b18;--ink2:#48423a;--accent:#e8622c;--err:#a8200d;--err-bg:#fde8e6}
+  :root{--paper:#f4efe6;--dot:#d6cbb9;--card:#fffdf8;--ink:#1d1b18;--ink2:#48423a;--accent:#e8622c;--err:#a8200d;--err-bg:#fde8e6}
   *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper);color:var(--ink);font:15px/1.5 "Helvetica Neue",Arial,sans-serif;padding:16px}
+  ::selection{background:var(--accent);color:var(--card)}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper) radial-gradient(var(--dot) 1.1px,transparent 1.2px) 0 0/22px 22px;color:var(--ink);font:15px/1.5 "Instrument Sans","Helvetica Neue",system-ui,sans-serif;padding:16px}
   main{width:100%;max-width:400px;background:var(--card);border:1.5px solid var(--ink);border-radius:16px;box-shadow:4px 4px 0 var(--ink);padding:28px}
-  h1{margin:0 0 8px;font-size:26px;letter-spacing:-.4px} p{margin:0 0 18px;color:var(--ink2)}
-  .btn{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:44px;border-radius:999px;border:1.5px solid var(--ink);background:var(--ink);color:var(--card);font:inherit;font-weight:600;cursor:pointer;box-shadow:3px 3px 0 var(--accent);text-decoration:none}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px;font:800 22px/1 "Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.4px}
+  .logo{width:36px;height:36px;border-radius:50%;border:2px solid var(--ink);background:var(--accent);display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
+  .logo svg{width:72%;height:72%;fill:var(--card)}
+  h1{margin:0 0 8px;font:800 26px/1.15 "Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.4px} p{margin:0 0 18px;color:var(--ink2)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:44px;border-radius:999px;border:1.5px solid var(--ink);background:var(--ink);color:var(--card);font:inherit;font-weight:600;cursor:pointer;box-shadow:3px 3px 0 var(--accent);text-decoration:none;transition:translate .12s,box-shadow .12s}
+  .btn:hover{translate:-1px -1px;box-shadow:4px 4px 0 var(--accent)} .btn:active{translate:2px 2px;box-shadow:1px 1px 0 var(--accent)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   .btn.alt{background:var(--card);color:var(--ink);box-shadow:none;margin-top:10px}
+  .btn.alt:hover{box-shadow:3px 3px 0 var(--ink)}
   input{width:100%;min-height:44px;border-radius:12px;border:1.5px solid var(--ink);padding:0 14px;font:inherit;margin-bottom:10px;background:var(--card)}
   .err{background:var(--err-bg);color:var(--err);border-radius:12px;padding:10px 12px}
   .out{word-break:break-all;font-size:13px}
-</style></head><body><main>${body}</main></body></html>`;
+</style></head><body><main>
+<div class="brand"><span class="logo"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 12c-8.3 0-14.5 6-14.5 13.9C17.5 36 32 51 32 51s14.5-15 14.5-25.1C46.5 18 40.3 12 32 12zm0 19.2a5.4 5.4 0 1 1 0-10.8 5.4 5.4 0 0 1 0 10.8z"/></svg></span>Spotted</div>
+${body}</main></body></html>`;
 
 function noStore(c: Context<AppEnv>) {
   c.header('cache-control', 'no-store');
