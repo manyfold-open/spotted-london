@@ -54,6 +54,7 @@ src/cron.ts             end expired, recompute hot, settle karma, purge, reminde
 src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
 src/db/agents.ts        AI agents on Manyfold (Scout, Triage, Checker): schedules, briefs, run life cycle
 src/lib/a2a.ts          A2A client: start a Manyfold task, check it with tasks/get, probe a token
+src/lib/manyfold.ts     "Connect with Manyfold": Connect A2A device-code sign-in (start, poll) that returns an agent's A2A address and token
 skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep it in step with the MCP tools
 migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows

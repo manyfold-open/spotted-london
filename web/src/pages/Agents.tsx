@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Agent, type AgentRun, type AgentsView, type Schedule } from '../lib/api';
@@ -153,8 +153,8 @@ function Connection({ a }: { a: Agent }) {
   const [token, setToken] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [key, setKey] = useState<string | null>(null);
+  const [manual, setManual] = useState(false);
   const put = (x: Agent) => qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: v.agents.map(y => (y.id === x.id ? x : y)) });
-  const test = useMutation({ mutationFn: () => api<{ message: string }>(`/admin/agents/${a.id}/test`, { method: 'POST' }), onSuccess: r => toast(r.message, 'i-checkc'), onError });
   const newKey = useMutation({
     mutationFn: () => api<{ key: string; key_hint: string }>(`/admin/agents/${a.id}/key`, { method: 'POST' }),
     onSuccess: r => { setKey(r.key); qc.invalidateQueries({ queryKey: ['agents'] }); },
@@ -178,7 +178,9 @@ function Connection({ a }: { a: Agent }) {
 
   return (
     <div className="conn">
-      <form className="fields" noValidate onSubmit={e => { e.preventDefault(); submit(); }}>
+      <ConnectManyfold a={a} />
+      {manual ? (
+      <form className="fields" style={{ marginTop: 16 }} noValidate onSubmit={e => { e.preventDefault(); submit(); }}>
         <label className="field"><span className="lbl">A2A address</span>
           <input className={`input ${err ? 'bad' : ''}`} inputMode="url" autoComplete="off" spellCheck={false} value={url} onChange={e => { setUrl(e.target.value); setErr(null); }}
             placeholder="https://…/a2a/…" aria-invalid={!!err} aria-describedby={err ? `cerr-${a.id}` : undefined} />
@@ -192,9 +194,11 @@ function Connection({ a }: { a: Agent }) {
         {err ? <span className="ferr" id={`cerr-${a.id}`} role="alert">{err}</span> : null}
         <div className="row">
           <button className="btn sm primary" disabled={save.isPending}>Save connection</button>
-          <button type="button" className="btn sm" disabled={test.isPending || !a.connected} onClick={() => test.mutate()}>{test.isPending ? <span className="spin" /> : <Icon name="i-check" />}Test</button>
         </div>
       </form>
+      ) : (
+        <button className="btn sm subtle" style={{ marginTop: 8, marginLeft: -10 }} onClick={() => setManual(true)}>Paste an address and token instead</button>
+      )}
 
       <div className="field" style={{ marginTop: 18 }}>
         <span className="lbl">Spotted key</span>
@@ -211,6 +215,85 @@ function Connection({ a }: { a: Agent }) {
       </div>
     </div>
   );
+}
+
+type ConnectSession = { auth_url: string; user_code: string; expires_at: number };
+type ConnectResult = { status: 'pending' | 'approved' | 'denied' | 'expired'; manyfold_agent?: string; ignored?: number; agent?: Agent };
+
+/** Device-code sign-in: Manyfold shows a code, the admin approves one agent, we poll for the result. */
+function ConnectManyfold({ a }: { a: Agent }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const [session, setSession] = useState<ConnectSession | null>(null);
+  const [ended, setEnded] = useState<string | null>(null);
+  const start = useMutation({
+    mutationFn: () => api<ConnectSession>(`/admin/agents/${a.id}/connect`, { method: 'POST' }),
+    onMutate: () => {
+      setEnded(null);
+      // Open the tab inside the click, or the browser blocks it as a pop-up.
+      const w = window.open('about:blank', '_blank');
+      return { w };
+    },
+    onSuccess: (s, _v, ctx) => {
+      setSession(s);
+      if (ctx?.w) { ctx.w.opener = null; ctx.w.location.href = s.auth_url; }
+    },
+    onError: (e, _v, ctx) => { ctx?.w?.close(); onError(e); },
+  });
+  const poll = useQuery({
+    queryKey: ['connect', a.id, session?.user_code],
+    queryFn: () => api<ConnectResult>(`/admin/agents/${a.id}/connect/poll`, { method: 'POST' }),
+    enabled: !!session,
+    refetchInterval: 3000,
+    refetchIntervalInBackground: true,
+    gcTime: 0,
+  });
+  useEffect(() => {
+    const r = poll.data;
+    if (!session || !r || r.status === 'pending') return;
+    setSession(null);
+    if (r.status === 'approved' && r.agent) {
+      qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: v.agents.map(y => (y.id === a.id ? r.agent! : y)) });
+      toast(`Connected to ${r.manyfold_agent ?? 'your Manyfold agent'}`, 'i-checkc');
+      if (r.ignored) setEnded(`You approved ${r.ignored + 1} agents. Only ${r.manyfold_agent} is used for ${a.name}; connect the others from their own cards.`);
+    } else {
+      setEnded(r.status === 'denied' ? 'The request was denied in Manyfold. Press Connect with Manyfold to try again.' : 'The request expired before it was approved. Press Connect with Manyfold to start again.');
+    }
+  }, [poll.data, session, a.id, a.name, qc, toast]);
+  useEffect(() => { if (poll.error && session) { setSession(null); onError(poll.error); } }, [poll.error, session, onError]);
+
+  if (session) {
+    return (
+      <div className="notice ai" style={{ flexDirection: 'column', gap: 10 }}>
+        <div className="row" style={{ gap: 8 }}><span className="spin" /><b>Waiting for you to approve in Manyfold</b></div>
+        <span>Check that Manyfold shows this code, pick the agent for {a.name}, tick <b>Enable A2A exposure</b> if it asks, then press Approve.</span>
+        <b className="usercode num">{session.user_code}</b>
+        <div className="row">
+          <a className="btn sm primary" href={session.auth_url} target="_blank" rel="noopener noreferrer"><Icon name="i-ext" className="i" />Open Manyfold</a>
+          <button className="btn sm subtle" onClick={() => setSession(null)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="field">
+      <span className="lbl">Manyfold agent</span>
+      <span className="hint">{a.connected ? `Connected. Token ends in ${a.token_hint}. Connect again to switch agents or renew the token.` : 'Sign in to Manyfold and pick the agent that does this job. No copying and pasting.'}</span>
+      {ended ? <span className="ferr" role="alert">{ended}</span> : null}
+      <div className="row">
+        <button className="btn sm primary" disabled={start.isPending} onClick={() => start.mutate()}>{start.isPending ? <span className="spin" /> : <Icon name="i-link" />}{a.connected ? 'Connect again' : 'Connect with Manyfold'}</button>
+        {a.connected ? <TestButton id={a.id} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function TestButton({ id }: { id: string }) {
+  const toast = useToast();
+  const onError = useErrorToast();
+  const test = useMutation({ mutationFn: () => api<{ message: string }>(`/admin/agents/${id}/test`, { method: 'POST' }), onSuccess: r => toast(r.message, 'i-checkc'), onError });
+  return <button className="btn sm" disabled={test.isPending} onClick={() => test.mutate()}>{test.isPending ? <span className="spin" /> : <Icon name="i-check" />}Test</button>;
 }
 
 function Runs({ runs, unit }: { runs: AgentRun[]; unit: string }) {
@@ -250,7 +333,7 @@ function Setup({ view }: { view: AgentsView }) {
           <li>MCP: add a server with this address, and the header <code>Authorization: Bearer $SPOTTED_API_KEY</code>.
             <div className="row copyrow"><code className="secret">{view.mcp_url}</code><button className="btn sm" onClick={() => copy(view.mcp_url)}>Copy</button></div></li>
           <li>On this page, open the agent's Connection, press Create key, and save the key in Manyfold as the agent secret <code>SPOTTED_API_KEY</code>.</li>
-          <li>In Manyfold, turn on A2A for the agent and mint a caller token. Paste the RPC URL and the token into Connection here, then press Test.</li>
+          <li>Press <b>Connect with Manyfold</b>. In the Manyfold tab, check the code matches, pick the agent, tick Enable A2A exposure, and approve. This page picks it up by itself.</li>
           <li>Press Run now once and read the result below the agent. When it looks right, switch the agent on.</li>
         </ol>
         <p className="small muted" style={{ marginTop: 12 }}>The same MCP address works without a key for anyone's AI assistant. It can then search and read public pop-ups, but not write.</p>

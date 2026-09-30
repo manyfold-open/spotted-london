@@ -6,6 +6,7 @@ import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { randomToken } from '../lib/auth';
 import { seal, unseal } from '../lib/seal';
 import { checkRpcUrl, probe } from '../lib/a2a';
+import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_IDS, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
 
@@ -116,11 +117,52 @@ agentsAdmin.delete('/:id/key', async c => {
   return c.json(await one(c.env.DB, a.id, now));
 });
 
+/*
+ * Connect with Manyfold (device-code sign-in, see src/lib/manyfold.ts). The device code is the
+ * secret that redeems the token, so it stays on the server: sealed in KV for the 15 minutes
+ * Manyfold keeps the request open. The browser only sees the link and the code to compare.
+ */
+const CONNECT_TTL = 15 * 60;
+const connectKey = (id: string) => `mf-connect:${id}`;
+
+agentsAdmin.post('/:id/connect', async c => {
+  requireAdmin(c);
+  const a = await loadAgent(c.env.DB, c.req.param('id'));
+  // Fail before Manyfold hands out anything we could not store.
+  await seal(c.env.AGENTS_KEY, 'check');
+  const app = c.env.APP_URL ? new URL(c.env.APP_URL) : null;
+  const start = await connectStart(c.env.MANYFOLD_API_URL, `Spotted London (${AGENT_INFO[a.id].name})`, app?.protocol === 'https:' ? app.origin : null);
+  await c.env.CACHE.put(connectKey(a.id), await seal(c.env.AGENTS_KEY, start.deviceCode), { expirationTtl: CONNECT_TTL });
+  return c.json({ auth_url: start.authUrl, user_code: start.userCode, expires_at: Date.parse(start.expiresAt) || c.get('now') + CONNECT_TTL * 1000 }, 201);
+});
+
+agentsAdmin.post('/:id/connect/poll', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const a = await loadAgent(db, c.req.param('id'));
+  const sealed = await c.env.CACHE.get(connectKey(a.id));
+  if (!sealed) return c.json({ status: 'expired' });
+  const r = await connectPoll(c.env.MANYFOLD_API_URL, await unseal(c.env.AGENTS_KEY, sealed));
+  if (r.status === 'pending') return c.json({ status: 'pending' });
+  await c.env.CACHE.delete(connectKey(a.id));
+  if (r.status !== 'approved') return c.json({ status: r.status });
+
+  // One Spotted agent maps to one Manyfold agent. Extra approvals are not stored.
+  const got = r.agents[0];
+  if (!got) return c.json({ status: 'denied' });
+  const rpcUrl = checkRpcUrl(got.rpcUrl, c.env.ENVIRONMENT === 'development');
+  await db.prepare('UPDATE agents SET rpc_url = ?, token_sealed = ?, token_hint = ?, updated_at = ? WHERE id = ?')
+    .bind(rpcUrl, await seal(c.env.AGENTS_KEY, got.token), hint(got.token), now, a.id).run();
+  await audit(db, admin.id, 'agent.connected', 'agent', a.id, { manyfold_agent: got.agentId, name: got.name, expires_at: got.expiresAt, ignored: r.agents.length - 1 }, now);
+  return c.json({ status: 'approved', manyfold_agent: got.name, ignored: r.agents.length - 1, token_expires_at: got.expiresAt ? Date.parse(got.expiresAt) : null, agent: await one(db, a.id, now) });
+});
+
 /** Checks the A2A address and token without starting a billed turn. */
 agentsAdmin.post('/:id/test', async c => {
   requireAdmin(c);
   const a = await loadAgent(c.env.DB, c.req.param('id'));
-  if (!a.rpc_url || !a.token_sealed) throw new ApiError(409, 'agent_not_connected', 'Paste the A2A address and caller token first.');
+  if (!a.rpc_url || !a.token_sealed) throw new ApiError(409, 'agent_not_connected', 'Connect this agent first: press Connect with Manyfold.');
   await probe({ rpcUrl: a.rpc_url, token: await unseal(c.env.AGENTS_KEY, a.token_sealed) });
   return c.json({ ok: true, message: 'Connected. Manyfold accepted the token.' });
 });

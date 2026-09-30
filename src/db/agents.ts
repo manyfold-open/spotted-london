@@ -109,7 +109,7 @@ export function brief(a: AgentRow, runId: string, appUrl: string, now: number): 
 
 /** Why an agent cannot start a run right now, or null when it can. */
 export async function blocker(db: D1Database, a: AgentRow, now: number): Promise<ApiError | null> {
-  if (!a.rpc_url || !a.token_sealed) return new ApiError(409, 'agent_not_connected', 'Connect this agent first: paste its A2A address and caller token from Manyfold.');
+  if (!a.rpc_url || !a.token_sealed) return new ApiError(409, 'agent_not_connected', 'Connect this agent first: open Connection and press Connect with Manyfold.');
   if (!a.key_hash) return new ApiError(409, 'agent_key_missing', 'Create a Spotted key for this agent first, and save it in Manyfold as SPOTTED_API_KEY.');
   const open = await db.prepare("SELECT id FROM agent_runs WHERE agent_id = ? AND status = 'running' AND started_at > ?").bind(a.id, now - RUN_TIMEOUT).first();
   if (open) return new ApiError(409, 'agent_busy', 'This agent is still working on its last run. Wait for it to finish, then try again.');
