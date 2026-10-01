@@ -85,12 +85,17 @@ export interface SocialItem {
 
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
+/** Threads media lists mix pictures and videos; Scout only needs pictures. */
+function isVideo(u: string): boolean {
+  try { return /\.(?:mp4|mov|webm|m4v)$/i.test(new URL(u).pathname); } catch { return true; }
+}
+
 function imageList(...values: unknown[]): string[] {
   const out: string[] = [];
   for (const v of values) {
     for (const x of Array.isArray(v) ? v : [v]) {
       const u = typeof x === 'string' ? x : x && typeof x === 'object' ? (x as Record<string, unknown>).url : null;
-      if (typeof u === 'string' && u.startsWith('https://') && !out.includes(u)) out.push(u);
+      if (typeof u === 'string' && u.startsWith('https://') && !isVideo(u) && !out.includes(u)) out.push(u);
     }
   }
   return out.slice(0, 4);

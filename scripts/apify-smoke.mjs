@@ -1,5 +1,5 @@
 // One-off check that the real Apify actors still return the fields src/lib/social.ts reads.
-// Costs a few cents (three runs of 3 items). Run it yourself so the token never leaves your shell:
+// Costs a few cents (seven runs of 3 items at most). Run it yourself so the token never leaves your shell:
 //
 //   read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs; unset APIFY_TOKEN
 //
@@ -14,7 +14,8 @@ if (!token) {
 
 const runs = [
   ['Instagram hashtag', 'apify~instagram-scraper', { resultsType: 'posts', directUrls: ['https://www.instagram.com/explore/tags/londonpopup/'], resultsLimit: 3, onlyPostsNewerThan: '30 days' }],
-  ['Threads search', 'themineworks~threads-scraper', { mode: 'search', searchQuery: 'london pop-up', maxPosts: 3 }],
+  ...['london pop-up', 'popup london', '#londonpopup', 'sample sale london'].map(q =>
+    [`Threads search "${q}"`, 'themineworks~threads-scraper', { mode: 'search', searchQuery: q, maxPosts: 3 }]),
   ['Threads profile', 'themineworks~threads-scraper', { mode: 'profile', profileUsernames: ['boxpark'], maxPosts: 3 }],
 ];
 

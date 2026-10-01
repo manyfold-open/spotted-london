@@ -70,6 +70,14 @@ describe('parseItem', () => {
     expect(parseItem('threads', { url: 'https://www.threads.net/@a/post/1', text: 'pop-up', posted_at: 1790760000 })?.posted_at).toBe(1790760000 * 1000);
   });
 
+  it('leaves video files out of the image list', () => {
+    const item = parseItem('threads', {
+      url: 'https://www.threads.net/@a/post/1', text: 'pop-up',
+      media_urls: ['https://cdn.test/clip.mp4?_nc_cat=106&sig=abc', 'https://cdn.test/pic.jpg?_nc_cat=1', 'https://cdn.test/other.MOV'],
+    });
+    expect(item?.image_urls).toEqual(['https://cdn.test/pic.jpg?_nc_cat=1']);
+  });
+
   it('keeps at most four images', () => {
     const images = Array.from({ length: 6 }, (_, i) => `https://cdn.test/${i}.jpg`);
     expect(parseItem('instagram', { url: 'https://www.instagram.com/p/A', caption: 'x', images })?.image_urls).toHaveLength(4);
