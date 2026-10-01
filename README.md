@@ -173,17 +173,17 @@ Scout can read public Instagram and Threads posts that Spotted fetches for it. A
 | `https://www.threads.net/@<name>` | a Threads account |
 | `https://www.threads.net/search?q=<words>` | a Threads keyword search |
 
-A cron job starts an Apify run for each source when it is due (the "How often" setting), keeps posts that talk about pop-ups, and stores them. Scout reads them with `get_social_posts`, confirms each on a brand or venue page, and sends drafts. Cost is capped at US$4 a month (the Apify free plan gives US$5); fetching stops at the cap and the screen shows the spend.
+A cron job starts an Apify run for each source when it is due (the "How often" setting), keeps posts that talk about pop-ups, and stores them. Scout reads them with `get_social_posts`, confirms each on a brand or venue page, and sends drafts. Cost is capped at US$4 in any 30 days (the Apify free plan gives US$5 a month); fetching stops at the cap and the screen shows the spend. Each run is also capped on Apify's side by items, charge and time.
 
 Turn it on:
 
-1. Make a free account at apify.com, then Settings, Integrations, and copy the API token.
+1. Make a free account at apify.com, then Settings, then API & Integrations, and copy the API token.
 2. In a terminal in this folder run `npx wrangler secret put APIFY_TOKEN` and paste the token when asked.
 3. Before merging a branch that adds migration 0006, run `npx wrangler d1 migrations apply spotted-db --remote`.
 4. Add a few Social sources, then wait for the next 10 minute cron tick. Check `npx wrangler tail` if nothing appears.
 5. Reinstall the updated skill on the Scout agent in Manyfold (SKILL.md is version 1.2.0).
 
-Check the actors still return the fields we read (about US$0.05): `read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs`.
+Check the actors still return the fields we read (about US$0.05): `read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs; unset APIFY_TOKEN`.
 
 ## What is not built yet
 

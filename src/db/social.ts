@@ -5,7 +5,7 @@
 
 import { DAY } from '../lib/scoring';
 import { newId } from '../lib/util';
-import { abortRun, getItems, getRun, runState, startRun } from '../lib/apify';
+import { ApifyError, abortRun, getItems, getRun, runState, startRun } from '../lib/apify';
 import { ACTORS, buildInput, itemsUsd, MAX_ITEMS, parseItem, passesFilter, reserveUsd, socialMode, type SocialItem } from '../lib/social';
 import type { SourceRow } from './scout';
 
@@ -38,7 +38,7 @@ export interface SocialPostRow {
   handled_at: number | null;
 }
 
-/** US$1 under the Apify free plan's US$5, because Apify's billing month does not start on the 1st. */
+/** Caps spend in any rolling 30 days. US$1 under the Apify free plan's US$5, because Apify's billing cycle starts on the signup day, not ours. */
 export const SOCIAL_MONTHLY_BUDGET_USD = 4;
 /** Scout is offered a post for this long after it was fetched. */
 export const POST_OFFER = 14 * DAY;
@@ -46,23 +46,20 @@ export const POST_OFFER = 14 * DAY;
 const KEEP = 90 * DAY;
 const HOUR = 3_600_000;
 const RUN_TIMEOUT = 30 * 60_000;
+const BUDGET_WINDOW = 30 * DAY;
+const CHECKS_PER_TICK = 10;
 const RETRY_AFTER = 6 * HOUR;
 const STRIKES = 3;
 const START_PER_TICK = 3;
 
-const monthStart = (now: number) => {
-  const d = new Date(now);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
-};
-
-/** Money spent or held this month. Open runs count at their worst case. */
-async function spentThisMonth(db: D1Database, now: number): Promise<number> {
-  const row = await db.prepare('SELECT COALESCE(SUM(cost_usd), 0) AS n FROM social_runs WHERE started_at >= ?').bind(monthStart(now)).first<{ n: number }>();
+/** Money spent or held in the last 30 days. Open runs count at their worst case. */
+async function spentRecently(db: D1Database, now: number): Promise<number> {
+  const row = await db.prepare('SELECT COALESCE(SUM(cost_usd), 0) AS n FROM social_runs WHERE started_at >= ?').bind(now - BUDGET_WINDOW).first<{ n: number }>();
   return row?.n ?? 0;
 }
 
 export async function socialSummary(db: D1Database, configured: boolean, now: number) {
-  return { configured, spent_usd: Math.round((await spentThisMonth(db, now)) * 100) / 100, cap_usd: SOCIAL_MONTHLY_BUDGET_USD };
+  return { configured, spent_usd: Math.round((await spentRecently(db, now)) * 100) / 100, cap_usd: SOCIAL_MONTHLY_BUDGET_USD };
 }
 
 /** Called by cron every 10 minutes. Does nothing until APIFY_TOKEN is set. */
@@ -78,7 +75,7 @@ type OpenRun = SocialRunRow & { target: string };
 
 async function checkOpenRuns(deps: SocialDeps, token: string, now: number) {
   const { results } = await deps.db.prepare(
-    "SELECT r.*, s.target FROM social_runs r JOIN scout_sources s ON s.id = r.source_id WHERE r.status = 'running' ORDER BY r.started_at",
+    `SELECT r.*, s.target FROM social_runs r JOIN scout_sources s ON s.id = r.source_id WHERE r.status = 'running' ORDER BY r.started_at LIMIT ${CHECKS_PER_TICK}`,
   ).all<OpenRun>();
   for (const r of results) {
     try {
@@ -86,7 +83,7 @@ async function checkOpenRuns(deps: SocialDeps, token: string, now: number) {
     } catch (e) {
       // A network blip leaves the run open for the next tick; the timeout ends it for good.
       console.error('social run check failed', r.id, e);
-      if (now - r.started_at > RUN_TIMEOUT) await failRun(deps.db, r, now, 'Could not reach Apify before the run timed out.', null);
+      if (now - r.started_at > RUN_TIMEOUT) await failRun(deps.db, r, now, 'Could not reach Apify before the run timed out.', heldCost(r, null));
     }
   }
 }
@@ -94,18 +91,18 @@ async function checkOpenRuns(deps: SocialDeps, token: string, now: number) {
 async function checkRun(deps: SocialDeps, token: string, r: OpenRun, now: number) {
   const { db } = deps;
   const mode = socialMode(r.target);
-  if (!r.apify_run_id || !mode) return failRun(db, r, now, 'This source cannot be fetched.', null);
+  if (!r.apify_run_id || !mode) return failRun(db, r, now, 'This source cannot be fetched.', heldCost(r, null));
 
   const run = await getRun(deps.fetch, token, r.apify_run_id);
   const state = runState(run.status);
   if (state === 'pending') {
     if (now - r.started_at > RUN_TIMEOUT) {
       await abortRun(deps.fetch, token, r.apify_run_id);
-      await failRun(db, r, now, 'The run took longer than 30 minutes and was stopped.', run.usageTotalUsd);
+      await failRun(db, r, now, 'The run took longer than 30 minutes and was stopped.', heldCost(r, run.usageTotalUsd));
     }
     return;
   }
-  if (state === 'failed') return failRun(db, r, now, `The Apify run ended as ${run.status.toLowerCase()}.`, run.usageTotalUsd);
+  if (state === 'failed') return failRun(db, r, now, `The Apify run ended as ${run.status.toLowerCase()}.`, confirmedCost(r, run.usageTotalUsd));
 
   const raw = run.defaultDatasetId ? await getItems(deps.fetch, token, run.defaultDatasetId, MAX_ITEMS) : [];
   const items = raw.map(x => parseItem(mode.platform, x)).filter((x): x is SocialItem => x !== null);
@@ -117,7 +114,7 @@ async function checkRun(deps: SocialDeps, token: string, r: OpenRun, now: number
   const stmts = kept.map(i =>
     db.prepare('INSERT OR IGNORE INTO social_posts (id, url, platform, source_id, run_id, author, body, image_urls, posted_at, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(`sp_${newId()}`, i.url, i.platform, r.source_id, r.id, i.author, i.body.slice(0, 2000), JSON.stringify(i.image_urls), i.posted_at, now));
-  stmts.push(db.prepare("UPDATE social_runs SET status = 'done', items = ?, kept = ?, cost_usd = ?, finished_at = ? WHERE id = ?").bind(raw.length, kept.length, cost, now, r.id));
+  stmts.push(db.prepare("UPDATE social_runs SET status = 'done', items = ?, kept = ?, cost_usd = ?, finished_at = ? WHERE id = ? AND status = 'running'").bind(raw.length, kept.length, cost, now, r.id));
   await db.batch(stmts);
 }
 
@@ -142,9 +139,15 @@ async function keepNew(db: D1Database, items: SocialItem[]): Promise<SocialItem[
   });
 }
 
-async function failRun(db: D1Database, r: SocialRunRow, now: number, error: string, usage: number | null) {
+/** Apify itself said the run ended badly, so its reported usage is the truth. Without a number, keep the held cost. */
+const confirmedCost = (r: SocialRunRow, usage: number | null) => usage ?? r.cost_usd;
+/** The run may have been billed and we cannot tell: never go below what we held. */
+const heldCost = (r: SocialRunRow, usage: number | null) => Math.max(r.cost_usd, usage ?? 0);
+
+/** Ends a run as failed and stores `cost` (see confirmedCost and heldCost). */
+async function failRun(db: D1Database, r: SocialRunRow, now: number, error: string, cost: number) {
   await db.prepare("UPDATE social_runs SET status = 'failed', error = ?, cost_usd = ?, finished_at = ? WHERE id = ? AND status = 'running'")
-    .bind(error, usage ?? 0, now, r.id).run();
+    .bind(error, cost, now, r.id).run();
   await pauseIfFailing(db, r.source_id, error, now);
 }
 
@@ -186,7 +189,7 @@ async function startDueRuns(deps: SocialDeps, token: string, now: number) {
   }
   due.sort((a, b) => a.at - b.at);
 
-  let spent = await spentThisMonth(db, now);
+  let spent = await spentRecently(db, now);
   for (const { s } of due.slice(0, START_PER_TICK)) {
     const mode = socialMode(s.target)!;
     const reserve = reserveUsd(mode.platform);
@@ -195,16 +198,25 @@ async function startDueRuns(deps: SocialDeps, token: string, now: number) {
       continue;
     }
     const id = `sr_${newId()}`;
+    // The row goes in first, holding the worst case, so a crash between here and Apify's answer
+    // cannot lose track of a run that may exist. checkRun ends such a row on the next tick.
+    await db.prepare("INSERT INTO social_runs (id, source_id, status, cost_usd, started_at) VALUES (?, ?, 'running', ?, ?)").bind(id, s.id, reserve, now).run();
     try {
-      const run = await startRun(deps.fetch, token, ACTORS[mode.platform], buildInput(mode, MAX_ITEMS, Math.max(2, s.every_days + 1)));
-      await db.prepare("INSERT INTO social_runs (id, source_id, apify_run_id, status, cost_usd, started_at) VALUES (?, ?, ?, 'running', ?, ?)")
-        .bind(id, s.id, run.id, reserve, now).run();
+      const run = await startRun(deps.fetch, token, ACTORS[mode.platform], buildInput(mode, MAX_ITEMS, Math.min(14, Math.max(2, s.every_days + 1))), {
+        maxItems: MAX_ITEMS,
+        maxTotalChargeUsd: Math.round(reserve * 10_000) / 10_000,
+        timeoutSecs: RUN_TIMEOUT / 1000,
+      });
+      await db.prepare('UPDATE social_runs SET apify_run_id = ? WHERE id = ?').bind(run.id, id).run();
       spent += reserve;
     } catch (e) {
       const error = e instanceof Error ? e.message : 'The run could not be started.';
       console.error('social run start failed', s.id, e);
-      await db.prepare("INSERT INTO social_runs (id, source_id, status, error, started_at, finished_at) VALUES (?, ?, 'failed', ?, ?, ?)").bind(id, s.id, error, now, now).run();
-      await pauseIfFailing(db, s.id, error, now);
+      // An error answer from Apify means no run was created. Anything else (network, unreadable answer) means one may exist.
+      const refused = e instanceof ApifyError && e.httpStatus !== undefined;
+      const stored = { id, source_id: s.id, cost_usd: reserve } as SocialRunRow;
+      await failRun(db, stored, now, error, refused ? 0 : reserve);
+      if (!refused) spent += reserve;
     }
   }
 }
@@ -253,10 +265,10 @@ export async function lastRuns(db: D1Database, sourceIds: string[]): Promise<Map
   return new Map(results.map(r => [r.source_id, r]));
 }
 
-/** Daily clean-up. Posts go first because they point at runs. */
+/** Daily clean-up. Posts go first because they point at runs; a run stays while any post still points at it. */
 export async function purgeSocial(db: D1Database, now: number): Promise<void> {
   await db.batch([
     db.prepare('DELETE FROM social_posts WHERE fetched_at < ?').bind(now - KEEP),
-    db.prepare('DELETE FROM social_runs WHERE started_at < ?').bind(now - KEEP),
+    db.prepare('DELETE FROM social_runs WHERE started_at < ? AND id NOT IN (SELECT run_id FROM social_posts WHERE run_id IS NOT NULL)').bind(now - KEEP),
   ]);
 }

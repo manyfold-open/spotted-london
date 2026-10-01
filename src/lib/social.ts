@@ -26,7 +26,7 @@ export const MAX_AGE = 14 * DAY;
 /** Free plan price in US dollars per 1,000 results. */
 const PRICE_PER_1K: Record<Platform, number> = { instagram: 2.7, threads: 2.0 };
 export const itemsUsd = (p: Platform, items: number) => (items * PRICE_PER_1K[p]) / 1000;
-/** Worst case for one run, held against the monthly budget until the run finishes. */
+/** Worst case for one run, held against the 30 day budget until the run finishes. */
 export const reserveUsd = (p: Platform) => itemsUsd(p, MAX_ITEMS);
 
 const IG_RESERVED = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'accounts', 'direct', 'tv', 'about', 'legal', 'developer', 'login', 'challenge', 'emailsignup', 'web', 'directory']);

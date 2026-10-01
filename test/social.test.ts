@@ -10,8 +10,9 @@ const NOW = Date.UTC(2026, 8, 30, 13); // Wed 30 Sep 2026, 14:00 London (BST)
 let n = 0;
 
 /** A fake Apify. It records every call and checks the token never leaves the header. */
-function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; startFails?: boolean } = {}) {
+function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; startFails?: boolean; startBody?: unknown; startThrows?: boolean } = {}) {
   const calls: string[] = [];
+  const starts: URL[] = [];
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method ?? 'GET';
@@ -19,7 +20,10 @@ function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; star
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer tok');
     expect(url.search).not.toContain('token');
     if (method === 'POST' && /\/acts\/[^/]+\/runs$/.test(url.pathname)) {
+      starts.push(url);
+      if (o.startThrows) throw new TypeError('network down');
       if (o.startFails) return new Response('{}', { status: 500 });
+      if (o.startBody !== undefined) return Response.json(o.startBody, { status: 201 });
       return Response.json({ data: { id: 'apify-run-1', status: 'READY', defaultDatasetId: 'ds1', usageTotalUsd: 0 } }, { status: 201 });
     }
     if (method === 'POST' && url.pathname.endsWith('/abort')) return Response.json({ data: {} });
@@ -29,7 +33,7 @@ function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; star
     if (url.pathname.startsWith('/v2/datasets/')) return Response.json(o.items ?? []);
     throw new Error(`unexpected Apify call ${method} ${url.pathname}`);
   }) as typeof fetch;
-  return { f, calls };
+  return { f, calls, starts };
 }
 
 const deps = (f: typeof fetch) => ({ db: env.DB, token: 'tok', fetch: f });
@@ -114,6 +118,16 @@ describe('social fetcher', () => {
     expect(JSON.parse(bodies[0])).toEqual({ mode: 'search', searchQuery: 'london pop-up', maxPosts: 20 });
   });
 
+  it('asks Instagram for posts no older than the check interval plus a day, at most 14 days', async () => {
+    await addSource('https://www.instagram.com/coaldropsyard', { every_days: 2 });
+    await addSource('https://www.instagram.com/slowaccount', { every_days: 30 });
+    const bodies: any[] = [];
+    const inner = fakeApify();
+    const f = (async (input: RequestInfo | URL, init?: RequestInit) => { if (init?.body) bodies.push(JSON.parse(String(init.body))); return inner.f(input, init); }) as typeof fetch;
+    await runSocial(deps(f), NOW);
+    expect(bodies.map(b => b.onlyPostsNewerThan).sort()).toEqual(['14 days', '3 days']);
+  });
+
   it('stores only new posts that pass the filter, and records the run', async () => {
     const id = await addSource('https://www.instagram.com/explore/tags/londonpopup');
     await env.DB.prepare("INSERT INTO scout_seen (id, url, outcome, seen_at) VALUES ('seen1', 'https://www.instagram.com/p/DDD', 'not_popup', ?)").bind(NOW - DAY).run();
@@ -174,6 +188,61 @@ describe('social fetcher', () => {
     const [run] = await runsOf(id);
     expect(run.status).toBe('failed');
     expect(run.error).toMatch(/30 minutes/);
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram')); // it may have been billed, so the held cost stays
+  });
+
+  it('keeps the held cost when Apify cannot be reached until the run times out', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify().f), NOW);
+    const down = (async () => { throw new TypeError('network down'); }) as unknown as typeof fetch;
+    await runSocial(deps(down), NOW + 31 * MIN);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed' });
+    expect(run.error).toMatch(/Could not reach Apify/);
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
+  });
+
+  it('keeps the held cost of a run that has no Apify id, which a crashed worker leaves behind', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await env.DB.prepare("INSERT INTO social_runs (id, source_id, status, cost_usd, started_at) VALUES ('sr_orphan', ?, 'running', ?, ?)").bind(id, reserveUsd('instagram'), NOW - HOUR).run();
+    await runSocial(deps(fakeApify().f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', error: 'This source cannot be fetched.' });
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
+  });
+
+  it('stores cost 0 when Apify refuses to start a run with an HTTP error', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify({ startFails: true }).f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', cost_usd: 0, apify_run_id: null, finished_at: NOW });
+    expect(run.error).toMatch(/Apify answered 500/);
+  });
+
+  it('keeps the held cost when the answer to a start cannot be read', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify({ startBody: {} }).f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', apify_run_id: null });
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
+  });
+
+  it('keeps the held cost when a start throws a network error', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify({ startThrows: true }).f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', apify_run_id: null });
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
+  });
+
+  it('asks Apify to cap the run by items, charge and time', async () => {
+    await addSource('https://www.instagram.com/explore/tags/londonpopup');
+    const { f, starts } = fakeApify();
+    await runSocial(deps(f), NOW);
+    expect(starts).toHaveLength(1);
+    expect(starts[0].searchParams.get('maxItems')).toBe('20');
+    expect(starts[0].searchParams.get('maxTotalChargeUsd')).toBe('0.054');
+    expect(starts[0].searchParams.get('timeout')).toBe('1800');
   });
 
   it('retries a failed source after 6 hours and pauses it after three failures in a row', async () => {
@@ -203,6 +272,23 @@ describe('social fetcher', () => {
     expect((await runsOf(id)).map(r => r.status)).toEqual(['skipped_budget']);
   });
 
+  it('counts spend over a rolling 30 days, not a calendar month', async () => {
+    const later = NOW + 5 * DAY; // 5 Oct: 20 days earlier is still September
+    const other = await addSource('https://www.instagram.com/spender', { status: 'paused' });
+    await env.DB.prepare("INSERT INTO social_runs (id, source_id, status, cost_usd, started_at) VALUES ('sr_spent', ?, 'done', 3.99, ?)").bind(other, later - 20 * DAY).run();
+    const blocked = await addSource('https://www.instagram.com/explore/tags/londonpopup');
+    const a = fakeApify();
+    await runSocial(deps(a.f), later);
+    expect(a.calls).toEqual([]);
+    expect((await runsOf(blocked)).map(r => r.status)).toEqual(['skipped_budget']);
+
+    await env.DB.prepare("UPDATE social_runs SET started_at = ? WHERE id = 'sr_spent'").bind(later - 31 * DAY).run();
+    await env.DB.prepare('DELETE FROM social_runs WHERE source_id = ?').bind(blocked).run();
+    const b = fakeApify();
+    await runSocial(deps(b.f), later);
+    expect(b.calls).toEqual(['POST /v2/acts/apify~instagram-scraper/runs']);
+  });
+
   it('starts at most three runs per tick, oldest first', async () => {
     for (let i = 0; i < 5; i++) await addSource(`https://www.instagram.com/account${i}`);
     const { f, calls } = fakeApify();
@@ -220,6 +306,29 @@ describe('social fetcher', () => {
     await purgeSocial(env.DB, NOW);
     expect((await postsOf(id)).map(p => p.id)).toEqual(['sp_new']);
     expect(await runsOf(id)).toEqual([]);
+  });
+
+  it('keeps an old run while a newer post still points at it', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO social_runs (id, source_id, status, started_at) VALUES ('sr_kept', ?, 'done', ?)").bind(id, NOW - 91 * DAY),
+      env.DB.prepare("INSERT INTO social_posts (id, url, platform, source_id, run_id, fetched_at) VALUES ('sp_kept', 'https://www.instagram.com/p/KEPT', 'instagram', ?, 'sr_kept', ?)").bind(id, NOW - 10 * DAY),
+    ]);
+    await purgeSocial(env.DB, NOW);
+    expect((await postsOf(id)).map(p => p.id)).toEqual(['sp_kept']);
+    expect((await runsOf(id)).map(r => r.id)).toEqual(['sr_kept']);
+  });
+
+  it('checks at most ten open runs per tick, oldest first', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const id = await addSource(`https://www.instagram.com/open${i}`);
+      ids.push(id);
+      await env.DB.prepare("INSERT INTO social_runs (id, source_id, apify_run_id, status, cost_usd, started_at) VALUES (?, ?, 'apify-run-1', 'running', 0.054, ?)").bind(`sr_open${i}`, id, NOW - (60 - i) * MIN).run();
+    }
+    const { f, calls } = fakeApify({ status: 'RUNNING' });
+    await runSocial(deps(f), NOW);
+    expect(calls.filter(c => c.startsWith('GET'))).toHaveLength(10);
   });
 });
 

@@ -17,7 +17,7 @@ const KEY = ['scout-sources'];
 type SourcesData = { sources: ScoutSource[]; apify?: ApifySummary };
 
 const apifyLine = (a: ApifySummary) => a.configured
-  ? `Apify this month: US$${a.spent_usd.toFixed(2)} of US$${a.cap_usd.toFixed(2)}. Fetching stops at the limit.`
+  ? `Apify in the last 30 days: US$${a.spent_usd.toFixed(2)} of US$${a.cap_usd.toFixed(2)}. Fetching stops at the limit.`
   : 'Apify is not set up, so Instagram and Threads sources are not fetched yet. Add the APIFY_TOKEN secret to turn them on.';
 
 export function ScoutSources() {
@@ -101,8 +101,8 @@ function FetchInfo({ s }: { s: ScoutSource }) {
   if (!f.fetchable) line = 'Not fetched. Use an Instagram account, hashtag or place address, or a Threads account or search address.';
   else if (!r) line = 'Not fetched yet.';
   else if (r.status === 'running') line = 'Fetching now.';
-  else if (r.status === 'failed') line = `Last fetch failed: ${r.error ?? 'unknown error'}`;
-  else if (r.status === 'skipped_budget') line = 'Skipped. The monthly Apify budget is used up.';
+  else if (r.status === 'failed') line = `Last fetch failed: ${r.error ?? 'unknown error'}. Spotted tries again in 6 hours.`;
+  else if (r.status === 'skipped_budget') line = 'Skipped. The Apify limit for the last 30 days is used up. Fetching resumes when older spend drops out of that window.';
   else line = `Fetched ${day.format(r.at)}: kept ${r.kept} of ${r.items} posts, US$${r.cost_usd.toFixed(2)}.`;
   return (
     <div className="row srcmeta">
@@ -198,7 +198,7 @@ function AddSource({ onDone }: { onDone: () => void }) {
     <form className="srcadd" noValidate onSubmit={submit}>
       <div className="field">
         <span className="lbl">What is it</span>
-        <div className="chips">{KINDS.map(([k, , name]) => <button type="button" key={k} className="chip" aria-pressed={kind === k} onClick={() => { setKind(k); setErrors({}); }}>{name}</button>)}</div>
+        <div className="chips">{KINDS.map(([k, , name]) => <button type="button" key={k} className="chip" aria-pressed={kind === k} onClick={() => { setKind(k); setErrors({}); if (k === 'social') setEvery(3); }}>{name}</button>)}</div>
       </div>
       <div className="field">
         <label className="lbl" htmlFor="src-target">{search ? 'Search words' : 'Web address'}</label>

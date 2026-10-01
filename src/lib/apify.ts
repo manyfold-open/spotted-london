@@ -4,7 +4,14 @@
 const BASE = 'https://api.apify.com/v2';
 
 export interface ApifyRun { id: string; status: string; defaultDatasetId: string | null; usageTotalUsd: number | null }
-export class ApifyError extends Error {}
+export class ApifyError extends Error {
+  /** Set when Apify itself answered with an error status, which means it created no run. */
+  httpStatus?: number;
+  constructor(message: string, httpStatus?: number) {
+    super(message);
+    this.httpStatus = httpStatus;
+  }
+}
 
 type F = typeof fetch | undefined;
 
@@ -14,7 +21,7 @@ async function call(f: F, token: string, path: string, init: RequestInit = {}): 
   if (init.body) headers['content-type'] = 'application/json';
   const res = await doFetch(`${BASE}${path}`, { ...init, headers });
   // The body is not copied into the error: it can echo the request.
-  if (!res.ok) throw new ApifyError(`Apify answered ${res.status}.`);
+  if (!res.ok) throw new ApifyError(`Apify answered ${res.status}.`, res.status);
   return res.json();
 }
 
@@ -29,8 +36,12 @@ function toRun(body: unknown): ApifyRun {
   };
 }
 
-export async function startRun(f: F, token: string, actor: string, input: Record<string, unknown>): Promise<ApifyRun> {
-  return toRun(await call(f, token, `/acts/${actor}/runs`, { method: 'POST', body: JSON.stringify(input) }));
+export interface RunLimits { maxItems: number; maxTotalChargeUsd: number; timeoutSecs: number }
+
+/** Starts a run. The limits are enforced by Apify itself, so a stuck actor cannot overspend. */
+export async function startRun(f: F, token: string, actor: string, input: Record<string, unknown>, limits: RunLimits): Promise<ApifyRun> {
+  const q = new URLSearchParams({ maxItems: String(limits.maxItems), maxTotalChargeUsd: String(limits.maxTotalChargeUsd), timeout: String(limits.timeoutSecs) });
+  return toRun(await call(f, token, `/acts/${actor}/runs?${q}`, { method: 'POST', body: JSON.stringify(input) }));
 }
 
 export async function getRun(f: F, token: string, runId: string): Promise<ApifyRun> {

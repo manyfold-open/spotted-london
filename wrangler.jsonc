@@ -57,7 +57,7 @@
 
   "triggers": {
     "crons": [
-      "*/10 * * * *", // recompute hot, end expired pop-ups, start and check agent runs
+      "*/10 * * * *", // recompute hot, end expired pop-ups, start and check agent runs, fetch Instagram/Threads posts
       "0 * * * *",    // reminders
       "0 4 * * *"     // settle karma, abuse scan, purge old check-in coordinates
     ]
