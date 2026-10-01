@@ -174,6 +174,7 @@ describe('socialMode', () => {
     for (const bad of [
       'https://www.tiktok.com/@brand', 'https://www.instagram.com/p/AbC123/', 'https://www.instagram.com/explore/',
       'https://www.instagram.com/reels/', 'https://www.threads.net/search', 'https://www.threads.net/@a/post/xyz',
+      'https://www.instagram.com/login/', 'https://www.instagram.com/accounts/',
       'https://example.com/', 'not a url',
     ]) expect(socialMode(bad), bad).toBeNull();
   });
@@ -183,6 +184,12 @@ describe('buildInput', () => {
   it('builds the Instagram input for any of its three modes', () => {
     expect(buildInput(socialMode('https://www.instagram.com/coaldropsyard')!, 20, 4)).toEqual({
       resultsType: 'posts', directUrls: ['https://www.instagram.com/coaldropsyard/'], resultsLimit: 20, onlyPostsNewerThan: '4 days',
+    });
+    expect(buildInput(socialMode('https://www.instagram.com/explore/tags/londonpopup')!, 20, 4)).toEqual({
+      resultsType: 'posts', directUrls: ['https://www.instagram.com/explore/tags/londonpopup/'], resultsLimit: 20, onlyPostsNewerThan: '4 days',
+    });
+    expect(buildInput(socialMode('https://www.instagram.com/explore/locations/213385402/london-england')!, 20, 4)).toEqual({
+      resultsType: 'posts', directUrls: ['https://www.instagram.com/explore/locations/213385402/'], resultsLimit: 20, onlyPostsNewerThan: '4 days',
     });
   });
 
@@ -234,7 +241,7 @@ describe('passesFilter', () => {
     ({ url: 'https://www.instagram.com/p/X', platform: 'instagram', author: 'a', body, image_urls: [], posted_at });
 
   it('keeps pop-up talk in English and Chinese', () => {
-    for (const t of ['Our pop-up opens Friday', 'POPUP at Coal Drops Yard', 'pop up shop', 'Sample sale this weekend', 'Grand opening in Soho', 'Launch party', 'Summer residency', 'Limited time only', '倫敦快閃店', '伦敦快闪', '限時開幕', '开幕活动'])
+    for (const t of ['Our pop-up opens Friday', 'POPUP at Coal Drops Yard', 'pop up shop', '#londonpopup', '#popupshop', 'Sample sale this weekend', 'Grand opening in Soho', 'Launch party', 'Summer residency', 'Limited time only', '倫敦快閃店', '伦敦快闪', '限時開幕', '开幕活动'])
       expect(passesFilter(post(t), NOW), t).toBe(true);
   });
 
@@ -249,9 +256,11 @@ describe('passesFilter', () => {
     expect(passesFilter(post('pop-up', null), NOW)).toBe(true);
   });
 
-  it('drops posts about another city unless they also say London', () => {
+  it('drops posts about another UK city unless they also say London', () => {
     expect(passesFilter(post('Pop-up in Manchester this week'), NOW)).toBe(false);
     expect(passesFilter(post('After Manchester, our pop-up lands in London'), NOW)).toBe(true);
+    expect(passesFilter(post('Paris label pop-up in Soho'), NOW)).toBe(true);
+    expect(passesFilter(post('Pop-up in Paris this week'), NOW)).toBe(true);
   });
 });
 
@@ -307,7 +316,7 @@ export const itemsUsd = (p: Platform, items: number) => (items * PRICE_PER_1K[p]
 /** Worst case for one run, held against the monthly budget until the run finishes. */
 export const reserveUsd = (p: Platform) => itemsUsd(p, MAX_ITEMS);
 
-const IG_RESERVED = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'accounts', 'direct', 'tv', 'about', 'legal', 'developer']);
+const IG_RESERVED = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'accounts', 'direct', 'tv', 'about', 'legal', 'developer', 'login', 'challenge', 'emailsignup', 'web', 'directory']);
 const IG_NAME = /^[A-Za-z0-9._]{1,30}$/;
 const THREADS_NAME = /^@[A-Za-z0-9._]{1,30}$/;
 
@@ -396,8 +405,8 @@ export function parseItem(platform: Platform, raw: unknown): SocialItem | null {
   return { url, platform, author: text(r.username), body: text(r.text) ?? '', image_urls: imageList(r.media_urls), posted_at: timeOf(r.posted_at) };
 }
 
-const KEYWORDS = /\bpop[\s-]?ups?\b|\bsample sales?\b|\bopening\b|\blaunch(?:es|ing)?\b|\bresidency\b|\blimited[\s-]time\b|快閃|快闪|限時|限时|開幕|开幕/i;
-const OTHER_CITY = /\b(?:manchester|birmingham|liverpool|leeds|glasgow|edinburgh|bristol|brighton|newcastle|cardiff|new york|nyc|paris|tokyo|seoul)\b/i;
+const KEYWORDS = /pop[\s-]?ups?|\bsample sales?\b|\bopening\b|\blaunch(?:es|ing)?\b|\bresidency\b|\blimited[\s-]time\b|快閃|快闪|限時|限时|開幕|开幕/i;
+const OTHER_CITY = /\b(?:manchester|birmingham|liverpool|leeds|glasgow|edinburgh|bristol|brighton|newcastle|cardiff)\b/i;
 
 /** The cheap filter: recent, talks about a pop-up, and not clearly somewhere else. */
 export function passesFilter(item: SocialItem, now: number): boolean {

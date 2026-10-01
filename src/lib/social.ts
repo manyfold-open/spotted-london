@@ -29,7 +29,7 @@ export const itemsUsd = (p: Platform, items: number) => (items * PRICE_PER_1K[p]
 /** Worst case for one run, held against the monthly budget until the run finishes. */
 export const reserveUsd = (p: Platform) => itemsUsd(p, MAX_ITEMS);
 
-const IG_RESERVED = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'accounts', 'direct', 'tv', 'about', 'legal', 'developer']);
+const IG_RESERVED = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'accounts', 'direct', 'tv', 'about', 'legal', 'developer', 'login', 'challenge', 'emailsignup', 'web', 'directory']);
 const IG_NAME = /^[A-Za-z0-9._]{1,30}$/;
 const THREADS_NAME = /^@[A-Za-z0-9._]{1,30}$/;
 
@@ -118,8 +118,8 @@ export function parseItem(platform: Platform, raw: unknown): SocialItem | null {
   return { url, platform, author: text(r.username), body: text(r.text) ?? '', image_urls: imageList(r.media_urls), posted_at: timeOf(r.posted_at) };
 }
 
-const KEYWORDS = /\bpop[\s-]?ups?\b|\bsample sales?\b|\bopening\b|\blaunch(?:es|ing)?\b|\bresidency\b|\blimited[\s-]time\b|快閃|快闪|限時|限时|開幕|开幕/i;
-const OTHER_CITY = /\b(?:manchester|birmingham|liverpool|leeds|glasgow|edinburgh|bristol|brighton|newcastle|cardiff|new york|nyc|paris|tokyo|seoul)\b/i;
+const KEYWORDS = /pop[\s-]?ups?|\bsample sales?\b|\bopening\b|\blaunch(?:es|ing)?\b|\bresidency\b|\blimited[\s-]time\b|快閃|快闪|限時|限时|開幕|开幕/i;
+const OTHER_CITY = /\b(?:manchester|birmingham|liverpool|leeds|glasgow|edinburgh|bristol|brighton|newcastle|cardiff)\b/i;
 
 /** The cheap filter: recent, talks about a pop-up, and not clearly somewhere else. */
 export function passesFilter(item: SocialItem, now: number): boolean {
