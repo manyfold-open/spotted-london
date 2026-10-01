@@ -405,6 +405,19 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .runs li:first-child { border-top: 0 }
 .runs .summary { white-space: pre-line; color: var(--ink2); max-width: 72ch }
 code.secret { font-size: 12.5px; padding: 6px 8px; overflow-wrap: anywhere; flex: 1 1 220px; min-width: 0; user-select: all }
+.srcs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column }
+.srcs li { padding: 12px 0; border-top: 1.5px dashed var(--hair); display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.srcs li:first-child { border-top: 0 }
+.srcs li.src { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 18px }
+.srcinfo { display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.srcs li.off .srcinfo { opacity: .6 }
+.srcctl { gap: 8px 14px; justify-content: flex-end }
+.srcs .summary { color: var(--ink2); max-width: 72ch }
+.srcurl { overflow-wrap: anywhere; color: var(--ink2) }
+.srcmeta { gap: 6px 14px }
+.srcbar { align-items: flex-start }
+.srcadd { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; padding: 14px 0 4px; border-top: 1.5px dashed var(--hair); max-width: 560px }
+.srcs .stepper b, .srcadd .stepper b { min-width: 96px }
 .usercode { font-family: var(--mono); font-size: 26px; letter-spacing: .12em; color: var(--ink); user-select: all }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px }
 .steps .copyrow { margin-top: 8px }
@@ -523,6 +536,10 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .agrid { grid-template-columns: minmax(0, 1fr); gap: 14px }
   .agent h2 { font-size: 20px }
   .agent .chips .chip { min-height: 38px }
+  .srcs li.src { grid-template-columns: minmax(0, 1fr) }
+  .srcctl { justify-content: space-between }
+  .srcbar .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none }
+  .srcbar .chips .chip { flex: none }
   .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1.5px solid var(--ink); padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)) }
   .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; color: var(--ink2); padding: 2px 0; text-decoration: none; -webkit-touch-callout: none }
   .tab .ti { position: relative; width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; transition: scale var(--dur-1) }

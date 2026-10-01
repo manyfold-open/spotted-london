@@ -60,7 +60,7 @@ skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep i
 migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
 web/src/components/     Shell (sidebar, top bar, bottom tabs), PopupSheet, PopupBits, maps, Icon, Turnstile
-web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent)
+web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent, with ScoutSources)
 ```
 
 ## Rules that are easy to break
@@ -105,12 +105,12 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (API only, migration 0005).
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (migration 0005) with a Scout sources section on /admin/agent.
 
 Not done yet, roughly in priority order:
 1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
 2. Hide quality votes on your own posts in the UI (the API already rejects them).
 3. Vote ring detection in the daily abuse scan.
 4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
-5. Scout sources in the web app: a Sources tab on /admin/agent (API is at /api/v1/admin/agents/sources), extra links on the pop-up sheet and in Submit.
+5. Show a pop-up's extra links (`popup_links`) on the pop-up sheet, and let Submit take more than one link.
 6. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).

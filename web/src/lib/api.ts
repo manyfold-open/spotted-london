@@ -43,6 +43,13 @@ export interface Agent {
   open_notes: number; runs: AgentRun[];
 }
 export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; agents: Agent[] }
+export type SourceKind = 'listing' | 'venue' | 'brand' | 'social' | 'search';
+export type SourceStatus = 'active' | 'suggested' | 'paused' | 'rejected';
+export interface ScoutSource {
+  id: string; kind: SourceKind; target: string; label: string; status: SourceStatus; every_days: number; note: string | null;
+  suggested_by_run: string | null; last_checked_at: number | null; due_at: number | null; created_at: number;
+  track_record: { drafts: number; published: number; rejected: number; waiting: number };
+}
 export interface AgentNote { id: string; agent_id: string; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
 
 export class ApiError extends Error {

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Agent, type AgentRun, type AgentsView, type Schedule } from '../lib/api';
 import { useErrorToast, useMe, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
+import { ScoutSources } from './ScoutSources';
 
 // Admin settings for the AI agents that run on Manyfold (SPEC §13.4).
 
@@ -41,6 +42,7 @@ export default function AgentsPage() {
       {q.isPending ? <Skeleton list /> : q.data ? (
         <>
           <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} />)}</div>
+          <ScoutSources />
           <Setup view={q.data} />
         </>
       ) : <div className="empty" style={{ marginTop: 22 }}><p>{q.error?.message ?? 'Could not load the agents.'}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>}
