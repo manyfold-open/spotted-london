@@ -1,6 +1,6 @@
 # Social posts for Scout, fetched through Apify
 
-Status: design approved by Zack on 2026-10-01, not built yet.
+Status: design approved by Zack on 2026-10-01. Amended the same day while writing the plan (actors chosen, 20 items per run, separate fetch clock, 6 hour retry).
 Scope: Instagram and Threads only. Xiaohongshu (RED) is a later step that plugs into the same pipeline.
 
 ## Goal
@@ -37,7 +37,7 @@ Give Scout a steady supply of leads from Instagram and Threads without paying fo
 
 A source whose address matches none of these cannot be fetched. It stays in the list, is shown as "not fetchable" and is skipped by the fetcher. Parsing lives in one function, `socialMode(url)`, with tests.
 
-`every_days` and `due_at` already say when a source is due. The fetcher uses them as they are.
+`every_days` says how often to fetch. The fetcher keeps its own clock in `social_runs` and never writes `due_at` or `last_checked_at`: those stay Scout's, so a fetch cannot make Scout think it already checked a source. `list_sources` only shows an Instagram or Threads source to Scout while it has posts Scout has not handled.
 
 ## Data model (migration 0006)
 
@@ -87,11 +87,11 @@ Runs inside the existing `*/10 * * * *` tick, in a new `src/db/social.ts` called
 
 1. **Check open runs.** For each `social_runs` row with status `running`, ask Apify for its state.
    - Still running after 30 minutes: mark `failed` with "timed out".
-   - Finished: download the dataset (limit 30 items), filter, insert, record `items`, `kept`, `cost_usd` (Apify reports usage per run), mark `done`, call `mark source checked` (`last_checked_at`, `due_at`).
+   - Finished: download the dataset (limit 20 items), filter, insert, record `items`, `kept` and `cost_usd` (the larger of Apify's reported usage and items times the actor's price), mark `done`.
    - Failed: mark `failed` with Apify's message.
 2. **Start due runs.** Pick active `social` sources with `due_at IS NULL OR due_at <= now`, with no open run, oldest first, at most 3 per tick.
    - If the month's spend is at or over the cap, write one `skipped_budget` row per source per day and start nothing.
-   - Otherwise start the actor for the source's mode, input capped at 30 results, and write a `running` row.
+   - Otherwise start the actor for the source's mode, input capped at 20 results, and write a `running` row whose `cost_usd` holds the worst-case cost of the run until it finishes. A source whose last run failed is retried after 6 hours, not on the next tick.
 3. **Pause on repeated failure.** Three failed runs in a row for a source set its status to `paused` with a note saying why. The admin turns it back on.
 
 Why not just download in one go: Apify runs take seconds to minutes, and Workers Free has little CPU per invocation. Two small steps per tick keep each one light.
@@ -162,8 +162,21 @@ Zack does these himself (CLAUDE.md: never paste secrets into chat):
 
 Code side: new `APIFY_TOKEN` is added to the `Bindings` type. No new binding is needed in `wrangler.jsonc`, but any new plain var must also go in the `previews` block.
 
-## Open items for the implementation plan
+## Actors and costs (decided)
 
-- Pick the Apify actors for Instagram (account, hashtag, place) and Threads (account, search): compare current price, last update, output fields, and whether a single actor covers several modes. Record the choice, expected cost per 30 posts, and the field mapping here before coding.
-- Confirm the free plan's US$5 covers the starting source list at the chosen `every_days`. Starting list: about 10 Instagram accounts (venues and media from the existing venue sources), 2 hashtags, 3 Threads searches.
-- Decide how many starting social sources to seed in a migration versus add by hand. Default: add by hand.
+| Platform | Actor | Free plan price | Notes |
+| --- | --- | --- | --- |
+| Instagram | `apify~instagram-scraper` (official) | US$2.70 per 1,000 results | One actor for accounts, hashtags and places through `directUrls`. About 41k users, 4.67 stars. |
+| Threads | `themineworks~threads-scraper` | US$2.00 per 1,000 results | Modes `profile` and `search`. Empty searches, blocked pages and failed runs are free. Few users (about 340), so the actor id is a constant that is easy to swap. |
+
+Rejected: `watcher.data/search-threads-by-keywords` (US$8 per 1,000, 3.4 stars), `magicfingers/threads-scraper` (20.8% success rate), `apidojo/instagram-scraper` (on the free plan limited to 5 runs a month and 10 items a run).
+
+Rough month on the starting list (10 accounts, 2 hashtags, 3 Threads searches, every 2 to 3 days, 20 items at most): about US$3, under the US$4 cap. Posts are charged before the keyword filter, so the cap is on fetched items, not kept ones.
+
+## Before merging
+
+Zack runs `scripts/apify-smoke.mjs` once (about US$0.05) to confirm the real output field names match `parseItem`. If a field differs, change `parseItem` and its test fixtures, nothing else.
+
+## Open items
+
+- Which accounts, hashtags and Threads searches to add first. Default: Zack adds them by hand in `/admin/agent`, nothing is seeded.
