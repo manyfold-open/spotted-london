@@ -589,7 +589,7 @@ CREATE TABLE audit_log (
 | Triage | 每 6 小時 | 讀審核佇列每則貼文、查來源與重複 | 備註：looks_real / needs_check / likely_fake / duplicate |
 | Checker | 每天 09:00 | 複查進行中/即將開始的活動來源頁 | 備註：cancelled / details_changed / needs_check / looks_real（只是紀錄已查過） |
 
-- **流程**：cron（每 10 分鐘）找出到期的 agent → A2A `message/stream` 送出 brief（含 run id、上限、admin 指示）→ 拿到 task id 就斷線（避免吃 Worker CPU）→ 之後用 `tasks/get` 查狀態；3 小時沒結束算失敗。agent 做完呼叫 `finish_run` 留摘要。
+- **流程**：cron（每 10 分鐘）找出到期的 agent → A2A `message/send`（`blocking: false`，非同步）送出 brief（含 run id、上限、admin 指示）→ 立刻拿到 task id（不用連線等；blocking/stream 會被 Manyfold 的 10 分鐘上限砍掉，async 上限為 2 小時）→ 之後用 `tasks/get` 查狀態；3 小時沒結束算失敗。agent 做完呼叫 `finish_run` 留摘要。
 - **連線**：每個 agent 卡片的「Connect with Manyfold」走 Manyfold 的 Connect A2A 授權（device-code 流程，類似 OAuth）：Spotted 發起 → admin 在 Manyfold 核對代碼、選 agent、按 Approve → Spotted 輪詢拿到該 agent 的 A2A 網址與 token。device code 只存在 Worker（加密放 KV 15 分鐘）。手動貼網址與 token 保留為備案（2026-09-30）。
 - **權限**：每個 agent 有自己的 Spotted key（只存 SHA-256），只能用自己角色的工具；每次 run 有寫入上限（預設 20–30）。Manyfold caller token 用 `AGENTS_KEY` secret 做 AES-GCM 加密存 D1，API 只回傳末四碼。
 - **審核佇列**：agent 備註顯示在該 pop-up 底下；已上架活動被標 cancelled / details_changed / likely_fake / duplicate / needs_check 會重新進佇列。admin 做決定或按 Dismiss 後備註結案。
