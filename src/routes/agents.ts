@@ -10,6 +10,8 @@ import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_IDS, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
+import { lastRuns, newPostCounts, socialSummary } from '../db/social';
+import { socialMode } from '../lib/social';
 
 // Admin settings for the AI agents (/admin/agent in the web app). Secrets are write-only:
 // the caller token and the Spotted key are never sent back, only their last four characters.
@@ -198,13 +200,27 @@ async function one(db: D1Database, id: string, now: number) {
 
 /* ---------- Scout's sources ---------- */
 
-async function sourceView(db: D1Database, rows: SourceRow[]) {
+async function sourceView(db: D1Database, rows: SourceRow[], now: number) {
   const stats = await sourceStats(db, rows.map(r => r.id));
-  return rows.map(r => ({
-    id: r.id, kind: r.kind, target: r.target, label: r.label, status: r.status, every_days: r.every_days, note: r.note,
-    suggested_by_run: r.suggested_by_run, last_checked_at: r.last_checked_at, due_at: r.due_at, created_at: r.created_at,
-    track_record: stats.get(r.id) ?? { drafts: 0, published: 0, rejected: 0, waiting: 0 },
-  }));
+  const socialIds = rows.filter(r => r.kind === 'social').map(r => r.id);
+  const [fresh, runs] = await Promise.all([newPostCounts(db, socialIds, now), lastRuns(db, socialIds)]);
+  return rows.map(r => {
+    const mode = r.kind === 'social' ? socialMode(r.target) : null;
+    const run = runs.get(r.id);
+    return {
+      id: r.id, kind: r.kind, target: r.target, label: r.label, status: r.status, every_days: r.every_days, note: r.note,
+      suggested_by_run: r.suggested_by_run, last_checked_at: r.last_checked_at, due_at: r.due_at, created_at: r.created_at,
+      track_record: stats.get(r.id) ?? { drafts: 0, published: 0, rejected: 0, waiting: 0 },
+      ...(r.kind === 'social' ? {
+        fetch: {
+          mode: mode?.label ?? null,
+          fetchable: !!mode,
+          new_posts: fresh.get(r.id) ?? 0,
+          last_run: run ? { status: run.status, at: run.started_at, items: run.items, kept: run.kept, cost_usd: Math.round(run.cost_usd * 1000) / 1000, error: run.error } : null,
+        },
+      } : {}),
+    };
+  });
 }
 
 /** Every source, suggestions from Scout first. */
@@ -213,7 +229,11 @@ agentsAdmin.get('/sources', async c => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM scout_sources ORDER BY CASE status WHEN 'suggested' THEN 0 WHEN 'active' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END, kind, label",
   ).all<SourceRow>();
-  return c.json({ sources: await sourceView(c.env.DB, results) });
+  const now = c.get('now');
+  return c.json({
+    sources: await sourceView(c.env.DB, results, now),
+    apify: await socialSummary(c.env.DB, !!c.env.APIFY_TOKEN, now),
+  });
 });
 
 agentsAdmin.post('/sources', async c => {
@@ -230,7 +250,7 @@ agentsAdmin.post('/sources', async c => {
     .bind(id, kind, target, text(b, 'label', { max: 80, required: true }), Math.round(num(b, 'every_days', { min: 1, max: 60 }) ?? 1), text(b, 'note', { max: 300 }), now, now).run();
   await audit(db, admin.id, 'scout_source.add', 'scout_source', id, { kind, target }, now);
   const row = await db.prepare('SELECT * FROM scout_sources WHERE id = ?').bind(id).first<SourceRow>();
-  return c.json((await sourceView(db, [row!]))[0], 201);
+  return c.json((await sourceView(db, [row!], now))[0], 201);
 });
 
 /** Turn a source on or off (a suggestion goes live by setting it active), or change how often it is checked. */
@@ -252,5 +272,5 @@ agentsAdmin.patch('/sources/:id', async c => {
     .bind(status, everyDays, label, note, due, now, src.id).run();
   await audit(db, admin.id, 'scout_source.update', 'scout_source', src.id, { from: src.status, status, every_days: everyDays }, now);
   const row = await db.prepare('SELECT * FROM scout_sources WHERE id = ?').bind(src.id).first<SourceRow>();
-  return c.json((await sourceView(db, [row!]))[0]);
+  return c.json((await sourceView(db, [row!], now))[0]);
 });

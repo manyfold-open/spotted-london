@@ -5,6 +5,7 @@ import { DAY, hot, KARMA } from './lib/scoring';
 import { awardKarma } from './db/karma';
 import { runAgents } from './db/agents';
 import { SEEN_KEEP } from './db/scout';
+import { purgeSocial, runSocial } from './db/social';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
@@ -13,6 +14,8 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await recomputeHot(env.DB, now);
       // AI agents on Manyfold: check open runs, start the ones that are due (SPEC §13.4)
       await runAgents(env, now).catch(e => console.error('agents cron failed', e));
+      // Instagram and Threads posts for Scout, through Apify (does nothing until APIFY_TOKEN is set)
+      await runSocial({ db: env.DB, token: env.APIFY_TOKEN }, now).catch(e => console.error('social cron failed', e));
       break;
     case '0 * * * *':
       await reminders(env.DB, now);
@@ -22,6 +25,7 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await purgeCheckinCoordinates(env.DB, now);
       await purgeExpiredAuth(env.DB, now);
       await purgeScoutSeen(env.DB, now);
+      await purgeSocial(env.DB, now);
       break;
     default:
       console.warn('unknown cron', cron);

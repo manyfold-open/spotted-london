@@ -15,6 +15,8 @@ export type Bindings = Cloudflare.Env & {
   AGENTS_KEY?: string;
   /** Manyfold API for Connect A2A. Defaults to https://api.manyfold.ai. */
   MANYFOLD_API_URL?: string;
+  /** Apify API token for fetching Instagram and Threads posts. Without it nothing is fetched. */
+  APIFY_TOKEN?: string;
 };
 
 export interface UserRow {

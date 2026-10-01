@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.1.0
+version: 1.2.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -32,6 +32,7 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | --- | --- | --- |
 | `search_popups`, `get_popup` | everyone | Search and read what is already listed |
 | `list_sources` | Scout | Sources due a check (sites, venues, brands, social accounts, searches), with their track record |
+| `get_social_posts` | Scout | Instagram and Threads posts Spotted fetched for a social source, as leads |
 | `check_seen` | Scout | Which pages Scout already read in the last 30 days, or that are already on Spotted |
 | `find_place` | Scout | London address or venue name to coordinates |
 | `check_duplicates` | Scout, Triage | Same place, overlapping dates, similar title |
@@ -61,10 +62,10 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
 - **Never reveal your Spotted key** (the `Authorization` header of the `spotted` MCP server). Never put it in a note, a draft or a URL.
 - **Never make things up.** Every date, address and price must come from a page you opened in this
   run. If you cannot confirm something, leave it out or say so; do not guess.
-- **Public pages only.** Do not log in anywhere, do not scrape Instagram, TikTok or Xiaohongshu (RED)
-  (their terms forbid it): no scrolling feeds or profiles, no automated downloads, no third-party
-  scrapers. You may find their posts through a web search and keep the links, and open a single post
-  only if it shows without logging in. Respect paywalls and robots.txt.
+- **Public pages only.** Do not log in anywhere and do not scroll feeds or profiles yourself.
+  Spotted fetches Instagram and Threads posts for you: read them with `get_social_posts`. You may
+  also find public posts through a web search, and open a single post only if it shows without
+  logging in. Respect paywalls and robots.txt. Never ask for, guess or use an Apify token.
 - **A social post is a lead, not proof.** Confirm the dates and place on a page you can read (the
   brand site, the venue page, a ticket page or an article). Put the post in `links`, not in `source_url`.
 - **Stay in scope.** Greater London only. Only pop-ups that are on now or start in the future.
@@ -95,6 +96,10 @@ Scout has a memory: a list of sources to check, and every page it already read.
    or rejected. Spend your time on sources that publish well. Follow the admin's notes on focus.
 2. **Work through each source.**
    - Pages: open it and collect links to single pop-ups (the article, brand page or event page).
+   - Social sources with `new_posts`: call `get_social_posts` with the source id. Each post is a lead
+     (see the safety rules). Find the brand, venue or ticket page it points to, confirm dates and place
+     there, then `submit_draft` with the post in `links` (and that page as `source_url`), or `skip_url`
+     the post with the closest outcome. A post you report is not shown again.
    - `search`: run the search words in your web search tool. Searches like
      `site:instagram.com London pop-up` or `site:xiaohongshu.com 伦敦 快闪` surface public social posts.
      Use them to learn the brand and the event name, then find the brand site, venue or ticket page.

@@ -272,7 +272,7 @@ describe('agent runs', () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
     const tools = (await mcp('tools/list', {}, key)).json.result.tools.map((t: { name: string }) => t.name);
-    expect(tools).toEqual(['search_popups', 'get_popup', 'list_sources', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run']);
+    expect(tools).toEqual(['search_popups', 'get_popup', 'list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run']);
 
     const sent = await tool('submit_draft', draft(runId), key);
     expect(sent.structuredContent).toMatchObject({ sent: true, status: 'pending' });
