@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, type ScoutSource, type SourceKind, type SourceStatus } from '../lib/api';
+import { api, ApiError, type ApifySummary, type ScoutSource, type SourceKind, type SourceStatus } from '../lib/api';
 import { useErrorToast, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 
@@ -14,8 +14,14 @@ const kindName = (k: SourceKind) => KINDS.find(x => x[0] === k)![2];
 const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' });
 const KEY = ['scout-sources'];
 
+type SourcesData = { sources: ScoutSource[]; apify?: ApifySummary };
+
+const apifyLine = (a: ApifySummary) => a.configured
+  ? `Apify this month: US$${a.spent_usd.toFixed(2)} of US$${a.cap_usd.toFixed(2)}. Fetching stops at the limit.`
+  : 'Apify is not set up, so Instagram and Threads sources are not fetched yet. Add the APIFY_TOKEN secret to turn them on.';
+
 export function ScoutSources() {
-  const q = useQuery({ queryKey: KEY, queryFn: () => api<{ sources: ScoutSource[] }>('/admin/agents/sources') });
+  const q = useQuery({ queryKey: KEY, queryFn: () => api<SourcesData>('/admin/agents/sources') });
   const [kind, setKind] = useState<SourceKind | null>(null);
   const [paused, setPaused] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -31,6 +37,7 @@ export function ScoutSources() {
       <p className="small muted" style={{ marginTop: -6, marginBottom: 14, maxWidth: '72ch' }}>
         Where Scout looks on each run: sites, venue pages, brands, social accounts and web searches. Each source shows how many drafts it led to and what happened to them, so you can keep the ones that work. Scout can suggest new ones; they wait here for you.
       </p>
+      {q.data?.apify && all.some(s => s.kind === 'social') ? <p className="small muted" style={{ marginTop: -6, marginBottom: 14 }}>{apifyLine(q.data.apify)}</p> : null}
       {q.isPending ? <div className="sk-panel"><div className="sk skl" style={{ width: '60%' }} /><div className="sk skl" style={{ width: '80%' }} /></div>
         : q.error ? <div className="empty"><p>{q.error.message}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>
         : (
@@ -66,7 +73,7 @@ function useUpdate(id: string) {
   const onError = useErrorToast();
   return useMutation({
     mutationFn: (patch: { status?: SourceStatus; every_days?: number }) => api<ScoutSource>(`/admin/agents/sources/${id}`, { method: 'PATCH', json: patch }),
-    onSuccess: s => qc.setQueryData<{ sources: ScoutSource[] }>(KEY, v => v && { sources: v.sources.map(x => (x.id === s.id ? s : x)) }),
+    onSuccess: s => qc.setQueryData<SourcesData>(KEY, v => v && { ...v, sources: v.sources.map(x => (x.id === s.id ? s : x)) }),
     onError,
   });
 }
@@ -84,6 +91,25 @@ function Record({ s }: { s: ScoutSource }) {
       {r.drafts} {r.drafts === 1 ? 'draft' : 'drafts'}: <b style={{ color: 'var(--eng)' }}>{r.published} published</b>
       {r.rejected ? `, ${r.rejected} rejected` : ''}{r.waiting ? `, ${r.waiting} waiting` : ''}
     </span>
+  );
+}
+
+function FetchInfo({ s }: { s: ScoutSource }) {
+  const f = s.fetch!;
+  const r = f.last_run;
+  let line: string;
+  if (!f.fetchable) line = 'Not fetched. Use an Instagram account, hashtag or place address, or a Threads account or search address.';
+  else if (!r) line = 'Not fetched yet.';
+  else if (r.status === 'running') line = 'Fetching now.';
+  else if (r.status === 'failed') line = `Last fetch failed: ${r.error ?? 'unknown error'}`;
+  else if (r.status === 'skipped_budget') line = 'Skipped. The monthly Apify budget is used up.';
+  else line = `Fetched ${day.format(r.at)}: kept ${r.kept} of ${r.items} posts, US$${r.cost_usd.toFixed(2)}.`;
+  return (
+    <div className="row srcmeta">
+      {f.mode ? <span className="tag t-mute">{f.mode}</span> : null}
+      <span className="small muted">{line}</span>
+      {f.new_posts ? <span className="small">{f.new_posts} new for Scout</span> : null}
+    </div>
   );
 }
 
@@ -113,6 +139,7 @@ function SourceRow({ s }: { s: ScoutSource }) {
           {s.status === 'paused' ? <span className="tag t-watch">Paused</span> : null}
         </div>
         <Target s={s} />
+        {s.fetch ? <FetchInfo s={s} /> : null}
         <div className="row srcmeta">
           <Record s={s} />
           <span className="small muted">{s.last_checked_at ? `Checked ${day.format(s.last_checked_at)}` : 'Not checked yet'}</span>
@@ -147,7 +174,7 @@ function AddSource({ onDone }: { onDone: () => void }) {
   const add = useMutation({
     mutationFn: () => api<ScoutSource>('/admin/agents/sources', { method: 'POST', json: { kind, target, label, every_days: every } }),
     onSuccess: s => {
-      qc.setQueryData<{ sources: ScoutSource[] }>(KEY, v => v && { sources: [...v.sources, s] });
+      qc.setQueryData<SourcesData>(KEY, v => v && { ...v, sources: [...v.sources, s] });
       toast(`${s.label} added. Scout checks it on its next run.`);
       onDone();
     },
@@ -176,9 +203,9 @@ function AddSource({ onDone }: { onDone: () => void }) {
       <div className="field">
         <label className="lbl" htmlFor="src-target">{search ? 'Search words' : 'Web address'}</label>
         <input id="src-target" className="input" value={target} maxLength={500} autoComplete="off" inputMode={search ? 'text' : 'url'}
-          placeholder={search ? 'site:instagram.com London sample sale' : 'https://www.example.com/whats-on'}
+          placeholder={search ? 'site:instagram.com London sample sale' : kind === 'social' ? 'https://www.instagram.com/explore/tags/londonpopup/' : 'https://www.example.com/whats-on'}
           onChange={e => { setTarget(e.target.value); setErrors(x => ({ ...x, target: undefined })); }} aria-invalid={!!errors.target} />
-        {err('target') ?? <span className="hint">{search ? 'Scout runs this in its web search. site:instagram.com, site:tiktok.com and site:xiaohongshu.com find public posts.' : 'The page that lists pop-ups, like a venue\'s what\'s on page.'}</span>}
+        {err('target') ?? <span className="hint">{search ? 'Scout runs this in its web search. site:instagram.com, site:tiktok.com and site:xiaohongshu.com find public posts.' : kind === 'social' ? 'Spotted fetches these through Apify: an Instagram account, hashtag or place address, or a Threads account (threads.net/@name) or search (threads.net/search?q=words).' : 'The page that lists pop-ups, like a venue\'s what\'s on page.'}</span>}
       </div>
       <div className="field">
         <label className="lbl" htmlFor="src-label">Name</label>
