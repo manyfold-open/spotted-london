@@ -84,6 +84,7 @@ async function startRun(id: string) {
 const draft = (runId: string, over: Record<string, unknown> = {}) => ({
   run_id: runId, title: 'Kinfolk Ceramics Sample Sale', category: 'sample', start_date: '2026-10-03', end_date: '2026-10-04',
   lat: 51.5358, lng: -0.1253, address: 'Coal Drops Yard, N1C 4AB', area: "King's Cross", source_url: 'https://kinfolk.test/sale',
+  evidence: 'Kinfolk sample sale, 3 and 4 October at Coal Drops Yard', evidence_url: 'https://www.instagram.com/p/kinfolk1', // a login-only page is not fetched
   confidence: 'high', note_for_admin: 'Brand site confirms both days.', ...over,
 });
 
@@ -289,12 +290,57 @@ describe('agent runs', () => {
     const queue = await call('GET', '/admin/queue', { user: admin });
     const item = queue.json.items.find((p: { id: string }) => p.id === sent.structuredContent.id);
     expect(item.flags).toContain('by_agent');
-    expect(item.agent_notes[0]).toMatchObject({ agent_id: 'scout', verdict: 'looks_real', note: 'Brand site confirms both days.' });
+    expect(item.agent_notes[0]).toMatchObject({ agent_id: 'scout', verdict: 'looks_real', note: expect.stringContaining('Brand site confirms both days.') });
 
     // approving resolves the note
     await call('POST', `/admin/popups/${item.id}/decision`, { user: admin, body: { action: 'approve' } });
     const open = await env.DB.prepare('SELECT COUNT(*) AS n FROM agent_notes WHERE popup_id = ? AND resolved_at IS NULL').bind(item.id).first<{ n: number }>();
     expect(open!.n).toBe(0);
+  });
+
+  it('refuses a draft whose quote is not on the page, and keeps the quote when it is', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const page = (text: string) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(`<html><body><script>x()</script><p>${text}</p></body></html>`, { headers: { 'content-type': 'text/html' } }));
+
+    page('Doors open Fri 3 &amp; Sat 4 October &ndash; Coal Drops Yard.');
+    const missing = await tool('submit_draft', draft(runId, { title: 'Evidence Page Sale', lat: 51.51, lng: -0.11, evidence: 'Open 10 to 12 November at Coal Drops Yard', evidence_url: 'https://kinfolk.test/sale' }), key);
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0].text).toMatch(/quote is not on it/);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM popups WHERE title = 'Evidence Page Sale'").first<{ n: number }>())!.n).toBe(0);
+
+    const ok = await tool('submit_draft', draft(runId, { title: 'Evidence Page Sale', lat: 51.51, lng: -0.11, evidence: 'doors open fri 3 & sat 4 october - Coal Drops Yard', evidence_url: 'https://kinfolk.test/sale' }), key);
+    expect(ok.structuredContent.sent).toBe(true);
+    const row = await env.DB.prepare('SELECT evidence, evidence_url, evidence_check FROM popups WHERE id = ?').bind(ok.structuredContent.id).first<any>();
+    expect(row).toMatchObject({ evidence_check: 'found', evidence_url: 'https://kinfolk.test/sale' });
+    const note = await env.DB.prepare('SELECT note FROM agent_notes WHERE popup_id = ?').bind(ok.structuredContent.id).first<{ note: string }>();
+    expect(note!.note).toContain('(seen on the page)');
+  });
+
+  it('checks a quote against the stored text of a post Spotted fetched, and takes an unreadable page as unchecked', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    await env.DB.prepare("INSERT INTO social_posts (id, url, platform, source_id, body, fetched_at) VALUES ('sp1', 'https://www.instagram.com/p/abc111', 'instagram', 'src_q_instagram', 'Pop-up this weekend! 3-4 Oct, Coal Drops Yard. Free entry.', ?)").bind(NOW).run();
+
+    const wrong = await tool('submit_draft', draft(runId, { title: 'Weekend Post Pop-up', lat: 51.53, lng: -0.12, evidence: 'Pop-up next month at Boxpark', evidence_url: 'https://www.instagram.com/p/abc111' }), key);
+    expect(wrong.isError).toBe(true);
+    expect(wrong.content[0].text).toMatch(/not in that post/);
+    const right = await tool('submit_draft', draft(runId, { title: 'Weekend Post Pop-up', lat: 51.53, lng: -0.12, evidence: '3-4 Oct, Coal Drops Yard. Free entry.', evidence_url: 'https://www.instagram.com/p/abc111' }), key);
+    expect(right.structuredContent.sent).toBe(true);
+    expect((await env.DB.prepare('SELECT evidence_check FROM popups WHERE id = ?').bind(right.structuredContent.id).first<any>()).evidence_check).toBe('found');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('Forbidden', { status: 403 }));
+    const blocked = await tool('submit_draft', draft(runId, { title: 'Blocked Page Sale', lat: 51.52, lng: -0.09, evidence_url: 'https://blocked.test/sale' }), key);
+    expect(blocked.structuredContent.sent).toBe(true);
+    expect((await env.DB.prepare('SELECT evidence_check FROM popups WHERE id = ?').bind(blocked.structuredContent.id).first<any>()).evidence_check).toBe('unchecked');
+  });
+
+  it('asks for evidence', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const r = await tool('submit_draft', draft(runId, { evidence: undefined }), key);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/evidence is required/);
   });
 
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {

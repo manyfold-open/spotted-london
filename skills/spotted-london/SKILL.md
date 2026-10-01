@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.2.0
+version: 1.3.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -67,7 +67,7 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
   also find public posts through a web search, and open a single post only if it shows without
   logging in. Respect paywalls and robots.txt. Never ask for, guess or use an Apify token.
 - **A social post is a lead, not proof.** Confirm the dates and place on a page you can read (the
-  brand site, the venue page, a ticket page or an article). Put the post in `links`, not in `source_url`.
+  brand site, the venue page, a ticket page or an article) when one exists. Put the post in `links`. When no organiser page states the dates, the post itself may be the `source_url` and the `evidence_url`: quote its text, and set `confidence: check`.
 - **Stay in scope.** Greater London only. Only pop-ups that are on now or start in the future.
 - **Plain English.** Short sentences, no hype, no emoji, and no em dashes, en dashes or spaced hyphens.
 
@@ -127,6 +127,11 @@ Scout has a memory: a list of sources to check, and every page it already read.
    - `links`: up to 5 other public pages about the same pop-up: the brand site, venue page, ticket
      page, and any Instagram, TikTok or Xiaohongshu post you found. They help the admin and the
      Checker. Social links are recognised from their address.
+   - `evidence`: 12 to 300 characters copied word for word from the page or post that states the
+     dates and the place, for example "Open 5 to 12 Oct, 12 Redchurch Street". Spotted looks for it
+     and refuses the draft if it is not there, so never retype or paraphrase it. If your web tool
+     summarises pages, fetch the raw page (for example with curl) and copy from that.
+   - `evidence_url`: the page or post the quote comes from. It defaults to `source_url`.
    - `source_id`: the id of the source that led you to it, so its track record counts this draft.
    - `confidence: high` only when the organiser or venue page confirms dates and place. Otherwise `check`.
    - `note_for_admin`: where you confirmed it and anything unclear.

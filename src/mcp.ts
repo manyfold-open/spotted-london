@@ -21,6 +21,7 @@ import { londonDateString, parseLondonDate } from './lib/time';
 import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
+import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, type EvidenceCheck } from './lib/evidence';
 
 export const mcp = new Hono<AppEnv>();
 
@@ -132,6 +133,15 @@ const LINKS_SCHEMA = {
   description: 'Other public pages about the same pop-up: the brand site, venue page, ticket page, or an Instagram, TikTok or Xiaohongshu post. Up to 5.',
   items: obj({ url: S('Public web address.'), kind: S('What the page is. Social posts are recognised from the address.', { enum: [...LINK_KINDS] }) }, ['url']),
 };
+
+/** Social platforms need a login to read, so a quote from one is checked only against posts Spotted fetched itself. */
+const SOCIAL_HOSTS = /(^|\.)(instagram\.com|instagr\.am|threads\.net|threads\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com)$/;
+
+async function verifyEvidence(db: D1Database, quote: string, url: string): Promise<EvidenceCheck> {
+  const post = await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>();
+  if (!post && SOCIAL_HOSTS.test(new URL(url).hostname)) return 'unchecked';
+  return checkEvidence(quote, url, post);
+}
 
 const TOOLS: Record<string, Tool> = {
   search_popups: {
@@ -351,12 +361,14 @@ const TOOLS: Record<string, Tool> = {
       hours_text: S('Opening hours, like "Fri 5-10pm, Sat-Sun 12-8pm".'),
       price_type: S('Entry price.', { enum: ['free', 'paid', 'unknown'] }),
       price_text: S('Price details, like "Free entry" or "£12 tickets".'),
-      source_url: S('Public link where the details are published: the organiser page, ticket page or article.'),
+      source_url: S('Public link where the details are published: the organiser page, ticket page or article. Or the Instagram or Threads post, when no organiser page exists.'),
+      evidence: S(`A passage copied word for word from the page or post, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Spotted looks for it there and refuses the draft if it is not found.`),
+      evidence_url: S('The page or post the evidence comes from. Defaults to source_url.'),
       confidence: S('high: dates and place confirmed by the organiser. check: something is unclear.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
       source_id: S('Id from list_sources of the source that led you here, if any.'),
-    }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url']),
+    }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url', 'evidence']),
     async run(a, x) {
       const run = await requireRun(x, a);
       const db = x.c.env.DB;
@@ -371,16 +383,28 @@ const TOOLS: Record<string, Tool> = {
       } catch (e) {
         throw new ToolError(e instanceof ApiError ? e.message : String(e));
       }
+      const evidence = str(a, 'evidence', EVIDENCE_MAX + 1, true)!;
+      if (evidence.length < EVIDENCE_MIN || evidence.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${evidence.length}.`);
       const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number });
       if (dupes.length) {
         await markSeen(x, run, seenUrl, 'duplicate', { sourceId, popupId: dupes[0].id });
         await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
         return { sent: false, reason: 'Already on Spotted. Skip it.', duplicates: dupes.map(p => brief(toPublic(p), x.origin)) };
       }
+      const evidenceUrl = normalizeUrl(str(a, 'evidence_url', 500) ?? source);
+      if (!evidenceUrl) throw new ToolError('evidence_url must be a public web address.');
+      let evidenceCheck: EvidenceCheck;
+      try {
+        evidenceCheck = await verifyEvidence(db, evidence, evidenceUrl);
+      } catch (e) {
+        if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${evidenceUrl})`);
+        throw e;
+      }
       await useItem(x, run);
       const id = newId();
       const row = {
         id, slug: slugify(input.title!), ...input, geohash: geohash(input.lat!, input.lng!), status: 'pending',
+        evidence, evidence_url: evidenceUrl, evidence_check: evidenceCheck,
         created_by: x.agent!.user_id, quality_pos: 0, quality_neg: 0, created_at: x.now, updated_at: x.now,
         hot: hot({ status: 'pending', qualityPos: 0, qualityNeg: 0, startAt: input.start_at!, endAt: input.end_at! }, x.now),
       };
@@ -389,7 +413,8 @@ const TOOLS: Record<string, Tool> = {
       await db.batch([
         db.prepare(`INSERT INTO popups (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map(k => (row as Record<string, unknown>)[k] ?? null)),
         db.prepare('INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(newId(), x.agent!.id, run.id, id, a.confidence === 'high' ? 'looks_real' : 'needs_check', note ?? 'Found by the scout agent.', input.source_url, x.now),
+          .bind(newId(), x.agent!.id, run.id, id, a.confidence === 'high' ? 'looks_real' : 'needs_check',
+            `${note ?? 'Found by the scout agent.'} Quote${evidenceCheck === 'found' ? ' (seen on the page)' : ' (page could not be read, not checked)'}: "${evidence}"`, evidenceUrl, x.now),
         ...links.map(l => db.prepare('INSERT OR IGNORE INTO popup_links (popup_id, url, kind, added_by, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, l.url, l.kind, x.agent!.user_id, x.now)),
         // Only the main page carries the source, so each draft counts once in its track record.
         ...[seenUrl, ...links.map(l => l.url)].map((url, i) => db.prepare("INSERT INTO scout_seen (id, url, outcome, source_id, popup_id, run_id, seen_at) VALUES (?, ?, 'sent', ?, ?, ?, ?)")

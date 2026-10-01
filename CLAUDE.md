@@ -74,6 +74,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - Times are Unix ms. "Today" and "weekend" are London days: use `src/lib/time.ts` / `web/src/lib/format.ts`.
 - The dev fallback that returns sign-in links in the response must stay development only.
 - Agents only write drafts (`pending`) and notes. Never give an MCP tool the power to approve, remove, vote or edit a live pop-up.
+- Every Scout draft carries a word-for-word `evidence` quote. `src/lib/evidence.ts` looks for it: in the stored text for posts in `social_posts`, on the fetched page otherwise. A page that loads without the quote is refused; a page that cannot be read (blocked, login-only social page) is stored as `evidence_check = 'unchecked'` and the admin note says so.
 - Agent secrets are write-only: the Manyfold token is sealed with `AGENTS_KEY`, Spotted keys are stored as SHA-256, and the API returns only the last four characters.
 - Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
 - The social fetcher (`src/db/social.ts`) never writes `scout_sources.due_at` or `last_checked_at`; those are Scout's clock. Its own clock is `social_runs`. The Apify cap (US$4 in any rolling 30 days) is `SOCIAL_MONTHLY_BUDGET_USD`; Instagram and Threads actors and prices live in `src/lib/social.ts`.
