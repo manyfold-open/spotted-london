@@ -1,7 +1,8 @@
 // Minimal A2A client (JSON-RPC 2.0 over HTTPS) for starting and checking agent runs on Manyfold.
 // Protocol handling follows manyfold-open/cloudflare-worker-launch (MIT), trimmed to what cron needs:
-// a run is started with `message/stream`, we read only until the task id arrives, and later
-// check on it with `tasks/get`. Holding the stream open would burn Workers CPU on every token.
+// a run is submitted asynchronously with `message/send` and `blocking: false`, which returns the task
+// at once, and is checked later with `tasks/get`. A streaming or blocking turn is capped at 10 minutes
+// by Manyfold (it fails with "delegated turn exceeded 600s"); an async task gets the longer async cap.
 
 import { ApiError } from './util';
 
@@ -95,49 +96,20 @@ function rpcError(e: unknown): ApiError {
 }
 
 /**
- * Starts one agent turn. Returns as soon as the task id is known (or the turn already finished).
+ * Starts one agent turn without waiting for it: `blocking: false` makes Manyfold answer with the
+ * task straight away and run it under its async cap, not the 10-minute blocking cap.
  * `messageId` is A2A's idempotency key, so it is derived from our run id: a retry cannot start
  * a second billed turn.
  */
 export async function startTask(cred: AgentCred, messageId: string, text: string, ms = 30_000): Promise<TaskInfo> {
-  const res = await post(cred, 'message/stream', {
+  const res = await post(cred, 'message/send', {
     message: { kind: 'message', role: 'user', messageId, parts: [{ kind: 'text', text }] },
-    configuration: { acceptedOutputModes: ['text/plain'] },
-  }, 'text/event-stream', ms);
-
-  const info: TaskInfo = { taskId: null, state: 'submitted', text: '' };
-  if (!(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
-    const body = await res.json().catch(() => null) as { result?: unknown; error?: unknown } | null;
-    if (body?.error) throw rpcError(body.error);
-    return readResult(body?.result, info);
-  }
-  if (!res.body) throw new ApiError(502, 'agent_error', 'The agent sent an empty answer.');
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-      let cut: number;
-      while ((cut = buf.indexOf('\n\n')) >= 0) {
-        const data = buf.slice(0, cut).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n');
-        buf = buf.slice(cut + 2);
-        if (!data || data === '[DONE]') continue;
-        let env: { result?: unknown; error?: unknown };
-        try { env = JSON.parse(data); } catch { continue; }
-        if (env.error) throw rpcError(env.error);
-        readResult(env.result, info);
-        if (info.taskId || FINISHED.includes(info.state)) return info;
-      }
-    }
-  } finally {
-    // The task keeps running on Manyfold after we hang up (A2A: closing a stream does not cancel).
-    reader.cancel().catch(() => {});
-  }
-  return info;
+    configuration: { blocking: false, acceptedOutputModes: ['text/plain'] },
+  }, 'application/json', ms);
+  const body = await res.json().catch(() => null) as { result?: unknown; error?: unknown } | null;
+  if (!body) throw new ApiError(502, 'agent_error', 'The agent sent an answer that is not JSON.');
+  if (body.error) throw rpcError(body.error);
+  return readResult(body.result, { taskId: null, state: 'submitted', text: '' });
 }
 
 /** Current state and latest text of a task. */

@@ -35,12 +35,12 @@ async function user(role = 'user') {
   return id;
 }
 
-/** Fake Manyfold: message/stream answers with a task over SSE, tasks/get with the given state. */
+/** Fake Manyfold: message/send answers at once with a task, tasks/get with the given state. */
 function fakeManyfold(taskState = 'working', text = '') {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const body = JSON.parse(String(init?.body ?? '{}'));
-    if (body.method === 'message/stream') {
-      return new Response(`data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { kind: 'task', id: 'task-1', contextId: 'ctx', status: { state: 'submitted' } } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+    if (body.method === 'message/send') {
+      return Response.json({ jsonrpc: '2.0', id: body.id, result: { kind: 'task', id: 'task-1', contextId: 'ctx', status: { state: 'submitted' } } });
     }
     if (body.method === 'tasks/get') {
       if (String(body.params.id).startsWith('probe-')) return Response.json({ jsonrpc: '2.0', id: body.id, error: { code: -32001, message: 'Task not found' } });
@@ -248,7 +248,11 @@ describe('agent runs', () => {
     expect(String(url)).toBe(RPC);
     expect(new Headers(init!.headers).get('authorization')).toBe('Bearer mf-caller-token-0123456789-wxyz');
     const sent = JSON.parse(String(init!.body));
-    expect(sent.method).toBe('message/stream');
+    // Async submit: message/stream or a blocking send would hit Manyfold's 10-minute blocking cap.
+    expect(sent.method).toBe('message/send');
+    expect(sent.params.configuration.blocking).toBe(false);
+    expect(new Headers(init!.headers).get('accept')).toBe('application/json');
+    expect((await env.DB.prepare('SELECT task_id FROM agent_runs WHERE id = ?').bind(run.id).first<{ task_id: string }>())?.task_id).toBe('task-1');
     expect(sent.params.message.messageId).toBe(`spotted-run-${run.id}`);
     const text = sent.params.message.parts[0].text as string;
     expect(text).toContain(`run_id "${run.id}"`);
