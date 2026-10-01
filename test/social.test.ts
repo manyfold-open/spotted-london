@@ -339,3 +339,54 @@ describe('Scout and social posts', () => {
     expect(row.handled_at).toBe(NOW);
   });
 });
+
+/* ---------- admin screen API ---------- */
+
+async function call(method: string, path: string, o: { user?: string; body?: unknown } = {}) {
+  const headers: Record<string, string> = { 'x-now': String(NOW) };
+  if (o.user) headers['x-dev-user'] = o.user;
+  if (o.body !== undefined) headers['content-type'] = 'application/json';
+  const res = await exports.default.fetch(new Request(`http://spotted.test/api/v1${path}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) }));
+  return { status: res.status, json: (await res.json()) as any };
+}
+
+async function adminUser() {
+  const id = `adm_t${++n}`;
+  await env.DB.prepare("INSERT INTO users (id, email, display_name, role, karma, verified_posts, email_verified, created_at) VALUES (?, ?, ?, 'admin', 100, 10, 1, ?)")
+    .bind(id, `${id}@test.dev`, id, NOW - 90 * DAY).run();
+  return id;
+}
+
+describe('admin screen API for social sources', () => {
+  it('shows mode, last run, new posts and the Apify spend', async () => {
+    const admin = await adminUser();
+    const ok = await addSource('https://www.instagram.com/explore/tags/londonpopup');
+    const bad = await addSource('https://www.tiktok.com/@brand');
+    const web = await addSource('https://example.test/events', { kind: 'listing' });
+    await env.DB.prepare("INSERT INTO social_runs (id, source_id, status, items, kept, cost_usd, started_at, finished_at) VALUES ('sr_a', ?, 'done', 12, 3, 0.0324, ?, ?)").bind(ok, NOW - HOUR, NOW - HOUR).run();
+    await addPost(ok, 'https://www.instagram.com/p/AAA');
+
+    const res = await call('GET', '/admin/agents/sources', { user: admin });
+    expect(res.status).toBe(200);
+    const by = (id: string) => res.json.sources.find((s: { id: string }) => s.id === id);
+    expect(by(ok).fetch).toEqual({
+      mode: 'Instagram hashtag', fetchable: true, new_posts: 1,
+      last_run: { status: 'done', at: NOW - HOUR, items: 12, kept: 3, cost_usd: 0.032, error: null },
+    });
+    expect(by(bad).fetch).toEqual({ mode: null, fetchable: false, new_posts: 0, last_run: null });
+    expect(by(web).fetch).toBeUndefined();
+    expect(res.json.apify).toEqual({ configured: false, spent_usd: 0.03, cap_usd: SOCIAL_MONTHLY_BUDGET_USD });
+  });
+
+  it('adds an Instagram source with fetch info', async () => {
+    const admin = await adminUser();
+    const res = await call('POST', '/admin/agents/sources', { user: admin, body: { kind: 'social', target: 'https://www.instagram.com/boxparkshoreditch', label: 'Boxpark Shoreditch', every_days: 3 } });
+    expect(res.status).toBe(201);
+    expect(res.json.fetch).toMatchObject({ mode: 'Instagram account', fetchable: true, new_posts: 0, last_run: null });
+    await env.DB.prepare('DELETE FROM scout_sources WHERE id = ?').bind(res.json.id).run();
+  });
+
+  it('keeps the spend line admin-only', async () => {
+    expect((await call('GET', '/admin/agents/sources')).status).toBe(401);
+  });
+});
