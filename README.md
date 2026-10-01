@@ -153,7 +153,7 @@ One-time setup:
 
 Scout's memory (migration `0005_scout_sources.sql`, `src/db/scout.ts`):
 
-- **Sources** (`scout_sources`): listing sites, venue pages, brand sites, social accounts and web searches, each checked every N days. Scout reads them with `list_sources` and marks them with `mark_source_checked`. Scout can only `suggest_source`; the admin turns a suggestion on with `PATCH /api/v1/admin/agents/sources/:id` (`status: active`). `GET` lists them with a track record (drafts sent, published, rejected) counted from the drafts themselves.
+- **Sources** (`scout_sources`): listing sites, venue pages, brand sites, social accounts and web searches, each checked every N days. Scout reads them with `list_sources` and marks them with `mark_source_checked`. Scout can only `suggest_source`; suggestions wait in **Scout sources** on /admin/agent, where the admin turns sources on, pauses them, adds new ones and sets how often each is checked (API: `/api/v1/admin/agents/sources`). `GET` lists them with a track record (drafts sent, published, rejected) counted from the drafts themselves.
 - **Pages already read** (`scout_seen`): `check_seen` tells Scout which pages it read in the last 30 days, `skip_url` records why a page was not sent. Skipped pages are purged after 90 days; pages that led to drafts stay for the track record.
 - **Extra links** (`popup_links`): a draft can carry up to 5 more links (brand site, venue, tickets, Instagram, TikTok, Xiaohongshu). Social posts are found through web searches only; Scout never logs in or scrapes them, and confirms details on a page it can read.
 
