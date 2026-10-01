@@ -9,6 +9,7 @@ import { checkRpcUrl, probe } from '../lib/a2a';
 import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_ROLES, AGENTS_PER_ROLE_MAX, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
+import { publishMode, publishStats, setPublishMode, undoAgent } from '../db/publish';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
@@ -22,7 +23,7 @@ export const SKILL_URL = 'https://github.com/tldr0810/spotted-london/tree/main/s
 
 const hint = (s: string) => `…${s.slice(-4)}`;
 
-function view(a: AgentRow, runs: RunRow[], openNotes: number) {
+function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { published: number; undone: number; hidden_after: number }) {
   const info = AGENT_INFO[a.role];
   return {
     id: a.id, role: a.role, name: a.name, job: info.job, unit: info.unit,
@@ -30,6 +31,7 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number) {
     rpc_url: a.rpc_url, token_hint: a.token_hint, key_hint: a.key_hint,
     connected: !!(a.rpc_url && a.token_sealed), next_run_at: a.enabled ? a.next_run_at : null,
     open_notes: openNotes,
+    published: published ?? { published: 0, undone: 0, hidden_after: 0 },
     runs: runs.map(r => ({ id: r.id, trigger: r.trigger, status: r.status, summary: r.summary, error: r.error, items: r.items, started_at: r.started_at, finished_at: r.finished_at })),
   };
 }
@@ -37,20 +39,48 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number) {
 agentsAdmin.get('/', async c => {
   requireAdmin(c);
   const db = c.env.DB;
-  const [{ results: agents }, { results: runs }, { results: notes }] = await Promise.all([
+  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats] = await Promise.all([
     db.prepare('SELECT * FROM agents').all<AgentRow>(),
     db.prepare('SELECT * FROM agent_runs WHERE started_at > ? ORDER BY started_at DESC LIMIT 100').bind(c.get('now') - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT agent_id, COUNT(*) AS n FROM agent_notes WHERE resolved_at IS NULL AND verdict != 'looks_real' GROUP BY agent_id").all<{ agent_id: string; n: number }>(),
+    publishMode(db),
+    publishStats(db),
   ]);
   const origin = c.env.APP_URL ? new URL(c.env.APP_URL).origin : new URL(c.req.url).origin;
   return c.json({
     mcp_url: `${origin}/mcp`,
     skill_url: SKILL_URL,
     agents_key_set: (c.env.AGENTS_KEY ?? '').length >= 32,
+    auto_publish: mode,
     roles: AGENT_ROLES.map(role => ({ role, name: AGENT_INFO[role].name })),
     agents: [...agents].sort((x, y) => AGENT_ROLES.indexOf(x.role) - AGENT_ROLES.indexOf(y.role) || x.created_at - y.created_at || x.id.localeCompare(y.id)).map(a =>
-      view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0)),
+      view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0, stats.get(a.id))),
   });
+});
+
+/** Whether agents' verified posts wait for the admin's click ('suggest') or go live at once ('auto'). */
+agentsAdmin.put('/settings', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  const mode = oneOf(b, 'auto_publish', ['suggest', 'auto'] as const, { required: true })!;
+  const before = await publishMode(c.env.DB);
+  await setPublishMode(c.env.DB, mode, now);
+  if (before !== mode) await audit(c.env.DB, admin.id, 'agents.auto_publish', 'settings', 'auto_publish', { from: before, to: mode }, now);
+  return c.json({ auto_publish: mode });
+});
+
+/** Puts back in the review queue what this agent's work made public in the last `hours` hours. */
+agentsAdmin.post('/:id/undo', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const a = await loadAgent(db, c.req.param('id'));
+  const b = await jsonBody(c.req);
+  const hours = num(b, 'hours', { required: true, min: 1, max: 24 * 90 })!;
+  const result = await undoAgent(db, a, now - hours * 3_600_000, admin.id, now);
+  await audit(db, admin.id, 'agent.undo', 'agent', a.id, { hours, reverted: result.reverted, skipped: result.skipped.length }, now);
+  return c.json(result);
 });
 
 /** Adds another agent of a role. It starts off, unconnected and without a key, like the first ones did. */
@@ -233,7 +263,7 @@ async function one(db: D1Database, id: string, now: number) {
     db.prepare('SELECT * FROM agent_runs WHERE agent_id = ? AND started_at > ? ORDER BY started_at DESC LIMIT 8').bind(id, now - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT COUNT(*) AS n FROM agent_notes WHERE agent_id = ? AND resolved_at IS NULL AND verdict != 'looks_real'").bind(id).first<{ n: number }>(),
   ]);
-  return view(a, runs, notes?.n ?? 0);
+  return view(a, runs, notes?.n ?? 0, (await publishStats(db)).get(id));
 }
 
 /* ---------- Scout's sources ---------- */

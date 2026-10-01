@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.5.0
+version: 1.6.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -170,7 +170,7 @@ Goal: check each pending post against its source on your own, so Zack can publis
    - `evidence`: 12 to 300 characters copied word for word from `evidence_url`, stating the dates and
      the place. Spotted looks for it on the page and refuses the note if it is not there.
    - `dates_match: true` and `place_match: true`, only when you compared them with the post yourself.
-   The answer says `publish_ready: true`, or lists `not_ready_because`. Do not force it: a post that is
+   The answer says `publish_ready: true`, or lists `not_ready_because`. When Zack has switched on automatic publishing, a ready post goes live at once and the answer also says `published: true`, so only mark one ready when you would stand behind it. Do not force it: a post that is
    not ready simply goes to Zack, and that is a fine outcome. Sources Spotted cannot read (login-only
    pages) can never be ready, so use `needs_check` or `looks_real` without the extra fields there.
 7. `finish_run` with how many of each verdict and anything worrying (for example several posts from

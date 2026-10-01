@@ -40,9 +40,9 @@ export interface Agent {
   id: string; role: 'scout' | 'triage' | 'checker'; name: string; job: string; unit: string;
   enabled: boolean; schedule: Schedule; run_hour: number; instructions: string | null; max_items: number;
   rpc_url: string | null; token_hint: string | null; key_hint: string | null; connected: boolean; next_run_at: number | null;
-  open_notes: number; runs: AgentRun[];
+  open_notes: number; runs: AgentRun[]; published: { published: number; undone: number; hidden_after: number };
 }
-export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
+export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; auto_publish: 'suggest' | 'auto'; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
 export type SourceKind = 'listing' | 'venue' | 'brand' | 'social' | 'search';
 export type SourceStatus = 'active' | 'suggested' | 'paused' | 'rejected';
 export interface SocialFetch {

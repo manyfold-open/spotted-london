@@ -180,7 +180,7 @@ Turn it on:
 2. In a terminal in this folder run `npx wrangler secret put APIFY_TOKEN` and paste the token when asked.
 3. Before merging a branch that adds migration 0006, run `npx wrangler d1 migrations apply spotted-db --remote`.
 4. Add a few Social sources, then wait for the next 10 minute cron tick. Check `npx wrangler tail` if nothing appears.
-5. Reinstall the updated skill on the Scout agent in Manyfold (SKILL.md is version 1.5.0).
+5. Reinstall the updated skill on the Scout agent in Manyfold (SKILL.md is version 1.6.0).
 
 Check the actors still return the fields we read (about US$0.05): `read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs; unset APIFY_TOKEN`.
 

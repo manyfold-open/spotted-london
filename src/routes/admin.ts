@@ -6,11 +6,10 @@ import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { KARMA, type Status } from '../lib/scoring';
 import { onStatusChange, recompute, toPublic } from '../db/popups';
 import { awardKarma } from '../db/karma';
+import { FLAGGING_VERDICTS, isReady, publishReady } from '../db/publish';
 
 export const admin = new Hono<AppEnv>();
 
-/** Agent findings that put a published pop-up back in front of the admin. */
-const FLAGGING_VERDICTS = ['needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'];
 
 /**
  * Pending posts, community-hidden posts, and public posts with open reports or a problem
@@ -48,10 +47,6 @@ admin.get('/queue', async c => {
   });
 });
 
-/** An open note says ready, and no open note says otherwise. */
-const isReady = (notes: { verdict: string; publish_ready: number }[]) =>
-  notes.some(n => n.publish_ready) && !notes.some(n => FLAGGING_VERDICTS.includes(n.verdict));
-
 /**
  * Publishes the posts agents marked ready, as 'community' so votes and reports still apply, and writes an
  * audit row for each naming the agents behind it. The conditions are checked again here.
@@ -62,19 +57,11 @@ admin.post('/queue/publish-ready', async c => {
   const db = c.env.DB;
   const b = await jsonBody(c.req);
   const only = Array.isArray(b.ids) ? b.ids.filter((id): id is string => typeof id === 'string').slice(0, 100) : null;
-  const { results } = await db.prepare("SELECT * FROM popups WHERE status = 'pending' AND end_at > ? ORDER BY created_at LIMIT 200").bind(now).all<PopupRow>();
-  const candidates = only ? results.filter(p => only.includes(p.id)) : results;
-  const notes = await openNotes(db, candidates.map(p => p.id));
+  const { results } = await db.prepare("SELECT id FROM popups WHERE status = 'pending' AND end_at > ? ORDER BY created_at LIMIT 200").bind(now).all<{ id: string }>();
   let published = 0;
-  for (const p of candidates) {
-    const mine = notes.filter(n => n.popup_id === p.id);
-    if (!isReady(mine)) continue;
-    const moved = await db.prepare("UPDATE popups SET status = 'community', updated_at = ? WHERE id = ? AND status = 'pending'").bind(now, p.id).run();
-    if (!moved.meta.changes) continue;
-    await db.prepare('UPDATE agent_notes SET resolved_at = ? WHERE popup_id = ? AND resolved_at IS NULL').bind(now, p.id).run();
-    await recompute(db, p.id, now);
-    await audit(db, a.id, 'popup.agent_publish', 'popup', p.id, { agents: mine.filter(n => n.publish_ready).map(n => n.agent_id), note_ids: mine.filter(n => n.publish_ready).map(n => n.id), from: 'pending', to: 'community' }, now);
-    published += 1;
+  for (const p of results) {
+    if (only && !only.includes(p.id)) continue;
+    if (await publishReady(db, p.id, a.id, 'batch', now)) published += 1;
   }
   return c.json({ published });
 });

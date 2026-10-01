@@ -20,6 +20,7 @@ import { DAY, hot, PUBLIC_STATUSES } from './lib/scoring';
 import { londonDateString, parseLondonDate } from './lib/time';
 import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
+import { publishMode, publishReady } from './db/publish';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
 
@@ -573,7 +574,9 @@ const TOOLS: Record<string, Tool> = {
          ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, evidence = excluded.evidence,
            publish_ready = excluded.publish_ready, duplicate_of = excluded.duplicate_of`,
       ).bind(newId(), x.agent!.id, run.id, p.id, verdict, note, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
-      return { saved: true, publish_ready: ready, ...(why.length ? { not_ready_because: why } : {}) };
+      // In auto mode the server publishes at once; the same conditions are checked again against every open note.
+      const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
+      return { saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}) };
     },
   },
   finish_run: {

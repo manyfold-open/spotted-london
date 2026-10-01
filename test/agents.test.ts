@@ -532,6 +532,63 @@ describe('agent runs', () => {
     expect((await call('POST', '/admin/queue/publish-ready', { user: admin, body: {} })).json.published).toBe(0);
   });
 
+  it('publishes at once in auto mode, and takes back what an agent published, except posts people voted on', async () => {
+    await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE status = 'community' AND created_by LIKE 'agent\\_%' ESCAPE '\\'").run(); // earlier tests' publishes
+    const scoutKey = await connect('scout');
+    const scoutRun = await startRun('scout');
+    const triageKey = await connect('triage');
+    const run = await startRun('triage');
+    const page = (text: string) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(`<p>${text}</p>`, { headers: { 'content-type': 'text/html' } }));
+    page('Pop-up at Boxpark Wembley, 10 and 11 October.');
+
+    expect((await call('GET', '/admin/agents', { user: admin })).json.auto_publish).toBe('suggest');
+    const before = (await call('GET', '/admin/agents', { user: admin })).json.agents.find((a: { id: string }) => a.id === 'triage').published;
+    expect((await call('PUT', '/admin/agents/settings', { user: admin, body: { auto_publish: 'maybe' } })).status).toBe(400);
+    expect((await call('PUT', '/admin/agents/settings', { user: admin, body: { auto_publish: 'auto' } })).json.auto_publish).toBe('auto');
+
+    const make = async (title: string, lat: number) => {
+      const d = await tool('submit_draft', draft(scoutRun, { title, lat, lng: -0.28, evidence: 'Pop-up at Boxpark Wembley, 10 and 11 October.', evidence_url: 'https://auto.test/p', source_url: 'https://auto.test/p' }), scoutKey);
+      return d.structuredContent.id as string;
+    };
+    const note = (id: string) => tool('add_note', { run_id: run, popup_id: id, verdict: 'looks_real', note: 'Checked.', evidence: 'Pop-up at Boxpark Wembley, 10 and 11 October.', evidence_url: 'https://auto.test/p', dates_match: true, place_match: true }, triageKey);
+    const status = async (id: string) => (await env.DB.prepare('SELECT status FROM popups WHERE id = ?').bind(id).first<{ status: string }>())!.status;
+
+    const one = await make('Auto One', 51.60);
+    const two = await make('Auto Two', 51.61);
+    const r1 = await note(one);
+    expect(r1.structuredContent).toMatchObject({ publish_ready: true, published: true });
+    expect(await status(one)).toBe('community');
+    expect((await note(two)).structuredContent.published).toBe(true);
+    const log = await env.DB.prepare("SELECT admin_id, detail FROM audit_log WHERE action = 'popup.agent_publish' AND target_id = ?").bind(one).first<{ admin_id: string; detail: string }>();
+    expect(JSON.parse(log!.detail)).toMatchObject({ agents: ['triage'], via: 'auto' });
+
+    // the agent card counts what it published
+    const card = (await call('GET', '/admin/agents', { user: admin })).json.agents.find((a: { id: string }) => a.id === 'triage');
+    expect(card.published.published - before.published).toBe(2);
+
+    // people voted on the second one, so it stays
+    await env.DB.prepare('UPDATE popups SET voter_count = 2 WHERE id = ?').bind(two).run();
+    const undo = await call('POST', '/admin/agents/triage/undo', { user: admin, body: { hours: 24 } });
+    expect(undo.json.reverted).toBe(1);
+    expect(undo.json.skipped).toContainEqual({ id: two, title: 'Auto Two', reason: 'people have voted on it' });
+    expect(await status(one)).toBe('pending');
+    expect(await status(two)).toBe('community');
+    expect((await call('POST', '/admin/agents/triage/undo', { user: admin, body: { hours: 24 } })).json.reverted).toBe(0);
+
+    // what was taken back is not ready again on its own, and the queue shows it as waiting
+    const item = (await call('GET', '/admin/queue', { user: admin })).json.items.find((p: { id: string }) => p.id === one);
+    expect(item.ready_to_publish).toBe(false);
+    expect((await call('GET', '/admin/agents', { user: admin })).json.agents.find((a: { id: string }) => a.id === 'triage').published.undone - before.undone).toBe(1);
+
+    // back to suggest mode: ready but waiting
+    await call('PUT', '/admin/agents/settings', { user: admin, body: { auto_publish: 'suggest' } });
+    const three = await make('Auto Three', 51.62);
+    const r3 = await note(three);
+    expect(r3.structuredContent).toMatchObject({ publish_ready: true });
+    expect(r3.structuredContent.published).toBeUndefined();
+    expect(await status(three)).toBe('pending');
+  });
+
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
