@@ -73,7 +73,8 @@ function AgentCard({ a }: { a: Agent }) {
     onError,
   });
   const state = running ? <span className="tag t-ai"><span className="spin" />Working</span>
-    : !a.connected || !a.key_hint ? <span className="tag t-watch">Not connected</span>
+    : !a.connected ? <span className="tag t-watch">Not connected</span>
+    : !a.key_hint ? <span className="tag t-watch">Needs a key</span>
     : a.enabled ? <span className="tag t-eng">On</span> : <span className="tag t-mute">Off</span>;
 
   return (
@@ -204,7 +205,7 @@ function Connection({ a }: { a: Agent }) {
         <span className="lbl">Spotted key</span>
         {key ? (
           <div className="notice good" style={{ flexDirection: 'column', gap: 8 }}>
-            <span>Copy it now. It is shown only once. In Manyfold, save it on this agent as the secret <code>SPOTTED_API_KEY</code>.</span>
+            <span>Copy it now. It is shown only once. Give it to this agent with the <code>mf mcp add</code> command under Set up an agent, and to no other agent.</span>
             <div className="row" style={{ width: '100%' }}><code className="secret">{key}</code><button className="btn sm" onClick={() => copy(key)}>Copy</button></div>
           </div>
         ) : <span className="hint">{a.key_hint ? `Active key ends in ${a.key_hint}.` : 'No key yet. The agent needs one to read and write on Spotted.'}</span>}
@@ -327,12 +328,15 @@ function Setup({ view }: { view: AgentsView }) {
       <div className="lh"><h2>Set up an agent on Manyfold</h2></div>
       <div className="panel">
         <ol className="steps">
-          <li>In Manyfold, create an agent (Claude Code works well) and name it after its job, like <b>Spotted Scout</b>.</li>
-          <li>Skills: import the Spotted skill from GitHub and install it on the agent.
-            <div className="row copyrow"><code className="secret">{view.skill_url}</code><button className="btn sm" onClick={() => copy(view.skill_url)}>Copy</button></div></li>
-          <li>MCP: add a server with this address, and the header <code>Authorization: Bearer $SPOTTED_API_KEY</code>.
-            <div className="row copyrow"><code className="secret">{view.mcp_url}</code><button className="btn sm" onClick={() => copy(view.mcp_url)}>Copy</button></div></li>
-          <li>On this page, open the agent's Connection, press Create key, and save the key in Manyfold as the agent secret <code>SPOTTED_API_KEY</code>.</li>
+          <li>In Manyfold, create an agent (Claude Code works well) and name it after its job, like <b>Spotted Scout</b>. Note its id (<code>agt_…</code>) from <code>mf agent list</code>.</li>
+          <li>Install the Manyfold CLI once on your computer, and sign in.
+            <Cmd copy={copy} text="curl -fsSL https://manyfold.ai/cli/install.sh | sh && mf login" /></li>
+          <li>Add the Spotted skill to your library once, then install it on the agent (replace <code>agt_…</code>).
+            <Cmd copy={copy} text={`mf skills library import --url ${view.skill_url}`} />
+            <Cmd copy={copy} text="mf skills install spotted-london --agent-id agt_…" /></li>
+          <li>Give the agent its Spotted key. Paste this command in the Terminal without pressing Enter, press Create key (or Replace key) and Copy on the agent's card here, then press Enter. The key goes straight from the clipboard into the agent's MCP settings.
+            <Cmd copy={copy} text={`mf mcp add spotted ${view.mcp_url} --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…`} />
+            If the agent already has a server named spotted, run <code>mf mcp remove spotted --agent-id agt_…</code> first.</li>
           <li>Press <b>Connect with Manyfold</b>. In the Manyfold tab, check the code matches, pick the agent, tick Enable A2A exposure, and approve. This page picks it up by itself.</li>
           <li>Press Run now once and read the result below the agent. When it looks right, switch the agent on.</li>
         </ol>
@@ -340,6 +344,10 @@ function Setup({ view }: { view: AgentsView }) {
       </div>
     </>
   );
+}
+
+function Cmd({ text, copy }: { text: string; copy: (s: string) => void }) {
+  return <div className="row copyrow"><code className="secret">{text}</code><button className="btn sm" onClick={() => copy(text)}>Copy</button></div>;
 }
 
 function Skeleton({ list }: { list?: boolean }) {

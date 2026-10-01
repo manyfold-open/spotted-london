@@ -158,8 +158,8 @@ const TOOLS: Record<string, Tool> = {
       run_id: RUN_ID,
       title: S('Name of the pop-up, as the organiser writes it. 3 to 100 characters.'),
       category: S('Best fitting category.', { enum: [...CATEGORIES] }),
-      start_date: S('First day, YYYY-MM-DD, London.'),
-      end_date: S('Last day, YYYY-MM-DD, London. Same as start_date for one-day events.'),
+      start_date: S('The real first day, YYYY-MM-DD, London. Give it even if it is in the past for a pop-up that is still running.'),
+      end_date: S('Last day, YYYY-MM-DD, London. Same as start_date for one-day events. Must not have passed.'),
       lat: N('Latitude from find_place.'),
       lng: N('Longitude from find_place.'),
       address: S('Street address.'),
@@ -180,7 +180,7 @@ const TOOLS: Record<string, Tool> = {
       if (!safeUrl(source)) throw new ToolError('source_url must be a public web address.');
       let input: ReturnType<typeof parsePopupInput>;
       try {
-        input = parsePopupInput({ ...a, borough: a.area, ...dates(a) }, x.now, true);
+        input = parsePopupInput({ ...a, borough: a.area, ...dates(a) }, x.now, true, { ongoing: true });
       } catch (e) {
         throw new ToolError(e instanceof ApiError ? e.message : String(e));
       }
