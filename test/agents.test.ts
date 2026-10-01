@@ -56,6 +56,8 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM agent_notes'),
     env.DB.prepare('DELETE FROM scout_seen'),
+    env.DB.prepare('UPDATE scout_sources SET leased_to = NULL, lease_until = NULL'),
+    env.DB.prepare("DELETE FROM popups WHERE id LIKE 'lp\\_%' ESCAPE '\\'"),
     env.DB.prepare('DELETE FROM scout_sources WHERE created_at != 1790812800000'),
     env.DB.prepare("UPDATE scout_sources SET status = 'active', due_at = NULL, last_checked_at = NULL"),
     env.DB.prepare('DELETE FROM agent_runs'),
@@ -389,6 +391,75 @@ describe('agent runs', () => {
     expect((await call('DELETE', `/admin/agents/${spare}`, { user: admin })).status).toBe(200);
     const list = await call('GET', '/admin/agents', { user: admin });
     expect(list.json.agents.map((a: { id: string }) => a.id)).toEqual(['scout', id2, 'triage', 'checker']);
+  });
+
+  it('leases sources so two Scouts never get the same one, and takes them back when a lease runs out', async () => {
+    const key1 = await connect('scout');
+    const id2 = (await call('POST', '/admin/agents', { user: admin, body: { role: 'scout' } })).json.id as string;
+    const key2 = (await call('POST', `/admin/agents/${id2}/key`, { user: admin })).json.key as string;
+
+    const first = (await tool('list_sources', { limit: 5 }, key1)).structuredContent;
+    const second = (await tool('list_sources', { limit: 5 }, key2)).structuredContent;
+    const ids1 = first.sources.map((s: { id: string }) => s.id), ids2 = second.sources.map((s: { id: string }) => s.id);
+    expect(ids1).toHaveLength(5);
+    expect(ids2).toHaveLength(5);
+    expect(ids1.filter((id: string) => ids2.includes(id))).toEqual([]);
+
+    // asking again returns the same ones, not five more
+    const again = (await tool('list_sources', { limit: 5 }, key1)).structuredContent;
+    expect(again.sources.map((s: { id: string }) => s.id)).toEqual(ids1);
+
+    // marking one checked frees the lease and pushes it out; it is not offered again
+    const runId = await startRun('scout');
+    await tool('mark_source_checked', { run_id: runId, source_id: ids1[0] }, key1);
+    const more = (await tool('list_sources', { limit: 5 }, key1)).structuredContent;
+    expect(more.sources.map((s: { id: string }) => s.id)).not.toContain(ids1[0]);
+    expect(more.sources).toHaveLength(5);
+
+    // the kind filter only leases that kind
+    const venues = (await tool('list_sources', { limit: 40, kind: 'search' }, key2)).structuredContent;
+    expect(venues.sources.every((s: { kind: string }) => s.kind === 'search')).toBe(true);
+
+    // a lease that ran out is free for the other Scout
+    const later = await mcp('tools/call', { name: 'list_sources', arguments: { limit: 5 } }, key2, NOW + 2 * HOUR);
+    expect(later.json.result.structuredContent.sources.map((s: { id: string }) => s.id)).toEqual(expect.arrayContaining(ids1.slice(1, 3)));
+  });
+
+  it('leases pending posts and live pop-ups to one Triage or Checker at a time', async () => {
+    const t1 = await (async () => { const k = await connect('triage'); return k; })();
+    const t2id = (await call('POST', '/admin/agents', { user: admin, body: { role: 'triage' } })).json.id as string;
+    const t2 = (await call('POST', `/admin/agents/${t2id}/key`, { user: admin })).json.key as string;
+    const poster = await user();
+    const add = async (title: string, status: string, lat: number) => {
+      const id = `lp_${Math.random().toString(36).slice(2, 10)}`;
+      await env.DB.prepare(`INSERT INTO popups (id, slug, title, category, start_at, end_at, lat, lng, geohash, address, status, created_by, created_at, updated_at, source_url, is_example)
+        VALUES (?, ?, ?, 'other', ?, ?, ?, -0.1, 'gcpvj', 'A', ?, ?, ?, ?, 'https://lease.test/p', 0)`).bind(id, id, title, NOW + DAY, NOW + 2 * DAY, lat, status, poster, NOW, NOW).run();
+      return id;
+    };
+    const posts = [await add('Lease A', 'pending', 51.1), await add('Lease B', 'pending', 51.2), await add('Lease C', 'pending', 51.3), await add('Lease D', 'pending', 51.4)];
+
+    const a = (await tool('list_review_queue', { limit: 2 }, t1)).structuredContent.posts.map((p: { id: string }) => p.id);
+    const b = (await tool('list_review_queue', { limit: 2 }, t2)).structuredContent.posts.map((p: { id: string }) => p.id);
+    expect([...a, ...b].sort()).toEqual([...posts].sort());
+    expect((await tool('list_review_queue', { limit: 2 }, t1)).structuredContent.posts.map((p: { id: string }) => p.id)).toEqual(a);
+
+    // a note from one Triage agent takes the post off every Triage agent's list, even after the lease ends
+    const run = await startRun('triage');
+    await tool('add_note', { run_id: run, popup_id: a[0], verdict: 'looks_real', note: 'Brand page confirms.' }, t1);
+    const after = await mcp('tools/call', { name: 'list_review_queue', arguments: { limit: 10 } }, t2, NOW + 2 * HOUR);
+    expect(after.json.result.structuredContent.posts.map((p: { id: string }) => p.id)).not.toContain(a[0]);
+
+    // Checkers lease live pop-ups the same way
+    const live = [await add('Live A', 'community', 51.5), await add('Live B', 'community', 51.6)];
+    const c1 = await connect('checker');
+    const c2id = (await call('POST', '/admin/agents', { user: admin, body: { role: 'checker' } })).json.id as string;
+    const c2 = (await call('POST', `/admin/agents/${c2id}/key`, { user: admin })).json.key as string;
+    const l1 = (await tool('list_live_popups', { limit: 1 }, c1)).structuredContent.popups.map((p: { id: string }) => p.id);
+    const l2 = (await tool('list_live_popups', { limit: 1 }, c2)).structuredContent.popups.map((p: { id: string }) => p.id);
+    expect(l1).toHaveLength(1);
+    expect(l2).toHaveLength(1);
+    expect(l1[0]).not.toBe(l2[0]);
+    expect(live).toEqual(expect.arrayContaining([l1[0], l2[0]]));
   });
 
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {

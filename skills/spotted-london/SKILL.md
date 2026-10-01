@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.3.0
+version: 1.4.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -22,6 +22,12 @@ Notes from the admin: …
 ```
 
 Do the job in the section for your role, stay within the limit, and always end with `finish_run`.
+
+Several agents of your role may run at the same time. The list tools lease work to you: a source or
+a pop-up you receive is yours for an hour or so and no other agent gets it. Calling the tool again
+returns what you still hold. Finish what you hold (mark a source checked, leave a note), because a
+lease you leave unused only blocks others until it runs out. Notes from the admin in your brief may
+narrow your focus, for example to one kind of source.
 Notes from the admin override the defaults below, but never the safety rules.
 
 ## Tools
@@ -31,7 +37,7 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | Tool | Who | What it does |
 | --- | --- | --- |
 | `search_popups`, `get_popup` | everyone | Search and read what is already listed |
-| `list_sources` | Scout | Sources due a check (sites, venues, brands, social accounts, searches), with their track record |
+| `list_sources` | Scout | Leases sources due a check (sites, venues, brands, social accounts, searches), with their track record |
 | `get_social_posts` | Scout | Instagram and Threads posts Spotted fetched for a social source, as leads |
 | `check_seen` | Scout | Which pages Scout already read in the last 30 days, or that are already on Spotted |
 | `find_place` | Scout | London address or venue name to coordinates |
@@ -40,8 +46,8 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | `skip_url` | Scout | Record a page you read but did not send, and why |
 | `mark_source_checked` | Scout | Record that you went through a source |
 | `suggest_source` | Scout | Suggest a new source; the admin decides |
-| `list_review_queue` | Triage | Pending posts you have not noted yet |
-| `list_live_popups` | Checker | Published pop-ups with a source link, least recently checked first |
+| `list_review_queue` | Triage | Leases pending posts that no Triage agent has noted yet |
+| `list_live_popups` | Checker | Leases published pop-ups with a source link, soonest to start first |
 | `add_note` | Triage, Checker | Your verdict on one pop-up, shown to the admin |
 | `finish_run` | everyone | End the run with a summary |
 
@@ -89,7 +95,7 @@ brand giveaways), `art` (exhibitions, installations), `market` (markets and fair
 Goal: find real pop-ups that are not on Spotted yet, and send each one as a clean draft.
 Scout has a memory: a list of sources to check, and every page it already read.
 
-1. **Start with `list_sources`.** It gives the sources due a check, least recently checked first:
+1. **Start with `list_sources`.** It leases you the sources due a check, least recently checked first (pass `kind` to take only one kind, such as `venue`):
    listing sites (Time Out, Secret London, Londonist, Eventbrite), venue "what's on" pages (Coal Drops
    Yard, Seven Dials, Boxpark, Battersea Power Station and more), brand sites, social accounts and
    web searches. Each has a track record: how many drafts it led to and how many the admin published

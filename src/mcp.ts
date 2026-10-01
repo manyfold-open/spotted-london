@@ -134,6 +134,38 @@ const LINKS_SCHEMA = {
   items: obj({ url: S('Public web address.'), kind: S('What the page is. Social posts are recognised from the address.', { enum: [...LINK_KINDS] }) }, ['url']),
 };
 
+/** How long a Scout keeps a source, and a Triage or Checker agent keeps a pop-up, before another agent may take it. */
+const SOURCE_LEASE = 90 * 60_000, POPUP_LEASE = 60 * 60_000;
+
+/**
+ * Hands pop-ups to this agent: it keeps the ones it already holds, and takes free ones (never
+ * leased, or the lease ran out) up to `limit`. `where` uses ?1 for now, ?2 for the agent's role
+ * and ?3 for `cutoff`. One UPDATE, so two agents asking at once can never get the same pop-up.
+ */
+async function leasePopups(x: Ctx, limit: number, where: string, order: string, cutoff: number): Promise<PopupRow[]> {
+  const db = x.c.env.DB;
+  const me = x.agent!.id;
+  const eligible = `FROM popups p WHERE ${where}`;
+  const held = await db.prepare(`SELECT COUNT(*) AS n ${eligible} AND p.lease_agent = ?4 AND p.lease_until > ?1`).bind(x.now, x.agent!.role, cutoff, me).first<{ n: number }>();
+  const room = limit - (held?.n ?? 0);
+  if (room > 0) {
+    await db.prepare(
+      `UPDATE popups SET lease_agent = ?4, lease_until = ?5 WHERE id IN (
+         SELECT p.id ${eligible} AND (p.lease_agent IS NULL OR p.lease_until <= ?1) ORDER BY ${order} LIMIT ?6)`,
+    ).bind(x.now, x.agent!.role, cutoff, me, x.now + POPUP_LEASE, room).run();
+  }
+  const { results } = await db.prepare(`SELECT p.* ${eligible} AND p.lease_agent = ?4 AND p.lease_until > ?1 ORDER BY ${order} LIMIT ?6`)
+    .bind(x.now, x.agent!.role, cutoff, me, 0, limit).all<PopupRow>();
+  return results;
+}
+
+async function userRows(db: D1Database, ids: string[]): Promise<Map<string, { display_name: string | null; karma: number; created_at: number }>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  const { results } = await db.prepare(`SELECT id, display_name, karma, created_at FROM users WHERE id IN (${unique.map(() => '?').join(',')})`).bind(...unique).all<{ id: string; display_name: string | null; karma: number; created_at: number }>();
+  return new Map(results.map(u => [u.id, u]));
+}
+
 /** Social platforms need a login to read, so a quote from one is checked only against posts Spotted fetched itself. */
 const SOCIAL_HOSTS = /(^|\.)(instagram\.com|instagr\.am|threads\.net|threads\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com)$/;
 
@@ -205,19 +237,32 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_sources: {
-    description: 'Sources due a check, least recently checked first: listing sites, venue pages, brand sites, social accounts and web searches the admin set up. Each comes with its track record (drafts sent, published, rejected). Start every run here.',
-    inputSchema: obj({ limit: N('1 to 40. Defaults to 15.') }),
+    description: 'Lease sources that are due a check, least recently checked first: listing sites, venue pages, brand sites, social accounts and web searches the admin set up. Each comes with its track record (drafts sent, published, rejected). A source is leased to you for 90 minutes so no other Scout reads it; call mark_source_checked when you are done with one. Calling this again returns the sources you still hold. Start every run here.',
+    inputSchema: obj({ limit: N('1 to 40. Defaults to 15.'), kind: S('Only this kind of source.', { enum: [...SOURCE_KINDS] }) }),
     async run(a, x) {
       const db = x.c.env.DB;
       const limit = Math.min(40, Math.max(1, numArg(a, 'limit') ?? 15));
+      const kind = str(a, 'kind', 10);
+      if (kind && !(SOURCE_KINDS as readonly string[]).includes(kind)) throw new ToolError(`kind must be one of: ${SOURCE_KINDS.join(', ')}.`);
+      const me = x.agent!.id;
+      // Instagram and Threads sources are fetched for Scout, so they only show while they have posts to read.
+      const due = `status = 'active' AND (due_at IS NULL OR due_at <= ?1)
+        AND (kind != 'social' OR NOT (target LIKE '%instagram.com/%' OR target LIKE '%threads.net/%' OR target LIKE '%threads.com/%')
+          OR EXISTS (SELECT 1 FROM social_posts p WHERE p.source_id = scout_sources.id AND p.handled_at IS NULL AND p.fetched_at > ?2))
+        AND (?3 IS NULL OR kind = ?3)`;
+      const held = await db.prepare(`SELECT COUNT(*) AS n FROM scout_sources WHERE leased_to = ?4 AND lease_until > ?1 AND ${due}`).bind(x.now, x.now - POST_OFFER, kind, me).first<{ n: number }>();
+      const room = limit - (held?.n ?? 0);
+      if (room > 0) {
+        // One statement, so two Scouts asking at once can never get the same source.
+        await db.prepare(
+          `UPDATE scout_sources SET leased_to = ?4, lease_until = ?5 WHERE id IN (
+             SELECT id FROM scout_sources WHERE ${due} AND (leased_to IS NULL OR lease_until <= ?1)
+             ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?6)`,
+        ).bind(x.now, x.now - POST_OFFER, kind, me, x.now + SOURCE_LEASE, room).run();
+      }
       const [{ results }, later] = await Promise.all([
-        // Instagram and Threads sources are fetched for Scout, so they only show while they have posts to read.
-        db.prepare(
-          `SELECT * FROM scout_sources WHERE status = 'active' AND (due_at IS NULL OR due_at <= ?)
-             AND (kind != 'social' OR NOT (target LIKE '%instagram.com/%' OR target LIKE '%threads.net/%' OR target LIKE '%threads.com/%')
-               OR EXISTS (SELECT 1 FROM social_posts p WHERE p.source_id = scout_sources.id AND p.handled_at IS NULL AND p.fetched_at > ?))
-             ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?`,
-        ).bind(x.now, x.now - POST_OFFER, limit).all<SourceRow>(),
+        db.prepare(`SELECT * FROM scout_sources WHERE leased_to = ?4 AND lease_until > ?1 AND ${due} ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?6`)
+          .bind(x.now, x.now - POST_OFFER, kind, me, 0, limit).all<SourceRow>(),
         db.prepare("SELECT COUNT(*) AS n FROM scout_sources WHERE status = 'active' AND due_at > ?").bind(x.now).first<{ n: number }>(),
       ]);
       const stats = await sourceStats(db, results.map(r => r.id));
@@ -225,6 +270,7 @@ const TOOLS: Record<string, Tool> = {
       return {
         count: results.length,
         not_due_yet: later?.n ?? 0,
+        lease_minutes: SOURCE_LEASE / 60_000,
         sources: results.map(r => ({
           id: r.id, kind: r.kind, label: r.label,
           ...(r.kind === 'search' ? { search: r.target } : { url: r.target }),
@@ -265,7 +311,7 @@ const TOOLS: Record<string, Tool> = {
       const src = await db.prepare("SELECT * FROM scout_sources WHERE id = ? AND status = 'active'").bind(str(a, 'source_id', 40, true)).first<SourceRow>();
       if (!src) throw new ToolError('Unknown source_id, or the source is switched off. Use an id from list_sources.');
       const due = nextDue(src.every_days, x.now);
-      await db.prepare('UPDATE scout_sources SET last_checked_at = ?, due_at = ?, updated_at = ? WHERE id = ?').bind(x.now, due, x.now, src.id).run();
+      await db.prepare('UPDATE scout_sources SET last_checked_at = ?, due_at = ?, updated_at = ?, leased_to = NULL, lease_until = NULL WHERE id = ?').bind(x.now, due, x.now, src.id).run();
       return { saved: true, next_check: londonDateString(due) };
     },
   },
@@ -425,37 +471,36 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_review_queue: {
-    description: 'Posts waiting for review that you have not left a note on yet, oldest first.',
+    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      const { results } = await x.c.env.DB.prepare(
-        `SELECT p.*, u.display_name AS poster_name, u.karma AS poster_karma, u.created_at AS poster_created_at FROM popups p JOIN users u ON u.id = p.created_by
-         WHERE p.status = 'pending' AND p.end_at > ? AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ?)
-         ORDER BY p.created_at LIMIT ?`,
-      ).bind(x.now, x.agent!.id, limit).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number }>();
+      const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
+        AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))`, 'p.created_at', x.now);
+      const posters = await userRows(x.c.env.DB, results.map(p => p.created_by));
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
         count: results.length,
-        posts: results.map(p => ({
-          ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links: links.get(p.id) ?? [],
-          poster: { name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((x.now - p.poster_created_at) / DAY), is_agent: p.created_by.startsWith('agent_') },
-        })),
+        lease_minutes: POPUP_LEASE / 60_000,
+        posts: results.map(p => {
+          const u = posters.get(p.created_by);
+          return {
+            ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links: links.get(p.id) ?? [],
+            poster: { name: u?.display_name ?? null, karma: u?.karma ?? 0, account_age_days: Math.floor((x.now - (u?.created_at ?? x.now)) / DAY), is_agent: p.created_by.startsWith('agent_') },
+          };
+        }),
       };
     },
   },
   list_live_popups: {
-    description: 'Published pop-ups that are on now or coming up and have a source link, starting with the ones checked least recently. Skips any you checked in the last 3 days.',
+    description: 'Lease published pop-ups that are on now or coming up and have a source link, starting with the ones that start soonest. Skips any a Checker agent checked in the last 3 days. A pop-up is leased to you for 60 minutes so no other Checker takes it. Calling this again returns the ones you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      const { results } = await x.c.env.DB.prepare(
-        `SELECT p.* FROM popups p WHERE p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at > ? AND p.source_url IS NOT NULL AND p.is_example = 0
-           AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ? AND n.created_at > ?)
-         ORDER BY p.start_at LIMIT ?`,
-      ).bind(x.now, x.agent!.id, x.now - 3 * DAY, limit).all<PopupRow>();
+      const results = await leasePopups(x, limit, `p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at > ?1 AND p.source_url IS NOT NULL AND p.is_example = 0
+        AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2) AND n.created_at > ?3)`, 'p.start_at', x.now - 3 * DAY);
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
-      return { count: results.length, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };
+      return { count: results.length, lease_minutes: POPUP_LEASE / 60_000, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };
     },
   },
   add_note: {
