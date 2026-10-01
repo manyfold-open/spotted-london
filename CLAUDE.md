@@ -54,6 +54,9 @@ src/cron.ts             end expired, recompute hot, settle karma, purge, reminde
 src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
 src/db/agents.ts        AI agents on Manyfold (Scout, Triage, Checker): schedules, briefs, run life cycle
 src/db/scout.ts         Scout's memory: sources to check, pages already read, extra links per pop-up, track records
+src/db/social.ts        Instagram/Threads posts for Scout: Apify runs (start, check), budget cap, pause on failures, post queries
+src/lib/social.ts       pure helpers: source address to actor input, item parsing, keyword filter, cost constants
+src/lib/apify.ts        minimal Apify REST client (token in the Authorization header only)
 src/lib/a2a.ts          A2A client: start a Manyfold task, check it with tasks/get, probe a token
 src/lib/manyfold.ts     "Connect with Manyfold": Connect A2A device-code sign-in (start, poll) that returns an agent's A2A address and token
 skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep it in step with the MCP tools
@@ -73,6 +76,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 - Agents only write drafts (`pending`) and notes. Never give an MCP tool the power to approve, remove, vote or edit a live pop-up.
 - Agent secrets are write-only: the Manyfold token is sealed with `AGENTS_KEY`, Spotted keys are stored as SHA-256, and the API returns only the last four characters.
 - Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
+- The social fetcher (`src/db/social.ts`) never writes `scout_sources.due_at` or `last_checked_at`; those are Scout's clock. Its own clock is `social_runs`. The monthly Apify cap is `SOCIAL_MONTHLY_BUDGET_USD`; Instagram and Threads actors and prices live in `src/lib/social.ts`.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.
@@ -99,6 +103,7 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
 - Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`.
+- Optional secret `APIFY_TOKEN` (not set yet): turns on Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month. Posts and runs are in `social_posts` and `social_runs` (migration 0006).
 - AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
 - Live data is fictional examples (`is_example = 1`, labelled, noindex). Clear before launch with `seed/clear-examples.sql`.

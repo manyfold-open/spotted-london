@@ -155,11 +155,35 @@ Scout's memory (migration `0005_scout_sources.sql`, `src/db/scout.ts`):
 
 - **Sources** (`scout_sources`): listing sites, venue pages, brand sites, social accounts and web searches, each checked every N days. Scout reads them with `list_sources` and marks them with `mark_source_checked`. Scout can only `suggest_source`; suggestions wait in **Scout sources** on /admin/agent, where the admin turns sources on, pauses them, adds new ones and sets how often each is checked (API: `/api/v1/admin/agents/sources`). `GET` lists them with a track record (drafts sent, published, rejected) counted from the drafts themselves.
 - **Pages already read** (`scout_seen`): `check_seen` tells Scout which pages it read in the last 30 days, `skip_url` records why a page was not sent. Skipped pages are purged after 90 days; pages that led to drafts stay for the track record.
-- **Extra links** (`popup_links`): a draft can carry up to 5 more links (brand site, venue, tickets, Instagram, TikTok, Xiaohongshu). Social posts are found through web searches only; Scout never logs in or scrapes them, and confirms details on a page it can read.
+- **Extra links** (`popup_links`): a draft can carry up to 5 more links (brand site, venue, tickets, Instagram, TikTok, Xiaohongshu). Instagram and Threads posts are fetched for Scout through Apify (see below) and arrive as leads, found alongside web searches; Scout never logs in itself, and confirms details on a page it can read.
 
 A run counts as done only when the agent reports back with `finish_run`. A turn that ends without it is marked failed, which usually means the agent's `spotted` MCP server is missing or carries another agent's key.
 
 When a Manyfold token expires or is revoked, runs fail with "Manyfold rejected the agent token"; press Connect again on that agent.
+
+## Instagram and Threads posts (Apify)
+
+Scout can read public Instagram and Threads posts that Spotted fetches for it. Add sources on `/admin/agent` under Scout sources, kind Social, with a real address:
+
+| Address | What is fetched |
+| --- | --- |
+| `https://www.instagram.com/<name>/` | an account's recent posts |
+| `https://www.instagram.com/explore/tags/<tag>/` | a hashtag |
+| `https://www.instagram.com/explore/locations/<id>/` | a place |
+| `https://www.threads.net/@<name>` | a Threads account |
+| `https://www.threads.net/search?q=<words>` | a Threads keyword search |
+
+A cron job starts an Apify run for each source when it is due (the "How often" setting), keeps posts that talk about pop-ups, and stores them. Scout reads them with `get_social_posts`, confirms each on a brand or venue page, and sends drafts. Cost is capped at US$4 a month (the Apify free plan gives US$5); fetching stops at the cap and the screen shows the spend.
+
+Turn it on:
+
+1. Make a free account at apify.com, then Settings, Integrations, and copy the API token.
+2. In a terminal in this folder run `npx wrangler secret put APIFY_TOKEN` and paste the token when asked.
+3. Before merging a branch that adds migration 0006, run `npx wrangler d1 migrations apply spotted-db --remote`.
+4. Add a few Social sources, then wait for the next 10 minute cron tick. Check `npx wrangler tail` if nothing appears.
+5. Reinstall the updated skill on the Scout agent in Manyfold (SKILL.md is version 1.2.0).
+
+Check the actors still return the fields we read (about US$0.05): `read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs`.
 
 ## What is not built yet
 
