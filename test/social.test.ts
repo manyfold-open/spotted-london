@@ -109,13 +109,13 @@ describe('social fetcher', () => {
   });
 
   it('uses the Threads actor and input for Threads sources', async () => {
-    await addSource('https://www.threads.net/search?q=london%20pop-up');
+    await addSource('https://www.threads.net/@boxpark');
     const bodies: string[] = [];
     const inner = fakeApify();
     const f = (async (input: RequestInfo | URL, init?: RequestInit) => { if (init?.body) bodies.push(String(init.body)); return inner.f(input, init); }) as typeof fetch;
     await runSocial(deps(f), NOW);
     expect(inner.calls).toEqual(['POST /v2/acts/themineworks~threads-scraper/runs']);
-    expect(JSON.parse(bodies[0])).toEqual({ mode: 'search', searchQuery: 'london pop-up', maxPosts: 20 });
+    expect(JSON.parse(bodies[0])).toEqual({ mode: 'profile', profileUsernames: ['boxpark'], maxPosts: 20 });
   });
 
   it('asks Instagram for posts no older than the check interval plus a day, at most 14 days', async () => {

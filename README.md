@@ -171,7 +171,6 @@ Scout can read public Instagram and Threads posts that Spotted fetches for it. A
 | `https://www.instagram.com/explore/tags/<tag>/` | a hashtag |
 | `https://www.instagram.com/explore/locations/<id>/` | a place |
 | `https://www.threads.net/@<name>` | a Threads account |
-| `https://www.threads.net/search?q=<words>` | a Threads keyword search |
 
 A cron job starts an Apify run for each source when it is due (the "How often" setting), keeps posts that talk about pop-ups, and stores them. Scout reads them with `get_social_posts`, confirms each on a brand or venue page, and sends drafts. Cost is capped at US$4 in any 30 days (the Apify free plan gives US$5 a month); fetching stops at the cap and the screen shows the spend. Each run is also capped on Apify's side by items, charge and time.
 

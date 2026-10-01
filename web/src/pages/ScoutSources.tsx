@@ -98,7 +98,7 @@ function FetchInfo({ s }: { s: ScoutSource }) {
   const f = s.fetch!;
   const r = f.last_run;
   let line: string;
-  if (!f.fetchable) line = 'Not fetched. Use an Instagram account, hashtag or place address, or a Threads account or search address.';
+  if (!f.fetchable) line = 'Not fetched. Use an Instagram account, hashtag or place address, or a Threads account address like threads.net/@name.';
   else if (!r) line = 'Not fetched yet.';
   else if (r.status === 'running') line = 'Fetching now.';
   else if (r.status === 'failed') {
@@ -208,7 +208,7 @@ function AddSource({ onDone }: { onDone: () => void }) {
         <input id="src-target" className="input" value={target} maxLength={500} autoComplete="off" inputMode={search ? 'text' : 'url'}
           placeholder={search ? 'site:instagram.com London sample sale' : kind === 'social' ? 'https://www.instagram.com/explore/tags/londonpopup/' : 'https://www.example.com/whats-on'}
           onChange={e => { setTarget(e.target.value); setErrors(x => ({ ...x, target: undefined })); }} aria-invalid={!!errors.target} />
-        {err('target') ?? <span className="hint">{search ? 'Scout runs this in its web search. site:instagram.com, site:tiktok.com and site:xiaohongshu.com find public posts.' : kind === 'social' ? 'Spotted fetches these through Apify: an Instagram account, hashtag or place address, or a Threads account (threads.net/@name) or search (threads.net/search?q=words).' : 'The page that lists pop-ups, like a venue\'s what\'s on page.'}</span>}
+        {err('target') ?? <span className="hint">{search ? 'Scout runs this in its web search. site:instagram.com, site:tiktok.com and site:xiaohongshu.com find public posts.' : kind === 'social' ? 'Spotted fetches these through Apify: an Instagram account, hashtag or place address, or a Threads account (threads.net/@name).' : 'The page that lists pop-ups, like a venue\'s what\'s on page.'}</span>}
       </div>
       <div className="field">
         <label className="lbl" htmlFor="src-label">Name</label>

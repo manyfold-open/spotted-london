@@ -9,8 +9,7 @@ export type Platform = 'instagram' | 'threads';
 
 export type SocialMode =
   | { platform: 'instagram'; kind: 'account' | 'tag' | 'place'; url: string; label: string }
-  | { platform: 'threads'; kind: 'account'; username: string; label: string }
-  | { platform: 'threads'; kind: 'search'; query: string; label: string };
+  | { platform: 'threads'; kind: 'account'; username: string; label: string };
 
 /** Apify actors, as they appear in API paths. Swap one here if it stops working. */
 export const ACTORS: Record<Platform, string> = {
@@ -57,10 +56,6 @@ export function socialMode(target: string): SocialMode | null {
     if (parts.length === 1 && THREADS_NAME.test(parts[0])) {
       return { platform: 'threads', kind: 'account', username: parts[0].slice(1), label: 'Threads account' };
     }
-    const q = u.searchParams.get('q')?.trim();
-    if (parts.length === 1 && parts[0] === 'search' && q) {
-      return { platform: 'threads', kind: 'search', query: q.slice(0, 200), label: 'Threads search' };
-    }
   }
   return null;
 }
@@ -70,8 +65,7 @@ export function buildInput(m: SocialMode, limit: number, newerThanDays: number):
   if (m.platform === 'instagram') {
     return { resultsType: 'posts', directUrls: [m.url], resultsLimit: limit, onlyPostsNewerThan: `${newerThanDays} days` };
   }
-  if (m.kind === 'account') return { mode: 'profile', profileUsernames: [m.username], maxPosts: limit };
-  return { mode: 'search', searchQuery: m.query, maxPosts: limit };
+  return { mode: 'profile', profileUsernames: [m.username], maxPosts: limit };
 }
 
 export interface SocialItem {

@@ -33,7 +33,6 @@ Give Scout a steady supply of leads from Instagram and Threads without paying fo
 | `https://www.instagram.com/explore/tags/<tag>/` | posts under a hashtag |
 | `https://www.instagram.com/explore/locations/<id>/<slug>/` | posts at a place |
 | `https://www.threads.net/@<username>` | posts of an account |
-| `https://www.threads.net/search?q=<keywords>` | keyword search |
 
 A source whose address matches none of these cannot be fetched. It stays in the list, is shown as "not fetchable" and is skipped by the fetcher. Parsing lives in one function, `socialMode(url)`, with tests.
 
@@ -125,7 +124,7 @@ MCP changes, in `src/mcp.ts`, Scout role only:
 
 `web/src/pages/ScoutSources.tsx`:
 
-- Social sources show a mode ("Instagram account", "Instagram hashtag", "Threads search") instead of just the raw address.
+- Social sources show a mode ("Instagram account", "Instagram hashtag", "Threads account") instead of just the raw address.
 - Each social source shows its last run: when, posts kept, cost, error if any, and "not fetchable" for unrecognised addresses.
 - A small summary line: "Apify in the last 30 days: US$x.xx of US$4.00".
 - No new page. No manual "fetch now" button in version 1.
@@ -167,11 +166,13 @@ Code side: new `APIFY_TOKEN` is added to the `Bindings` type. No new binding is 
 | Platform | Actor | Free plan price | Notes |
 | --- | --- | --- | --- |
 | Instagram | `apify~instagram-scraper` (official) | US$2.70 per 1,000 results | One actor for accounts, hashtags and places through `directUrls`. About 41k users, 4.67 stars. |
-| Threads | `themineworks~threads-scraper` | US$2.00 per 1,000 results | Modes `profile` and `search`. Empty searches, blocked pages and failed runs are free. Few users (about 340), so the actor id is a constant that is easy to swap. |
+| Threads | `themineworks~threads-scraper` | US$2.00 per 1,000 results | Account mode (`profile`) is used. Empty results, blocked pages and failed runs are free. Few users (about 340), so the actor id is a constant that is easy to swap. |
+
+Checked on 2026-10-01 with real runs: the Threads actor's keyword search returned no posts for four queries, so only Threads accounts are supported; account mode and Instagram hashtag mode returned the fields parseItem reads.
 
 Rejected: `watcher.data/search-threads-by-keywords` (US$8 per 1,000, 3.4 stars), `magicfingers/threads-scraper` (20.8% success rate), `apidojo/instagram-scraper` (on the free plan limited to 5 runs a month and 10 items a run).
 
-Rough month on the starting list (10 accounts, 2 hashtags, 3 Threads searches, every 2 to 3 days, 20 items at most): about US$3, under the US$4 cap. Posts are charged before the keyword filter, so the cap is on fetched items, not kept ones.
+Rough month on the starting list (10 accounts, 2 hashtags, 5 Threads accounts, every 2 to 3 days, 20 items at most): about US$3.50, under the US$4 cap. Posts are charged before the keyword filter, so the cap is on fetched items, not kept ones.
 
 ## Before merging
 
@@ -179,4 +180,4 @@ Zack runs `scripts/apify-smoke.mjs` once (about US$0.05) to confirm the real out
 
 ## Open items
 
-- Which accounts, hashtags and Threads searches to add first. Default: Zack adds them by hand in `/admin/agent`, nothing is seeded.
+- Which accounts and hashtags to add first. Default: Zack adds them by hand in `/admin/agent`, nothing is seeded.

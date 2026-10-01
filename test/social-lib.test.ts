@@ -11,16 +11,16 @@ describe('socialMode', () => {
     expect(socialMode('https://www.instagram.com/explore/locations/213385402/london-england')).toMatchObject({ platform: 'instagram', kind: 'place', url: 'https://www.instagram.com/explore/locations/213385402/', label: 'Instagram place' });
   });
 
-  it('reads Threads accounts and searches on both hosts', () => {
+  it('reads Threads accounts on both hosts', () => {
     expect(socialMode('https://www.threads.net/@boxpark')).toMatchObject({ platform: 'threads', kind: 'account', username: 'boxpark', label: 'Threads account' });
     expect(socialMode('https://www.threads.com/@boxpark')).toMatchObject({ platform: 'threads', kind: 'account', username: 'boxpark' });
-    expect(socialMode('https://www.threads.net/search?q=london%20pop-up')).toMatchObject({ platform: 'threads', kind: 'search', query: 'london pop-up', label: 'Threads search' });
   });
 
   it('rejects addresses it cannot fetch', () => {
     for (const bad of [
       'https://www.tiktok.com/@brand', 'https://www.instagram.com/p/AbC123/', 'https://www.instagram.com/explore/',
       'https://www.instagram.com/reels/', 'https://www.threads.net/search', 'https://www.threads.net/@a/post/xyz',
+      'https://www.threads.net/search?q=london%20pop-up', 'https://www.threads.com/search?q=london%20pop-up',
       'https://www.instagram.com/login/', 'https://www.instagram.com/accounts/',
       'https://example.com/', 'not a url',
     ]) expect(socialMode(bad), bad).toBeNull();
@@ -40,9 +40,8 @@ describe('buildInput', () => {
     });
   });
 
-  it('builds the Threads inputs', () => {
+  it('builds the Threads account input', () => {
     expect(buildInput(socialMode('https://www.threads.net/@boxpark')!, 20, 4)).toEqual({ mode: 'profile', profileUsernames: ['boxpark'], maxPosts: 20 });
-    expect(buildInput(socialMode('https://www.threads.net/search?q=london%20pop-up')!, 20, 4)).toEqual({ mode: 'search', searchQuery: 'london pop-up', maxPosts: 20 });
   });
 });
 
