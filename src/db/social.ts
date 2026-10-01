@@ -102,7 +102,7 @@ async function checkRun(deps: SocialDeps, token: string, r: OpenRun, now: number
     }
     return;
   }
-  if (state === 'failed') return failRun(db, r, now, `The Apify run ended as ${run.status.toLowerCase()}.`, confirmedCost(r, run.usageTotalUsd));
+  if (state === 'failed') return failRun(db, r, now, `The Apify run ended as ${run.status.toLowerCase()}.`, heldCost(r, run.usageTotalUsd));
 
   const raw = run.defaultDatasetId ? await getItems(deps.fetch, token, run.defaultDatasetId, MAX_ITEMS) : [];
   const items = raw.map(x => parseItem(mode.platform, x)).filter((x): x is SocialItem => x !== null);
@@ -139,12 +139,10 @@ async function keepNew(db: D1Database, items: SocialItem[]): Promise<SocialItem[
   });
 }
 
-/** Apify itself said the run ended badly, so its reported usage is the truth. Without a number, keep the held cost. */
-const confirmedCost = (r: SocialRunRow, usage: number | null) => usage ?? r.cost_usd;
-/** The run may have been billed and we cannot tell: never go below what we held. */
+/** A failed run may still have been billed per result, and Apify can report only compute usage: never go below what we held. */
 const heldCost = (r: SocialRunRow, usage: number | null) => Math.max(r.cost_usd, usage ?? 0);
 
-/** Ends a run as failed and stores `cost` (see confirmedCost and heldCost). */
+/** Ends a run as failed and stores `cost` (heldCost, or 0 when Apify refused to start a run). */
 async function failRun(db: D1Database, r: SocialRunRow, now: number, error: string, cost: number) {
   await db.prepare("UPDATE social_runs SET status = 'failed', error = ?, cost_usd = ?, finished_at = ? WHERE id = ? AND status = 'running'")
     .bind(error, cost, now, r.id).run();
@@ -207,13 +205,13 @@ async function startDueRuns(deps: SocialDeps, token: string, now: number) {
         maxTotalChargeUsd: Math.round(reserve * 10_000) / 10_000,
         timeoutSecs: RUN_TIMEOUT / 1000,
       });
-      await db.prepare('UPDATE social_runs SET apify_run_id = ? WHERE id = ?').bind(run.id, id).run();
+      await db.prepare("UPDATE social_runs SET apify_run_id = ? WHERE id = ? AND status = 'running'").bind(run.id, id).run();
       spent += reserve;
     } catch (e) {
       const error = e instanceof Error ? e.message : 'The run could not be started.';
       console.error('social run start failed', s.id, e);
-      // An error answer from Apify means no run was created. Anything else (network, unreadable answer) means one may exist.
-      const refused = e instanceof ApifyError && e.httpStatus !== undefined;
+      // A 4xx answer from Apify (other than 408) means it refused and created no run. Anything else (5xx, 408, network, unreadable answer) means one may exist.
+      const refused = e instanceof ApifyError && e.httpStatus !== undefined && e.httpStatus >= 400 && e.httpStatus < 500 && e.httpStatus !== 408;
       const stored = { id, source_id: s.id, cost_usd: reserve } as SocialRunRow;
       await failRun(db, stored, now, error, refused ? 0 : reserve);
       if (!refused) spent += reserve;

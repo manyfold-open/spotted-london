@@ -79,7 +79,7 @@ CREATE INDEX idx_social_posts_new ON social_posts(source_id, handled_at, fetched
 
 Retention: rows older than 90 days are removed by the existing 04:00 cron, like `scout_seen`.
 
-Money: the month's spend is `SUM(cost_usd)` of `social_runs` since the first of the month. The cap is a constant in code, `SOCIAL_MONTHLY_BUDGET_USD = 4` (US$1 of margin under the free plan's US$5, because the Apify billing cycle does not start on the 1st). It can be raised later by editing the constant.
+Money: the spend is `SUM(cost_usd)` of `social_runs` over any rolling 30 days. The cap is a constant in code, `SOCIAL_MONTHLY_BUDGET_USD = 4` (US$1 of margin under the free plan's US$5, because the Apify billing cycle does not start on the 1st). It can be raised later by editing the constant.
 
 ## Fetch flow (Worker cron)
 
@@ -127,7 +127,7 @@ MCP changes, in `src/mcp.ts`, Scout role only:
 
 - Social sources show a mode ("Instagram account", "Instagram hashtag", "Threads search") instead of just the raw address.
 - Each social source shows its last run: when, posts kept, cost, error if any, and "not fetchable" for unrecognised addresses.
-- A small summary line: "Apify this month: US$x.xx of US$4.00".
+- A small summary line: "Apify in the last 30 days: US$x.xx of US$4.00".
 - No new page. No manual "fetch now" button in version 1.
 
 ## Errors and edge cases

@@ -101,7 +101,10 @@ function FetchInfo({ s }: { s: ScoutSource }) {
   if (!f.fetchable) line = 'Not fetched. Use an Instagram account, hashtag or place address, or a Threads account or search address.';
   else if (!r) line = 'Not fetched yet.';
   else if (r.status === 'running') line = 'Fetching now.';
-  else if (r.status === 'failed') line = `Last fetch failed: ${r.error ?? 'unknown error'}. Spotted tries again in 6 hours.`;
+  else if (r.status === 'failed') {
+    const why = (r.error ?? 'unknown error').replace(/\.+$/, '');
+    line = `Last fetch failed: ${why}.${s.status === 'active' ? ' Spotted tries again in 6 hours.' : ''}`;
+  }
   else if (r.status === 'skipped_budget') line = 'Skipped. The Apify limit for the last 30 days is used up. Fetching resumes when older spend drops out of that window.';
   else line = `Fetched ${day.format(r.at)}: kept ${r.kept} of ${r.items} posts, US$${r.cost_usd.toFixed(2)}.`;
   return (

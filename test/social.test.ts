@@ -10,7 +10,7 @@ const NOW = Date.UTC(2026, 8, 30, 13); // Wed 30 Sep 2026, 14:00 London (BST)
 let n = 0;
 
 /** A fake Apify. It records every call and checks the token never leaves the header. */
-function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; startFails?: boolean; startBody?: unknown; startThrows?: boolean } = {}) {
+function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; startFails?: boolean | number; startBody?: unknown; startThrows?: boolean } = {}) {
   const calls: string[] = [];
   const starts: URL[] = [];
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -22,7 +22,7 @@ function fakeApify(o: { status?: string; items?: unknown[]; usage?: number; star
     if (method === 'POST' && /\/acts\/[^/]+\/runs$/.test(url.pathname)) {
       starts.push(url);
       if (o.startThrows) throw new TypeError('network down');
-      if (o.startFails) return new Response('{}', { status: 500 });
+      if (o.startFails) return new Response('{}', { status: o.startFails === true ? 500 : o.startFails });
       if (o.startBody !== undefined) return Response.json(o.startBody, { status: 201 });
       return Response.json({ data: { id: 'apify-run-1', status: 'READY', defaultDatasetId: 'ds1', usageTotalUsd: 0 } }, { status: 201 });
     }
@@ -170,13 +170,22 @@ describe('social fetcher', () => {
     expect(await postsOf(id)).toEqual([]);
   });
 
-  it('fails a run Apify reports as failed and keeps its reported cost', async () => {
+  it('fails a run Apify reports as failed and keeps the held cost when the reported usage is lower', async () => {
     const id = await addSource('https://www.instagram.com/coaldropsyard');
     await runSocial(deps(fakeApify().f), NOW);
     await runSocial(deps(fakeApify({ status: 'FAILED', usage: 0.02 }).f), NOW + 10 * MIN);
     const [run] = await runsOf(id);
-    expect(run).toMatchObject({ status: 'failed', cost_usd: 0.02 });
+    expect(run.status).toBe('failed');
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram')); // 0.054: Apify may bill per result and report only compute
     expect(run.error).toMatch(/failed/);
+  });
+
+  it('stores the reported usage of a failed run when it is higher than the held cost', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify().f), NOW);
+    await runSocial(deps(fakeApify({ status: 'FAILED', usage: 0.2 }).f), NOW + 10 * MIN);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', cost_usd: 0.2 });
   });
 
   it('stops a run that takes longer than 30 minutes', async () => {
@@ -211,12 +220,29 @@ describe('social fetcher', () => {
     expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
   });
 
-  it('stores cost 0 when Apify refuses to start a run with an HTTP error', async () => {
+  it('keeps the held cost when the start is answered with HTTP 500', async () => {
     const id = await addSource('https://www.instagram.com/coaldropsyard');
     await runSocial(deps(fakeApify({ startFails: true }).f), NOW);
     const [run] = await runsOf(id);
-    expect(run).toMatchObject({ status: 'failed', cost_usd: 0, apify_run_id: null, finished_at: NOW });
+    expect(run).toMatchObject({ status: 'failed', apify_run_id: null, finished_at: NOW });
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
     expect(run.error).toMatch(/Apify answered 500/);
+  });
+
+  it('keeps the held cost when the start is answered with HTTP 408', async () => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify({ startFails: 408 }).f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', apify_run_id: null });
+    expect(run.cost_usd).toBeCloseTo(reserveUsd('instagram'));
+  });
+
+  it.each([400, 402])('stores cost 0 when the start is answered with HTTP %i', async status => {
+    const id = await addSource('https://www.instagram.com/coaldropsyard');
+    await runSocial(deps(fakeApify({ startFails: status }).f), NOW);
+    const [run] = await runsOf(id);
+    expect(run).toMatchObject({ status: 'failed', cost_usd: 0, apify_run_id: null, finished_at: NOW });
+    expect(run.error).toMatch(new RegExp(`Apify answered ${status}`));
   });
 
   it('keeps the held cost when the answer to a start cannot be read', async () => {

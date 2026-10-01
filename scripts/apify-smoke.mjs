@@ -1,5 +1,5 @@
 // One-off check that the real Apify actors still return the fields src/lib/social.ts reads.
-// Costs about US$0.05. Run it yourself so the token never leaves your shell:
+// Costs a few cents (three runs of 3 items). Run it yourself so the token never leaves your shell:
 //
 //   read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs; unset APIFY_TOKEN
 //
