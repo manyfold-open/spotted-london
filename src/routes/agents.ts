@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { requireAdmin } from '../middleware';
-import { ApiError, bad, sha256 } from '../lib/util';
+import { ApiError, bad, newId, sha256 } from '../lib/util';
 import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { randomToken } from '../lib/auth';
 import { seal, unseal } from '../lib/seal';
@@ -9,6 +9,7 @@ import { checkRpcUrl, probe } from '../lib/a2a';
 import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_IDS, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
+import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
 
 // Admin settings for the AI agents (/admin/agent in the web app). Secrets are write-only:
 // the caller token and the Spotted key are never sent back, only their last four characters.
@@ -194,3 +195,62 @@ async function one(db: D1Database, id: string, now: number) {
   ]);
   return view(a, runs, notes?.n ?? 0);
 }
+
+/* ---------- Scout's sources ---------- */
+
+async function sourceView(db: D1Database, rows: SourceRow[]) {
+  const stats = await sourceStats(db, rows.map(r => r.id));
+  return rows.map(r => ({
+    id: r.id, kind: r.kind, target: r.target, label: r.label, status: r.status, every_days: r.every_days, note: r.note,
+    suggested_by_run: r.suggested_by_run, last_checked_at: r.last_checked_at, due_at: r.due_at, created_at: r.created_at,
+    track_record: stats.get(r.id) ?? { drafts: 0, published: 0, rejected: 0, waiting: 0 },
+  }));
+}
+
+/** Every source, suggestions from Scout first. */
+agentsAdmin.get('/sources', async c => {
+  requireAdmin(c);
+  const { results } = await c.env.DB.prepare(
+    "SELECT * FROM scout_sources ORDER BY CASE status WHEN 'suggested' THEN 0 WHEN 'active' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END, kind, label",
+  ).all<SourceRow>();
+  return c.json({ sources: await sourceView(c.env.DB, results) });
+});
+
+agentsAdmin.post('/sources', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const b = await jsonBody(c.req);
+  const kind = oneOf(b, 'kind', SOURCE_KINDS, { required: true })!;
+  const target = sourceTarget(kind, text(b, 'target', { max: 500, required: true })!);
+  if (!target) throw bad('target_invalid', kind === 'search' ? 'Type the words to search for.' : 'The address must be a public web address, like https://www.example.com/events.');
+  if (await db.prepare('SELECT 1 FROM scout_sources WHERE target = ?').bind(target).first()) throw new ApiError(409, 'source_exists', 'This source is already on the list.');
+  const id = `src_${newId()}`;
+  await db.prepare("INSERT INTO scout_sources (id, kind, target, label, status, every_days, note, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)")
+    .bind(id, kind, target, text(b, 'label', { max: 80, required: true }), Math.round(num(b, 'every_days', { min: 1, max: 60 }) ?? 1), text(b, 'note', { max: 300 }), now, now).run();
+  await audit(db, admin.id, 'scout_source.add', 'scout_source', id, { kind, target }, now);
+  const row = await db.prepare('SELECT * FROM scout_sources WHERE id = ?').bind(id).first<SourceRow>();
+  return c.json((await sourceView(db, [row!]))[0], 201);
+});
+
+/** Turn a source on or off (a suggestion goes live by setting it active), or change how often it is checked. */
+agentsAdmin.patch('/sources/:id', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const src = await db.prepare('SELECT * FROM scout_sources WHERE id = ?').bind(c.req.param('id')).first<SourceRow>();
+  if (!src) throw new ApiError(404, 'not_found', 'There is no source with that id.');
+  const b = await jsonBody(c.req);
+  const status = oneOf(b, 'status', SOURCE_STATUSES) ?? src.status;
+  const every = num(b, 'every_days', { min: 1, max: 60 });
+  const everyDays = every === null ? src.every_days : Math.round(every);
+  const label = text(b, 'label', { max: 80 }) ?? src.label;
+  const note = 'note' in b ? text(b, 'note', { max: 300 }) : src.note;
+  // A new interval counts from the last check; a source that was never checked stays due now.
+  const due = src.last_checked_at === null ? null : nextDue(everyDays, src.last_checked_at);
+  await db.prepare('UPDATE scout_sources SET status = ?, every_days = ?, label = ?, note = ?, due_at = ?, updated_at = ? WHERE id = ?')
+    .bind(status, everyDays, label, note, due, now, src.id).run();
+  await audit(db, admin.id, 'scout_source.update', 'scout_source', src.id, { from: src.status, status, every_days: everyDays }, now);
+  const row = await db.prepare('SELECT * FROM scout_sources WHERE id = ?').bind(src.id).first<SourceRow>();
+  return c.json((await sourceView(db, [row!]))[0]);
+});

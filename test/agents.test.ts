@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 import { checkRuns, dispatchDue, nextRunAt } from '../src/db/agents';
+import { linkKind, normalizeUrl } from '../src/db/scout';
+import { purgeScoutSeen } from '../src/cron';
 import { checkRpcUrl, readResult } from '../src/lib/a2a';
 import { seal, unseal } from '../src/lib/seal';
 
@@ -53,6 +55,9 @@ beforeEach(async () => {
   admin = await user('admin');
   await env.DB.batch([
     env.DB.prepare('DELETE FROM agent_notes'),
+    env.DB.prepare('DELETE FROM scout_seen'),
+    env.DB.prepare('DELETE FROM scout_sources WHERE created_at != 1790812800000'),
+    env.DB.prepare("UPDATE scout_sources SET status = 'active', due_at = NULL, last_checked_at = NULL"),
     env.DB.prepare('DELETE FROM agent_runs'),
     env.DB.prepare("UPDATE agents SET enabled = 0, rpc_url = NULL, token_sealed = NULL, token_hint = NULL, key_hash = NULL, key_hint = NULL, next_run_at = NULL, max_items = 20, instructions = NULL"),
   ]);
@@ -267,7 +272,7 @@ describe('agent runs', () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
     const tools = (await mcp('tools/list', {}, key)).json.result.tools.map((t: { name: string }) => t.name);
-    expect(tools).toEqual(['search_popups', 'get_popup', 'find_place', 'check_duplicates', 'submit_draft', 'finish_run']);
+    expect(tools).toEqual(['search_popups', 'get_popup', 'list_sources', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run']);
 
     const sent = await tool('submit_draft', draft(runId), key);
     expect(sent.structuredContent).toMatchObject({ sent: true, status: 'pending' });
@@ -360,6 +365,116 @@ describe('agent runs', () => {
     expect((await call('POST', `/admin/agents/notes/${item.agent_notes[0].id}/dismiss`, { user: admin })).status).toBe(200);
     const after = await call('GET', '/admin/queue', { user: admin });
     expect(after.json.items.some((p: { id: string }) => p.id === live.json.id)).toBe(false);
+  });
+});
+
+describe('scout sources and memory', () => {
+  it('starts from the source list, marks sources checked and remembers pages it skipped', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const first = (await tool('list_sources', {}, key)).structuredContent;
+    expect(first.count).toBe(15);
+    expect(first.not_due_yet).toBe(0);
+    expect(first.sources[0]).toMatchObject({ id: 'src_timeout', kind: 'listing', url: 'https://www.timeout.com/london/things-to-do', last_checked: 'never' });
+    const all = (await tool('list_sources', { limit: 40 }, key)).structuredContent.sources;
+    expect(all.find((x: { id: string }) => x.id === 'src_q_red')).toMatchObject({ kind: 'search', search: 'site:xiaohongshu.com 伦敦 快闪' });
+
+    const checked = await tool('mark_source_checked', { run_id: runId, source_id: 'src_timeout' }, key);
+    expect(checked.structuredContent).toEqual({ saved: true, next_check: '2026-10-01' });
+    const after = (await tool('list_sources', { limit: 40 }, key)).structuredContent;
+    expect(after.sources.some((x: { id: string }) => x.id === 'src_timeout')).toBe(false);
+    expect(after.not_due_yet).toBe(1);
+
+    expect((await tool('skip_url', { run_id: runId, url: 'https://Shop.test/news/?utm_source=ig&id=4', outcome: 'not_popup', reason: 'Permanent opening', source_id: 'src_timeout' }, key)).structuredContent.saved).toBe(true);
+    expect((await tool('skip_url', { run_id: runId, url: 'https://shop.test/x', outcome: 'sent' }, key)).isError).toBe(true);
+    expect((await tool('skip_url', { run_id: runId, url: 'https://shop.test/x', outcome: 'other', source_id: 'src_nope' }, key)).content[0].text).toMatch(/Unknown source_id/);
+
+    const seen = (await tool('check_seen', { urls: ['https://shop.test/news?id=4', 'https://new.test/a', 'not a url'] }, key)).structuredContent.results;
+    expect(seen[0]).toMatchObject({ seen: true, outcome: 'not_popup', reason: 'Permanent opening', on: '2026-09-30' });
+    expect(seen[1]).toEqual({ url: 'https://new.test/a', seen: false });
+    expect(seen[2].seen).toBe(false);
+  });
+
+  it('drafts carry social and brand links, and count toward their source\'s track record', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const sent = await tool('submit_draft', draft(runId, {
+      title: 'Matcha Club Pop-up', lat: 51.5246, lng: -0.0839, source_url: 'https://matchaclub.test/london', source_id: 'src_secretldn',
+      links: [{ url: 'https://www.instagram.com/p/abc123/?igsh=xyz', kind: 'article' }, { url: 'https://xhslink.com/a/xyz' }, { url: 'https://matchaclub.test/london' }, { url: 'https://venue.test/whats-on', kind: 'venue' }],
+    }), key);
+    expect(sent.structuredContent.sent).toBe(true);
+    const id = sent.structuredContent.id;
+    const { results: links } = await env.DB.prepare('SELECT url, kind, added_by FROM popup_links WHERE popup_id = ? ORDER BY url').bind(id).all();
+    expect(links).toEqual([
+      { url: 'https://venue.test/whats-on', kind: 'venue', added_by: 'agent_scout' },
+      { url: 'https://www.instagram.com/p/abc123', kind: 'instagram', added_by: 'agent_scout' },
+      { url: 'https://xhslink.com/a/xyz', kind: 'xiaohongshu', added_by: 'agent_scout' },
+    ]);
+    const seen = (await tool('check_seen', { urls: ['https://instagram.com/p/abc123', 'https://www.instagram.com/p/abc123/', 'https://matchaclub.test/london'] }, key)).structuredContent.results;
+    expect(seen[0].seen).toBe(false); // a different host spelling is a different page
+    expect(seen[1]).toMatchObject({ seen: true, outcome: 'sent', popup_id: id });
+    expect(seen[2]).toMatchObject({ seen: true, outcome: 'sent', popup_id: id });
+    expect((await tool('get_popup', { id }, key)).structuredContent.links).toHaveLength(3);
+
+    const badLinks = await tool('submit_draft', draft(runId, { title: 'Bad Links Pop-up', lat: 51.51, lng: -0.1, links: [{ url: 'http://localhost/x' }] }), key);
+    expect(badLinks.content[0].text).toMatch(/public web address/);
+
+    await call('POST', `/admin/popups/${id}/decision`, { user: admin, body: { action: 'approve' } });
+    const sources = (await call('GET', '/admin/agents/sources', { user: admin })).json.sources;
+    expect(sources.find((x: { id: string }) => x.id === 'src_secretldn').track_record).toEqual({ drafts: 1, published: 1, rejected: 0, waiting: 0 });
+    const list = (await tool('list_sources', { limit: 40 }, key)).structuredContent.sources;
+    expect(list.find((x: { id: string }) => x.id === 'src_secretldn').track_record.published).toBe(1);
+
+    // a duplicate is remembered too
+    const again = await tool('submit_draft', draft(runId, { title: 'Matcha Club Pop-up London', lat: 51.5246, lng: -0.0839, source_url: 'https://other.test/matcha' }), key);
+    expect(again.structuredContent.sent).toBe(false);
+    expect((await tool('check_seen', { urls: ['https://other.test/matcha'] }, key)).structuredContent.results[0]).toMatchObject({ outcome: 'duplicate', popup_id: id });
+  });
+
+  it('scout only suggests sources; the admin turns them on', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const s1 = await tool('suggest_source', { run_id: runId, kind: 'venue', target: 'https://www.doverstreetmarket.com/london/', label: 'Dover Street Market London', why: 'Hosts a new brand pop-up most months.' }, key);
+    expect(s1.structuredContent.saved).toBe(true);
+    const known = await tool('suggest_source', { run_id: runId, kind: 'venue', target: 'https://www.coaldropsyard.com/', label: 'Coal Drops Yard', why: 'x' }, key);
+    expect(known.structuredContent).toEqual({ saved: false, reason: 'Already on the list (active).' });
+    const listed = (await tool('list_sources', { limit: 40 }, key)).structuredContent.sources;
+    expect(listed.some((x: { label: string }) => x.label === 'Dover Street Market London')).toBe(false);
+
+    expect((await call('GET', '/admin/agents/sources', { user: await user() })).status).toBe(403);
+    const view = (await call('GET', '/admin/agents/sources', { user: admin })).json.sources;
+    expect(view[0]).toMatchObject({ status: 'suggested', target: 'https://www.doverstreetmarket.com/london', note: 'Hosts a new brand pop-up most months.', suggested_by_run: runId, every_days: 3 });
+
+    const on = await call('PATCH', `/admin/agents/sources/${view[0].id}`, { user: admin, body: { status: 'active', every_days: 7 } });
+    expect(on.json).toMatchObject({ status: 'active', every_days: 7 });
+    expect((await tool('list_sources', { limit: 40 }, key)).structuredContent.sources.some((x: { id: string }) => x.id === view[0].id)).toBe(true);
+
+    const added = await call('POST', '/admin/agents/sources', { user: admin, body: { kind: 'search', target: '  London  vintage   sale ', label: 'Search: vintage sales', every_days: 2 } });
+    expect(added.status).toBe(201);
+    expect(added.json).toMatchObject({ target: 'London vintage sale', status: 'active' });
+    expect((await call('POST', '/admin/agents/sources', { user: admin, body: { kind: 'search', target: 'London vintage sale', label: 'x' } })).status).toBe(409);
+    expect((await call('POST', '/admin/agents/sources', { user: admin, body: { kind: 'brand', target: 'http://10.0.0.1/x', label: 'x' } })).json.error.code).toBe('target_invalid');
+
+    for (let i = 2; i <= 5; i++) await tool('suggest_source', { run_id: runId, kind: 'search', target: `london pop-up idea ${i}`, label: `Idea ${i}`, why: 'x' }, key);
+    expect((await tool('suggest_source', { run_id: runId, kind: 'search', target: 'london pop-up idea 6', label: 'Idea 6', why: 'x' }, key)).content[0].text).toMatch(/already suggested 5/);
+  });
+
+  it('forgets skipped pages after 90 days but keeps the ones that led to drafts', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    await tool('skip_url', { run_id: runId, url: 'https://old.test/a', outcome: 'ended' }, key);
+    await purgeScoutSeen(env.DB, NOW + 91 * DAY);
+    const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM scout_seen WHERE url = 'https://old.test/a'").first<{ n: number }>();
+    expect(left!.n).toBe(0);
+  });
+
+  it('normalises addresses and recognises social links', () => {
+    expect(normalizeUrl('HTTPS://Www.Example.com/Path/?utm_medium=x&fbclid=1&q=2#top')).toBe('https://www.example.com/Path?q=2');
+    expect(normalizeUrl('ftp://x.test')).toBeNull();
+    expect(linkKind('https://vm.tiktok.com/abc', 'official')).toBe('tiktok');
+    expect(linkKind('https://www.xiaohongshu.com/explore/1', null)).toBe('xiaohongshu');
+    expect(linkKind('https://brand.test', 'instagram')).toBe('other');
+    expect(linkKind('https://brand.test', 'ticket')).toBe('ticket');
   });
 });
 

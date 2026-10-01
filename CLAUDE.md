@@ -53,6 +53,7 @@ src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
 src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub), start/check agent runs
 src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
 src/db/agents.ts        AI agents on Manyfold (Scout, Triage, Checker): schedules, briefs, run life cycle
+src/db/scout.ts         Scout's memory: sources to check, pages already read, extra links per pop-up, track records
 src/lib/a2a.ts          A2A client: start a Manyfold task, check it with tasks/get, probe a token
 src/lib/manyfold.ts     "Connect with Manyfold": Connect A2A device-code sign-in (start, poll) that returns an agent's A2A address and token
 skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep it in step with the MCP tools
@@ -104,11 +105,12 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page.
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (API only, migration 0005).
 
 Not done yet, roughly in priority order:
 1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
 2. Hide quality votes on your own posts in the UI (the API already rejects them).
 3. Vote ring detection in the daily abuse scan.
 4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
-5. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).
+5. Scout sources in the web app: a Sources tab on /admin/agent (API is at /api/v1/admin/agents/sources), extra links on the pop-up sheet and in Submit.
+6. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).

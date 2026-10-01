@@ -18,6 +18,7 @@ import { CATEGORIES, safeUrl } from './lib/extract';
 import { geohash } from './lib/geo';
 import { DAY, hot, PUBLIC_STATUSES } from './lib/scoring';
 import { londonDateString, parseLondonDate } from './lib/time';
+import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
 
 export const mcp = new Hono<AppEnv>();
@@ -92,6 +93,45 @@ function dates(a: Args) {
   return { start_at, end_at: endDay };
 }
 
+/** Most pages one run may mark as read, and most sources it may suggest. */
+const SEEN_PER_RUN = 300, SUGGESTIONS_PER_RUN = 5;
+
+async function sourceArg(x: Ctx, a: Args): Promise<string | null> {
+  const id = str(a, 'source_id', 40);
+  if (!id) return null;
+  if (!(await x.c.env.DB.prepare('SELECT 1 FROM scout_sources WHERE id = ?').bind(id).first())) throw new ToolError('Unknown source_id. Use an id from list_sources, or leave it out.');
+  return id;
+}
+
+async function markSeen(x: Ctx, run: RunRow, url: string, outcome: string, o: { reason?: string | null; sourceId?: string | null; popupId?: string | null } = {}) {
+  await x.c.env.DB.prepare('INSERT INTO scout_seen (id, url, outcome, reason, source_id, popup_id, run_id, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(newId(), url, outcome, o.reason ?? null, o.sourceId ?? null, o.popupId ?? null, run.id, x.now).run();
+}
+
+/** Up to five extra links for a draft; social posts are recognised by their address. */
+function linksArg(a: Args, primary: string): { url: string; kind: string }[] {
+  const v = a.links;
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new ToolError('links must be a list of { url, kind }.');
+  if (v.length > 5) throw new ToolError('Give at most 5 links.');
+  const out: { url: string; kind: string }[] = [];
+  for (const l of v) {
+    const raw = typeof l === 'string' ? l : l && typeof l === 'object' ? (l as Args).url : null;
+    const url = typeof raw === 'string' ? normalizeUrl(raw.slice(0, 500)) : null;
+    if (!url) throw new ToolError('Each link needs a public web address in url.');
+    if (url === primary || out.some(o => o.url === url)) continue;
+    const given = l && typeof l === 'object' ? (l as Args).kind : null;
+    out.push({ url, kind: linkKind(url, typeof given === 'string' ? given : null) });
+  }
+  return out;
+}
+
+const LINKS_SCHEMA = {
+  type: 'array', maxItems: 5,
+  description: 'Other public pages about the same pop-up: the brand site, venue page, ticket page, or an Instagram, TikTok or Xiaohongshu post. Up to 5.',
+  items: obj({ url: S('Public web address.'), kind: S('What the page is. Social posts are recognised from the address.', { enum: [...LINK_KINDS] }) }, ['url']),
+};
+
 const TOOLS: Record<string, Tool> = {
   search_popups: {
     description: 'Search pop-ups in London listed on Spotted London: food, fashion, samples, art, markets, beauty and tech. Returns up to 20, soonest and most popular first, each with a link.',
@@ -127,7 +167,8 @@ const TOOLS: Record<string, Tool> = {
       // Agents also see pending posts, so triage can read what it is judging.
       const visible = p && (PUBLIC_STATUSES.includes(p.status) || p.status === 'ended' || (x.agent && p.status === 'pending'));
       if (!visible) throw new ToolError('No pop-up with that id or slug.');
-      return { ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, confirmations: { weighted_votes: p.exist_pos + p.exist_neg, checkins: p.checkin_count } };
+      const links = (await linksFor(x.c.env.DB, [p.id])).get(p.id) ?? [];
+      return { ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links, confirmations: { weighted_votes: p.exist_pos + p.exist_neg, checkins: p.checkin_count } };
     },
   },
 
@@ -152,6 +193,117 @@ const TOOLS: Record<string, Tool> = {
       return { duplicates: found.map(p => brief(toPublic(p), x.origin)) };
     },
   },
+  list_sources: {
+    description: 'Sources due a check, least recently checked first: listing sites, venue pages, brand sites, social accounts and web searches the admin set up. Each comes with its track record (drafts sent, published, rejected). Start every run here.',
+    inputSchema: obj({ limit: N('1 to 40. Defaults to 15.') }),
+    async run(a, x) {
+      const db = x.c.env.DB;
+      const limit = Math.min(40, Math.max(1, numArg(a, 'limit') ?? 15));
+      const [{ results }, later] = await Promise.all([
+        db.prepare("SELECT * FROM scout_sources WHERE status = 'active' AND (due_at IS NULL OR due_at <= ?) ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?").bind(x.now, limit).all<SourceRow>(),
+        db.prepare("SELECT COUNT(*) AS n FROM scout_sources WHERE status = 'active' AND due_at > ?").bind(x.now).first<{ n: number }>(),
+      ]);
+      const stats = await sourceStats(db, results.map(r => r.id));
+      return {
+        count: results.length,
+        not_due_yet: later?.n ?? 0,
+        sources: results.map(r => ({
+          id: r.id, kind: r.kind, label: r.label,
+          ...(r.kind === 'search' ? { search: r.target } : { url: r.target }),
+          note: r.note,
+          last_checked: r.last_checked_at ? londonDateString(r.last_checked_at) : 'never',
+          track_record: stats.get(r.id) ?? { drafts: 0, published: 0, rejected: 0, waiting: 0 },
+        })),
+      };
+    },
+  },
+  mark_source_checked: {
+    description: 'Record that you went through a source from list_sources, so it is not due again until its next turn. Call it for every source you checked, also when you found nothing.',
+    inputSchema: obj({ run_id: RUN_ID, source_id: S('Id from list_sources.') }, ['run_id', 'source_id']),
+    async run(a, x) {
+      await requireRun(x, a);
+      const db = x.c.env.DB;
+      const src = await db.prepare("SELECT * FROM scout_sources WHERE id = ? AND status = 'active'").bind(str(a, 'source_id', 40, true)).first<SourceRow>();
+      if (!src) throw new ToolError('Unknown source_id, or the source is switched off. Use an id from list_sources.');
+      const due = nextDue(src.every_days, x.now);
+      await db.prepare('UPDATE scout_sources SET last_checked_at = ?, due_at = ?, updated_at = ? WHERE id = ?').bind(x.now, due, x.now, src.id).run();
+      return { saved: true, next_check: londonDateString(due) };
+    },
+  },
+  check_seen: {
+    description: 'Before opening pages, check which ones Scout already read in the last 30 days or that are already on Spotted. Skip those.',
+    inputSchema: obj({ urls: { type: 'array', items: { type: 'string' }, maxItems: 30, description: 'Up to 30 web addresses.' } }, ['urls']),
+    async run(a, x) {
+      if (!Array.isArray(a.urls) || !a.urls.length) throw new ToolError('urls must be a list of web addresses.');
+      if (a.urls.length > 30) throw new ToolError('Give at most 30 urls at a time.');
+      const asked = a.urls.map(u => ({ url: String(u).slice(0, 500), key: typeof u === 'string' ? normalizeUrl(u.slice(0, 500)) : null }));
+      const keys = [...new Set(asked.map(u => u.key).filter((k): k is string => !!k))];
+      const db = x.c.env.DB;
+      const marks = keys.map(() => '?').join(',');
+      const [{ results: seen }, { results: listed }] = keys.length ? await Promise.all([
+        db.prepare(`SELECT url, outcome, reason, popup_id, seen_at FROM scout_seen WHERE url IN (${marks}) AND (outcome = 'sent' OR seen_at > ?) ORDER BY seen_at DESC`)
+          .bind(...keys, x.now - SEEN_FOR).all<{ url: string; outcome: string; reason: string | null; popup_id: string | null; seen_at: number }>(),
+        db.prepare(`SELECT source_url AS url, id FROM popups WHERE source_url IN (${marks}) UNION SELECT url, popup_id AS id FROM popup_links WHERE url IN (${marks})`)
+          .bind(...keys, ...keys).all<{ url: string; id: string }>(),
+      ]) : [{ results: [] }, { results: [] }];
+      return {
+        results: asked.map(({ url, key }) => {
+          if (!key) return { url, seen: false, note: 'Not a public web address.' };
+          const s = seen.find(r => r.url === key);
+          const l = listed.find(r => r.url === key);
+          if (s) return { url, seen: true, outcome: s.outcome, reason: s.reason, popup_id: s.popup_id, on: londonDateString(s.seen_at) };
+          if (l) return { url, seen: true, outcome: 'on_spotted', popup_id: l.id };
+          return { url, seen: false };
+        }),
+      };
+    },
+  },
+  skip_url: {
+    description: 'Record a page you read but did not send, and why, so no run reads it again for 30 days. Does not count against your limit.',
+    inputSchema: obj({
+      run_id: RUN_ID,
+      url: S('The page you read.'),
+      outcome: S('Why you skipped it.', { enum: [...SKIP_OUTCOMES] }),
+      reason: S('A few words, like "Permanent opening" or "No dates yet".'),
+      source_id: S('Id from list_sources of the source that led you here, if any.'),
+    }, ['run_id', 'url', 'outcome']),
+    async run(a, x) {
+      const run = await requireRun(x, a);
+      const url = normalizeUrl(str(a, 'url', 500, true)!);
+      if (!url) throw new ToolError('url must be a public web address.');
+      const outcome = str(a, 'outcome', 20, true)!;
+      if (!(SKIP_OUTCOMES as string[]).includes(outcome)) throw new ToolError(`outcome must be one of: ${SKIP_OUTCOMES.join(', ')}.`);
+      const used = await x.c.env.DB.prepare('SELECT COUNT(*) AS n FROM scout_seen WHERE run_id = ?').bind(run.id).first<{ n: number }>();
+      if ((used?.n ?? 0) >= SEEN_PER_RUN) throw new ToolError(`This run already recorded ${SEEN_PER_RUN} pages. Call finish_run.`);
+      await markSeen(x, run, url, outcome, { reason: str(a, 'reason', 200), sourceId: await sourceArg(x, a) });
+      return { saved: true };
+    },
+  },
+  suggest_source: {
+    description: 'Suggest a new place to check on future runs: a listing site, venue page, brand site, social account or web search that keeps turning up London pop-ups. The admin decides whether to add it. At most 5 per run.',
+    inputSchema: obj({
+      run_id: RUN_ID,
+      kind: S('What it is.', { enum: [...SOURCE_KINDS] }),
+      target: S('Its web address, or the search words for kind search.'),
+      label: S('Short name, like "Dover Street Market events".'),
+      why: S('One sentence: what you found there.'),
+    }, ['run_id', 'kind', 'target', 'label', 'why']),
+    async run(a, x) {
+      const run = await requireRun(x, a);
+      const db = x.c.env.DB;
+      const kind = str(a, 'kind', 20, true)! as SourceKind;
+      if (!(SOURCE_KINDS as readonly string[]).includes(kind)) throw new ToolError(`kind must be one of: ${SOURCE_KINDS.join(', ')}.`);
+      const target = sourceTarget(kind, str(a, 'target', 500, true)!);
+      if (!target) throw new ToolError(kind === 'search' ? 'target needs the search words.' : 'target must be a public web address.');
+      const known = await db.prepare('SELECT status FROM scout_sources WHERE target = ?').bind(target).first<{ status: string }>();
+      if (known) return { saved: false, reason: `Already on the list (${known.status}).` };
+      const used = await db.prepare('SELECT COUNT(*) AS n FROM scout_sources WHERE suggested_by_run = ?').bind(run.id).first<{ n: number }>();
+      if ((used?.n ?? 0) >= SUGGESTIONS_PER_RUN) throw new ToolError(`You already suggested ${SUGGESTIONS_PER_RUN} sources in this run.`);
+      await db.prepare("INSERT INTO scout_sources (id, kind, target, label, status, every_days, note, suggested_by_run, created_at, updated_at) VALUES (?, ?, ?, ?, 'suggested', ?, ?, ?, ?, ?)")
+        .bind(`src_${newId()}`, kind, target, str(a, 'label', 80, true), kind === 'venue' || kind === 'brand' ? 3 : 1, str(a, 'why', 300, true), run.id, x.now, x.now).run();
+      return { saved: true, message: 'Suggestion saved. The admin will decide.' };
+    },
+  },
   submit_draft: {
     description: 'Send a pop-up you found as a draft. It goes to the review queue and is only published if the admin approves it. Needs a source link where you saw it.',
     inputSchema: obj({
@@ -172,12 +324,17 @@ const TOOLS: Record<string, Tool> = {
       source_url: S('Public link where the details are published: the organiser page, ticket page or article.'),
       confidence: S('high: dates and place confirmed by the organiser. check: something is unclear.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
+      links: LINKS_SCHEMA,
+      source_id: S('Id from list_sources of the source that led you here, if any.'),
     }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url']),
     async run(a, x) {
       const run = await requireRun(x, a);
       const db = x.c.env.DB;
       const source = str(a, 'source_url', 500, true)!;
-      if (!safeUrl(source)) throw new ToolError('source_url must be a public web address.');
+      const seenUrl = normalizeUrl(source);
+      if (!seenUrl) throw new ToolError('source_url must be a public web address.');
+      const links = linksArg(a, seenUrl);
+      const sourceId = await sourceArg(x, a);
       let input: ReturnType<typeof parsePopupInput>;
       try {
         input = parsePopupInput({ ...a, borough: a.area, ...dates(a) }, x.now, true, { ongoing: true });
@@ -186,6 +343,7 @@ const TOOLS: Record<string, Tool> = {
       }
       const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number });
       if (dupes.length) {
+        await markSeen(x, run, seenUrl, 'duplicate', { sourceId, popupId: dupes[0].id });
         return { sent: false, reason: 'Already on Spotted. Skip it.', duplicates: dupes.map(p => brief(toPublic(p), x.origin)) };
       }
       await useItem(x, run);
@@ -201,6 +359,10 @@ const TOOLS: Record<string, Tool> = {
         db.prepare(`INSERT INTO popups (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map(k => (row as Record<string, unknown>)[k] ?? null)),
         db.prepare('INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
           .bind(newId(), x.agent!.id, run.id, id, a.confidence === 'high' ? 'looks_real' : 'needs_check', note ?? 'Found by the scout agent.', input.source_url, x.now),
+        ...links.map(l => db.prepare('INSERT OR IGNORE INTO popup_links (popup_id, url, kind, added_by, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, l.url, l.kind, x.agent!.user_id, x.now)),
+        // Only the main page carries the source, so each draft counts once in its track record.
+        ...[seenUrl, ...links.map(l => l.url)].map((url, i) => db.prepare("INSERT INTO scout_seen (id, url, outcome, source_id, popup_id, run_id, seen_at) VALUES (?, ?, 'sent', ?, ?, ?, ?)")
+          .bind(newId(), url, i === 0 ? sourceId : null, id, run.id, x.now)),
       ]);
       return { sent: true, id, status: 'pending', message: 'Draft saved. It is waiting for the admin.' };
     },
@@ -215,10 +377,11 @@ const TOOLS: Record<string, Tool> = {
          WHERE p.status = 'pending' AND p.end_at > ? AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ?)
          ORDER BY p.created_at LIMIT ?`,
       ).bind(x.now, x.agent!.id, limit).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number }>();
+      const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
         count: results.length,
         posts: results.map(p => ({
-          ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url,
+          ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links: links.get(p.id) ?? [],
           poster: { name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((x.now - p.poster_created_at) / DAY), is_agent: p.created_by.startsWith('agent_') },
         })),
       };
@@ -234,7 +397,8 @@ const TOOLS: Record<string, Tool> = {
            AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ? AND n.created_at > ?)
          ORDER BY p.start_at LIMIT ?`,
       ).bind(x.now, x.agent!.id, x.now - 3 * DAY, limit).all<PopupRow>();
-      return { count: results.length, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url })) };
+      const links = await linksFor(x.c.env.DB, results.map(p => p.id));
+      return { count: results.length, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };
     },
   },
   add_note: {

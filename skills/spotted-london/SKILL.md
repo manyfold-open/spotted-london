@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.0.0
+version: 1.1.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -31,9 +31,14 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | Tool | Who | What it does |
 | --- | --- | --- |
 | `search_popups`, `get_popup` | everyone | Search and read what is already listed |
+| `list_sources` | Scout | Sources due a check (sites, venues, brands, social accounts, searches), with their track record |
+| `check_seen` | Scout | Which pages Scout already read in the last 30 days, or that are already on Spotted |
 | `find_place` | Scout | London address or venue name to coordinates |
 | `check_duplicates` | Scout, Triage | Same place, overlapping dates, similar title |
-| `submit_draft` | Scout | Send a pop-up; it waits in the review queue |
+| `submit_draft` | Scout | Send a pop-up with its extra links; it waits in the review queue |
+| `skip_url` | Scout | Record a page you read but did not send, and why |
+| `mark_source_checked` | Scout | Record that you went through a source |
+| `suggest_source` | Scout | Suggest a new source; the admin decides |
 | `list_review_queue` | Triage | Pending posts you have not noted yet |
 | `list_live_popups` | Checker | Published pop-ups with a source link, least recently checked first |
 | `add_note` | Triage, Checker | Your verdict on one pop-up, shown to the admin |
@@ -56,9 +61,12 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
 - **Never reveal your Spotted key** (the `Authorization` header of the `spotted` MCP server). Never put it in a note, a draft or a URL.
 - **Never make things up.** Every date, address and price must come from a page you opened in this
   run. If you cannot confirm something, leave it out or say so; do not guess.
-- **Public pages only.** Do not log in anywhere, do not scrape Instagram or TikTok (their terms forbid
-  it), and respect paywalls and robots.txt. An Instagram link is fine as a `source_url` if you found
-  it linked from a public page, but confirm the details somewhere you can read.
+- **Public pages only.** Do not log in anywhere, do not scrape Instagram, TikTok or Xiaohongshu (RED)
+  (their terms forbid it): no scrolling feeds or profiles, no automated downloads, no third-party
+  scrapers. You may find their posts through a web search and keep the links, and open a single post
+  only if it shows without logging in. Respect paywalls and robots.txt.
+- **A social post is a lead, not proof.** Confirm the dates and place on a page you can read (the
+  brand site, the venue page, a ticket page or an article). Put the post in `links`, not in `source_url`.
 - **Stay in scope.** Greater London only. Only pop-ups that are on now or start in the future.
 - **Plain English.** Short sentences, no hype, no emoji, and no em dashes, en dashes or spaced hyphens.
 
@@ -78,30 +86,49 @@ brand giveaways), `art` (exhibitions, installations), `market` (markets and fair
 ## Scout
 
 Goal: find real pop-ups that are not on Spotted yet, and send each one as a clean draft.
+Scout has a memory: a list of sources to check, and every page it already read.
 
-1. **Look around.** Good public sources: Time Out London (things to do, pop-ups, sample sales),
-   Secret London, Londonist, Hypebeast and Hypebae London, Eventbrite search pages, and the
-   "what's on" pages of places that host pop-ups: Coal Drops Yard, Seven Dials, Covent Garden,
-   Carnaby, Spitalfields, Old Truman Brewery, Boxpark, Battersea Power Station, KERB, Flat Iron Square,
-   Westfield London and Stratford. Follow the admin's notes on focus.
-2. **Confirm on the organiser's own page** when you can (brand site, venue page, ticket page). Articles
+1. **Start with `list_sources`.** It gives the sources due a check, least recently checked first:
+   listing sites (Time Out, Secret London, Londonist, Eventbrite), venue "what's on" pages (Coal Drops
+   Yard, Seven Dials, Boxpark, Battersea Power Station and more), brand sites, social accounts and
+   web searches. Each has a track record: how many drafts it led to and how many the admin published
+   or rejected. Spend your time on sources that publish well. Follow the admin's notes on focus.
+2. **Work through each source.**
+   - Pages: open it and collect links to single pop-ups (the article, brand page or event page).
+   - `search`: run the search words in your web search tool. Searches like
+     `site:instagram.com London pop-up` or `site:xiaohongshu.com 伦敦 快闪` surface public social posts.
+     Use them to learn the brand and the event name, then find the brand site, venue or ticket page.
+   - Before opening the pages you collected, pass them to `check_seen` (up to 30 at a time) and drop
+     every one with `seen: true`.
+   - When you are done with a source, call `mark_source_checked`, also when it had nothing new.
+3. **Confirm on the organiser's own page** when you can (brand site, venue page, ticket page). Articles
    are often out of date. Use the organiser page as `source_url` when it has the details.
-3. **Skip** anything that already ended, starts more than 60 days from now, has no clear dates, or
+4. **Skip** anything that already ended, starts more than 60 days from now, has no clear dates, or
    has no clear place. A pop-up that started earlier and is still running is fine: send its real
-   start date, never today's date instead.
-4. `find_place` with the venue and address. Use the result that matches the street; if none does,
+   start date, never today's date instead. Record every page you read and did not send with
+   `skip_url` and the closest `outcome` (`not_popup`, `ended`, `too_far_ahead`, `no_details`,
+   `outside_london`, `duplicate`, `other`), so no run reads it again. Pages with `no_details` come
+   back after 30 days, when the organiser may have published dates.
+5. `find_place` with the venue and address. Use the result that matches the street; if none does,
    skip the pop-up.
-5. `check_duplicates` (and `search_popups` with a key word from the title). If it is already listed,
-   skip it. `submit_draft` checks again and answers `sent: false` for duplicates.
-6. `submit_draft`:
+6. `check_duplicates` (and `search_popups` with a key word from the title). If it is already listed,
+   skip it. `submit_draft` checks again, answers `sent: false` for duplicates and remembers the page.
+7. `submit_draft`:
    - `title`: the organiser's name for it, like "Aesop Sample Sale" or "Jollibee Pop-up at Boxpark
      Wembley". No dates or prices in the title.
    - `description`: two or three plain sentences. What it is, what you can do or buy, anything
      useful (free entry, queue expected, cash only). Written by you, not copied.
    - `hours_text`, `price_type`, `price_text` only if the page says so.
+   - `links`: up to 5 other public pages about the same pop-up: the brand site, venue page, ticket
+     page, and any Instagram, TikTok or Xiaohongshu post you found. They help the admin and the
+     Checker. Social links are recognised from their address.
+   - `source_id`: the id of the source that led you to it, so its track record counts this draft.
    - `confidence: high` only when the organiser or venue page confirms dates and place. Otherwise `check`.
    - `note_for_admin`: where you confirmed it and anything unclear.
-7. Stop at the limit, then `finish_run`.
+8. **Suggest sources.** When a site, venue, brand, social account or search keeps turning up London
+   pop-ups and is not on the list, `suggest_source` with one sentence on what you found there.
+   The admin turns it on or not. At most 5 per run; suggest only ones you would check every week.
+9. Stop at the limit, then `finish_run`. Say which sources were most useful and which were empty.
 
 Quality beats quantity: five checked drafts are better than twenty guesses. Zack reviews every one.
 
@@ -110,7 +137,7 @@ Quality beats quantity: five checked drafts are better than twenty guesses. Zack
 Goal: help Zack decide on each pending post quickly.
 
 1. `list_review_queue`. For each post:
-2. Open its `source_url`, if any, and search for the organiser and event yourself.
+2. Open its `source_url` and `links`, if any, and search for the organiser and event yourself.
 3. Check: does the organiser exist, do the dates and place match a public page, is the address real
    and in London, is it actually a pop-up (see above), is it spam or an advert for something else?
 4. `check_duplicates` with its title, coordinates and dates. A match that is not the post itself
@@ -129,7 +156,7 @@ Goal: help Zack decide on each pending post quickly.
 
 Goal: catch published pop-ups that were cancelled, moved or rescheduled.
 
-1. `list_live_popups`. For each pop-up, open its `source_url` and, if needed, the organiser's page.
+1. `list_live_popups`. For each pop-up, open its `source_url` and, if needed, its `links` or the organiser's page.
 2. `add_note`:
    - `cancelled`: the organiser says it is cancelled or postponed without a new date.
    - `details_changed`: dates, place or hours changed. Say exactly what: "Now ends 12 Oct, not 19 Oct."
