@@ -89,7 +89,7 @@ Runs inside the existing `*/10 * * * *` tick, in a new `src/db/social.ts` called
    - Still running after 30 minutes: mark `failed` with "timed out".
    - Finished: download the dataset (limit 20 items), filter, insert, record `items`, `kept` and `cost_usd` (the larger of Apify's reported usage and items times the actor's price), mark `done`.
    - Failed: mark `failed` with Apify's message.
-2. **Start due runs.** Pick active `social` sources with `due_at IS NULL OR due_at <= now`, with no open run, oldest first, at most 3 per tick.
+2. **Start due runs.** Pick active `social` sources that can be fetched and are due by the fetcher's own clock: no run yet, or the latest run started at least `every_days` ago (6 hours after a failed run). Skip sources with an open run. Oldest first, at most 3 per tick.
    - If the month's spend is at or over the cap, write one `skipped_budget` row per source per day and start nothing.
    - Otherwise start the actor for the source's mode, input capped at 20 results, and write a `running` row whose `cost_usd` holds the worst-case cost of the run until it finishes. A source whose last run failed is retried after 6 hours, not on the next tick.
 3. **Pause on repeated failure.** Three failed runs in a row for a source set its status to `paused` with a note saying why. The admin turns it back on.
@@ -111,7 +111,7 @@ No LLM is used here. Scout's judgement is where AI spend belongs.
 
 MCP changes, in `src/mcp.ts`, Scout role only:
 
-- `list_sources` adds `new_posts: <count>` to each social source (posts with `handled_at IS NULL`).
+- `list_sources` adds `new_posts: <count>` to social sources that have posts with `handled_at IS NULL`. Instagram and Threads sources are only listed while they have such posts; other social sources are listed as before.
 - New tool `get_social_posts({ source_id, limit })` returns up to 20 posts: `url`, `platform`, `author`, `body`, `image_urls`, `posted_at`. Each body is wrapped and labelled as untrusted data in the tool result.
 - `submit_draft` and `skip_url` already record the page in `scout_seen`. They also set `social_posts.handled_at` when the URL matches a stored post, so a post is offered once.
 - Posts a run leaves unhandled are offered again next run until they are 14 days old.
