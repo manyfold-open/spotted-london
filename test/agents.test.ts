@@ -59,6 +59,7 @@ beforeEach(async () => {
     env.DB.prepare('DELETE FROM scout_sources WHERE created_at != 1790812800000'),
     env.DB.prepare("UPDATE scout_sources SET status = 'active', due_at = NULL, last_checked_at = NULL"),
     env.DB.prepare('DELETE FROM agent_runs'),
+    env.DB.prepare("DELETE FROM agents WHERE id NOT IN ('scout', 'triage', 'checker')"),
     env.DB.prepare("UPDATE agents SET enabled = 0, rpc_url = NULL, token_sealed = NULL, token_hint = NULL, key_hash = NULL, key_hint = NULL, next_run_at = NULL, max_items = 20, instructions = NULL"),
   ]);
 });
@@ -341,6 +342,53 @@ describe('agent runs', () => {
     const r = await tool('submit_draft', draft(runId, { evidence: undefined }), key);
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/evidence is required/);
+  });
+
+  it('runs several agents of one role side by side, each with its own key, name and drafts', async () => {
+    const second = await call('POST', '/admin/agents', { user: admin, body: { role: 'scout', name: 'Venue Scout' } });
+    expect(second.status).toBe(201);
+    expect(second.json).toMatchObject({ role: 'scout', name: 'Venue Scout', enabled: false, connected: false });
+    const id2 = second.json.id as string;
+    expect(id2).toMatch(/^scout-/);
+    expect((await call('POST', '/admin/agents', { user: admin, body: { role: 'scout', name: 'venue scout' } })).json.error.code).toBe('agent_name_taken');
+    expect((await call('POST', '/admin/agents', { user: admin, body: { role: 'boss' } })).status).toBe(400);
+
+    const key1 = await connect('scout');
+    const patch = await call('PATCH', `/admin/agents/${id2}`, { user: admin, body: { rpc_url: RPC, token: 'mf-caller-token-0123456789-abcd', instructions: 'Venues only.' } });
+    expect(patch.status).toBe(200);
+    const key2 = (await call('POST', `/admin/agents/${id2}/key`, { user: admin })).json.key as string;
+    expect(key2).not.toBe(key1);
+
+    // each is busy on its own: the first run does not block the second
+    const spy = fakeManyfold();
+    const r1 = await call('POST', '/admin/agents/scout/run', { user: admin });
+    const r2 = await call('POST', `/admin/agents/${id2}/run`, { user: admin });
+    expect([r1.status, r2.status]).toEqual([201, 201]);
+    const texts = spy.mock.calls.map(c => JSON.parse((c[1] as RequestInit).body as string)).filter(b => b.method === 'message/send').map(b => b.params.message.parts[0].text as string);
+    expect(texts[1]).toContain('(Venue Scout)');
+    expect(texts[1]).toContain('Venues only.');
+    spy.mockRestore();
+    const run2 = r2.json.runs[0].id as string;
+
+    // a draft made by the second Scout carries its own user and note author
+    const sent = await tool('submit_draft', draft(run2, { title: 'Second Scout Sale', lat: 51.49, lng: -0.15 }), key2);
+    expect(sent.structuredContent.sent).toBe(true);
+    const row = await env.DB.prepare('SELECT created_by FROM popups WHERE id = ?').bind(sent.structuredContent.id).first<{ created_by: string }>();
+    expect(row!.created_by).toBe(`agent_${id2.replace('-', '_')}`);
+    const queue = await call('GET', '/admin/queue', { user: admin });
+    expect(queue.json.items.find((p: { id: string }) => p.id === sent.structuredContent.id).agent_notes[0]).toMatchObject({ agent_id: id2, agent_name: 'Venue Scout' });
+
+    // the other Scout's run id is not accepted by this key
+    const run1 = r1.json.runs[0].id as string;
+    expect((await tool('submit_draft', draft(run1, { title: 'Wrong Run Sale', lat: 51.48, lng: -0.16 }), key2)).isError).toBe(true);
+
+    // deleting: not the first one, not one with history
+    expect((await call('DELETE', '/admin/agents/scout', { user: admin })).json.error.code).toBe('agent_protected');
+    expect((await call('DELETE', `/admin/agents/${id2}`, { user: admin })).json.error.code).toBe('agent_has_history');
+    const spare = (await call('POST', '/admin/agents', { user: admin, body: { role: 'checker' } })).json.id as string;
+    expect((await call('DELETE', `/admin/agents/${spare}`, { user: admin })).status).toBe(200);
+    const list = await call('GET', '/admin/agents', { user: admin });
+    expect(list.json.agents.map((a: { id: string }) => a.id)).toEqual(['scout', id2, 'triage', 'checker']);
   });
 
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {

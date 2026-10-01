@@ -92,13 +92,14 @@ admin.post('/popups/:id/decision', async c => {
   return c.json(toPublic(after!));
 });
 
-type NoteRow = { id: string; popup_id: string; agent_id: string; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number };
+type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number };
 
 async function openNotes(db: D1Database, ids: string[]): Promise<NoteRow[]> {
   if (!ids.length) return [];
   const { results } = await db.prepare(
-    `SELECT id, popup_id, agent_id, verdict, note, evidence_url, duplicate_of, created_at FROM agent_notes
-     WHERE resolved_at IS NULL AND popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`,
+    `SELECT n.id, n.popup_id, n.agent_id, a.name AS agent_name, n.verdict, n.note, n.evidence_url, n.duplicate_of, n.created_at
+     FROM agent_notes n LEFT JOIN agents a ON a.id = n.agent_id
+     WHERE n.resolved_at IS NULL AND n.popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY n.created_at DESC`,
   ).bind(...ids).all<NoteRow>();
   return results;
 }

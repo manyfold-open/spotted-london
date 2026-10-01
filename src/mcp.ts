@@ -503,7 +503,7 @@ const TOOLS: Record<string, Tool> = {
 };
 
 const PUBLIC_TOOLS = ['search_popups', 'get_popup'];
-const toolsFor = (agent: AgentRow | null) => [...PUBLIC_TOOLS, ...(agent ? AGENT_INFO[agent.id].tools : [])];
+const toolsFor = (agent: AgentRow | null) => [...PUBLIC_TOOLS, ...(agent ? AGENT_INFO[agent.role].tools : [])];
 
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 const reply = (id: Rpc['id'], result: unknown) => ({ jsonrpc: '2.0', id: id ?? null, result });
@@ -520,7 +520,7 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'spotted-london', title: 'Spotted London', version: '1.0.0' },
         instructions: x.agent
-          ? `You are signed in as the ${AGENT_INFO[x.agent.id].name} agent. Follow the spotted-london skill.`
+          ? `You are signed in as the ${AGENT_INFO[x.agent.role].name} agent. Follow the spotted-london skill.`
           : 'Spotted London lists pop-ups in London that the community verifies. Search, then share the url of each pop-up so people can see details, votes and the map.',
       });
     }
@@ -531,7 +531,7 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
       const name = String(msg.params?.name ?? '');
       if (!TOOLS[name]) return fail(msg.id, -32602, `Unknown tool: ${name}.`);
       if (!toolsFor(x.agent).includes(name)) {
-        return reply(msg.id, { isError: true, content: [{ type: 'text', text: x.agent ? `The ${AGENT_INFO[x.agent.id].name} agent cannot use ${name}.` : `${name} needs an agent key.` }] });
+        return reply(msg.id, { isError: true, content: [{ type: 'text', text: x.agent ? `The ${AGENT_INFO[x.agent.role].name} agent cannot use ${name}.` : `${name} needs an agent key.` }] });
       }
       const args = (msg.params?.arguments ?? {}) as Args;
       try {

@@ -52,7 +52,7 @@ src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newslet
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
 src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub), start/check agent runs, fetch Instagram/Threads posts
 src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
-src/db/agents.ts        AI agents on Manyfold (Scout, Triage, Checker): schedules, briefs, run life cycle
+src/db/agents.ts        AI agents on Manyfold, many per role (scout, triage, checker): schedules, briefs, run life cycle
 src/db/scout.ts         Scout's memory: sources to check, pages already read, extra links per pop-up, track records
 src/db/social.ts        Instagram/Threads posts for Scout: Apify runs (start, check), budget cap, pause on failures, post queries
 src/lib/social.ts       pure helpers: source address to actor input, item parsing, keyword filter, cost constants
@@ -70,7 +70,7 @@ web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, Sig
 
 Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing flow, with many Scouts finding pop-ups and many Checkers verifying them, and cut human review to the cases that need a person. Nothing about the community changes: anyone can still submit, votes and check-ins still decide `verified_community`, and the trust rules for human posts stay as they are. Volume comes first, then quality is tightened. The agent count is not a constraint (Manyfold can host 10 Scouts and 5 Checkers or more); Apify's US$4 per 30 days and the shared sandbox load are.
 
-- **Many instances per role.** `agents.id` is no longer limited to three names. Each instance has its own key, schedule, `max_items` and focus text (for example a Scout for listing sites, one for venues, one for social posts). Skill text is shared, so keep SKILL.md role-based, not instance-based.
+- **Many instances per role (done, migration 0008).** `agents.role` says what an agent does, `agents.id` is free text (`scout`, `triage`, `checker` stay as the first three, new ones are `<role>-<6 chars>`), and the admin adds more on /admin/agent. Each instance has its own key, schedule, `max_items` and focus text (for example a Scout for listing sites, one for venues, one for social posts). Skill text is shared, so keep SKILL.md role-based, not instance-based.
 - **Work is leased, never listed.** Scouts lease sources and Checkers lease pending drafts, with a lease that expires (manyfold-data uses 30 minutes), so two agents never take the same item. `list_sources` and the queue tools must not hand the same row to two runs.
 - **What a Checker checks.** Pending drafts from Scouts, and pending posts from people that the trust rules left waiting for the admin. A person's post has no Scout quote, so for it the Checker's own `found` evidence and matching dates and place are the whole test.
 - **Independence.** A Checker never checks a draft sent by its own instance, and re-opens the source itself instead of trusting the Scout's quote. It sends its own `evidence`, checked by the same `src/lib/evidence.ts`.
@@ -128,7 +128,7 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (migration 0005) with a Scout sources section on /admin/agent, Instagram and Threads post fetching through Apify (migration 0006, needs the `APIFY_TOKEN` secret).
 
 Not done yet, roughly in priority order:
-0. Agent fleet (see "Agent fleet"): many instances per role, leased work, Checker verdicts with their own evidence, `auto_publish` setting, undo by agent. Evidence check on Scout drafts is the first step (migration 0007).
+0. Agent fleet (see "Agent fleet"): leased work (instances are done), Checker verdicts with their own evidence, `auto_publish` setting, undo by agent. Evidence check on Scout drafts is the first step (migration 0007).
 1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
 2. Hide quality votes on your own posts in the UI (the API already rejects them).
 3. Vote ring detection in the daily abuse scan.

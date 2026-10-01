@@ -37,12 +37,12 @@ export interface Place { label: string; name: string | null; address: string; ar
 export type Schedule = 'hourly' | 'every_6h' | 'daily' | 'weekly' | 'manual';
 export interface AgentRun { id: string; trigger: 'schedule' | 'manual'; status: 'running' | 'done' | 'failed'; summary: string | null; error: string | null; items: number; started_at: number; finished_at: number | null }
 export interface Agent {
-  id: 'scout' | 'triage' | 'checker'; name: string; job: string; unit: string;
+  id: string; role: 'scout' | 'triage' | 'checker'; name: string; job: string; unit: string;
   enabled: boolean; schedule: Schedule; run_hour: number; instructions: string | null; max_items: number;
   rpc_url: string | null; token_hint: string | null; key_hint: string | null; connected: boolean; next_run_at: number | null;
   open_notes: number; runs: AgentRun[];
 }
-export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; agents: Agent[] }
+export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
 export type SourceKind = 'listing' | 'venue' | 'brand' | 'social' | 'search';
 export type SourceStatus = 'active' | 'suggested' | 'paused' | 'rejected';
 export interface SocialFetch {
@@ -56,7 +56,7 @@ export interface ScoutSource {
   track_record: { drafts: number; published: number; rejected: number; waiting: number };
   fetch?: SocialFetch;
 }
-export interface AgentNote { id: string; agent_id: string; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
+export interface AgentNote { id: string; agent_id: string; agent_name?: string | null; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public data?: Record<string, unknown>) { super(message); }

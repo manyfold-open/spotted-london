@@ -201,7 +201,7 @@ function AgentNotes({ notes, onDismiss, busy }: { notes: AgentNote[]; onDismiss:
     <div className="anotes">{notes.map(n => (
       <div key={n.id} className="anote">
         <div className="row" style={{ gap: 6 }}>
-          <span className="tag t-ai"><Icon name="i-sparkle" />{AGENT_NAME[n.agent_id] ?? n.agent_id}</span>
+          <span className="tag t-ai"><Icon name="i-sparkle" />{n.agent_name ?? AGENT_NAME[n.agent_id] ?? n.agent_id}</span>
           <span className={`tag ${VERDICT[n.verdict]?.[1] ?? 't-mute'}`}>{VERDICT[n.verdict]?.[0] ?? n.verdict}</span>
         </div>
         <p className="small">{n.note}</p>

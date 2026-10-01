@@ -35,18 +35,36 @@ export default function AgentsPage() {
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Agents</h1>
-      <p className="intro">Three AI agents on Manyfold help run Spotted. They can only send drafts and leave notes. Everything they send waits in the <Link to="/admin">review queue</Link> for you.</p>
+      <p className="intro">AI agents on Manyfold help run Spotted. You can add as many Scouts, Triage and Checker agents as you like, each with its own schedule and instructions. They send drafts and leave notes, and everything they send waits in the <Link to="/admin">review queue</Link> for you.</p>
       {q.data && !q.data.agents_key_set ? (
         <div className="notice err" style={{ marginTop: 18 }}><Icon name="i-info" /><span>The <code>AGENTS_KEY</code> secret is not set, so agent tokens cannot be saved. Run <code>npx wrangler secret put AGENTS_KEY</code> with 32 or more random characters, then reload this page.</span></div>
       ) : null}
       {q.isPending ? <Skeleton list /> : q.data ? (
         <>
           <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} />)}</div>
+          <AddAgent roles={q.data.roles} />
           <ScoutSources />
           <Setup view={q.data} />
         </>
       ) : <div className="empty" style={{ marginTop: 22 }}><p>{q.error?.message ?? 'Could not load the agents.'}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>}
     </>
+  );
+}
+
+function AddAgent({ roles }: { roles: AgentsView['roles'] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const add = useMutation({
+    mutationFn: (role: string) => api<Agent>('/admin/agents', { method: 'POST', json: { role } }),
+    onSuccess: a => { qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: [...v.agents, a] }); toast(`${a.name} added. Connect it to Manyfold and give it a key before it can run.`, 'i-sparkle'); },
+    onError,
+  });
+  return (
+    <div className="row" style={{ marginTop: 16, flexWrap: 'wrap' }}>
+      <span className="muted">Add another</span>
+      {roles.map(r => <button key={r.role} className="btn sm" disabled={add.isPending} onClick={() => add.mutate(r.role)}><Icon name="i-plus" />{r.name}</button>)}
+    </div>
   );
 }
 
@@ -112,7 +130,7 @@ function AgentCard({ a }: { a: Agent }) {
       <form className="field" style={{ marginTop: 16 }} noValidate onSubmit={e => { e.preventDefault(); save.mutate({ instructions: notes }, { onSuccess: () => { setNotes(null); toast('Instructions saved'); } }); }}>
         <label className="lbl" htmlFor={`ins-${a.id}`}>Instructions</label>
         <textarea id={`ins-${a.id}`} className="input" maxLength={2000} value={notes ?? a.instructions ?? ''} onChange={e => setNotes(e.target.value)}
-          placeholder={a.id === 'scout' ? 'For example: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.id === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
+          placeholder={a.role === 'scout' ? 'For example: Only check the venue sources, or: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.role === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
         <span className="hint">Added to every run. Write it like a note to a helper.</span>
         {notes !== null && notes !== (a.instructions ?? '') ? (
           <div className="row"><button className="btn sm primary" disabled={save.isPending}>Save instructions</button><button type="button" className="btn sm subtle" onClick={() => setNotes(null)}>Cancel</button></div>
