@@ -97,8 +97,8 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
-- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. `AGENTS_KEY` still to set (needed for /admin/agent).
-- AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP".
+- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`.
+- AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
 - Live data is fictional examples (`is_example = 1`, labelled, noindex). Clear before launch with `seed/clear-examples.sql`.
 

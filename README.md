@@ -149,7 +149,7 @@ One-time setup:
 
 1. Set the secret that encrypts the Manyfold tokens: `npx wrangler secret put AGENTS_KEY` (32+ random characters, for example from `openssl rand -base64 32`). Changing it later means pasting the tokens again.
 2. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote`.
-3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, give the agent its own Spotted key with `mf mcp add spotted <APP_URL>/mcp --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…` (Manyfold has no per-agent secrets; the key lives in the MCP server's header), press Connect with Manyfold and approve, then Run now.
+3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, give the agent its own Spotted key with `mf mcp add spotted <APP_URL>/mcp --scope project --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…` (Manyfold has no per-agent secrets; the key lives in the MCP server's header). Keep `--scope project`: the default scope writes `~/.claude.json`, which every agent on the same Manyfold sandbox shares, so the last key added would win for all of them (seen on 1 Oct: Triage ran with the Checker's key), press Connect with Manyfold and approve, then Run now.
 
 A run counts as done only when the agent reports back with `finish_run`. A turn that ends without it is marked failed, which usually means the agent's `spotted` MCP server is missing or carries another agent's key.
 
