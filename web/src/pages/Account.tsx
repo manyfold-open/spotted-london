@@ -187,7 +187,7 @@ export function MePage() {
 }
 
 /* ---------------- Admin queue ---------------- */
-type QueueItem = Popup & { poster: { id: string; name: string | null; karma: number; account_age_days: number }; open_reports: number; flags: string[]; agent_notes: AgentNote[] };
+type QueueItem = Popup & { poster: { id: string; name: string | null; karma: number; account_age_days: number }; open_reports: number; flags: string[]; agent_notes: AgentNote[]; ready_to_publish?: boolean };
 const FLAG_TEXT: Record<string, string> = { no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes', by_agent: 'Found by an agent' };
 const VERDICT: Record<string, [string, string]> = {
   looks_real: ['Looks real', 't-eng'], needs_check: ['Needs a check', 't-watch'], likely_fake: ['Likely fake', 't-err'],
@@ -203,8 +203,10 @@ function AgentNotes({ notes, onDismiss, busy }: { notes: AgentNote[]; onDismiss:
         <div className="row" style={{ gap: 6 }}>
           <span className="tag t-ai"><Icon name="i-sparkle" />{n.agent_name ?? AGENT_NAME[n.agent_id] ?? n.agent_id}</span>
           <span className={`tag ${VERDICT[n.verdict]?.[1] ?? 't-mute'}`}>{VERDICT[n.verdict]?.[0] ?? n.verdict}</span>
+          {n.publish_ready ? <span className="tag t-eng"><Icon name="i-checkc" />Ready to publish</span> : null}
         </div>
         <p className="small">{n.note}</p>
+        {n.evidence ? <p className="small muted">Quote: &ldquo;{n.evidence}&rdquo;</p> : null}
         <div className="row small" style={{ gap: 12 }}>
           {n.evidence_url ? <a href={n.evidence_url} target="_blank" rel="noopener noreferrer"><Icon name="i-ext" className="i" /> Source</a> : null}
           {n.duplicate_of ? <a href={`/p/${n.duplicate_of}`} onClick={e => { e.preventDefault(); open(n.duplicate_of!); }}>Open the original</a> : null}
@@ -231,6 +233,11 @@ export function AdminQueue() {
     },
     onError,
   });
+  const publishReady = useMutation({
+    mutationFn: () => api<{ published: number }>('/admin/queue/publish-ready', { method: 'POST', json: {} }),
+    onSuccess: r => { toast(r.published === 1 ? '1 post published. Votes and reports still apply.' : `${r.published} posts published. Votes and reports still apply.`, 'i-checkc'); qc.invalidateQueries({ queryKey: ['queue'] }); qc.invalidateQueries({ queryKey: ['popups'] }); },
+    onError,
+  });
   const dismiss = useMutation({
     mutationFn: (id: string) => api(`/admin/agents/notes/${id}/dismiss`, { method: 'POST' }),
     onSuccess: () => { toast('Note dismissed'); qc.invalidateQueries({ queryKey: ['queue'] }); },
@@ -239,18 +246,26 @@ export function AdminQueue() {
   if (isPending) return <QueueSkeleton />;
   if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page is for the people who review new posts.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   const items = q.data?.items ?? [];
+  const ready = items.filter(p => p.ready_to_publish).length;
   return (
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Review queue</h1>
       <p className="intro">New posts below trust 50, posts the community voted down, posts with several reports, and anything an <Link to="/admin/agent">agent</Link> flagged. Your decision overrides community votes.</p>
       <div className="lh"><h2>{items.length} to review</h2><span className="muted small">Target: under 12 hours</span></div>
+      {ready ? (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          <Icon name="i-sparkle" />
+          <span>{ready === 1 ? '1 post was checked by a second agent against its source and is ready to publish.' : `${ready} posts were checked by a second agent against their sources and are ready to publish.`} They go live as community posts, so votes and reports still apply.</span>
+          <button className="btn sm primary" disabled={publishReady.isPending} onClick={() => publishReady.mutate()}>{publishReady.isPending ? <span className="spin" /> : <Icon name="i-checkc" />}Publish {ready}</button>
+        </div>
+      ) : null}
       {q.isPending ? <QueueSkeleton list /> : items.length ? (
         <div className="stack">{items.map(p => (
           <div className="qitem" key={p.id}>
             <Cover p={p} className="sw" />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} /></div>
+              <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.ready_to_publish ? <span className="tag t-eng"><Icon name="i-checkc" />Ready to publish</span> : null}</div>
               <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={`/p/${p.slug}`} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
               <div className="small muted">{p.location.borough ?? 'London'} · {dateRange(p)} · by <b>{p.poster.name ?? 'a member'}</b> (karma {p.poster.karma}, {p.poster.account_age_days} days)</div>
               <div className="row" style={{ gap: 6 }}>{p.flags.map(f => <span key={f} className={`tag ${f === 'by_agent' ? 't-ai' : 't-err'}`}><Icon name={f === 'by_agent' ? 'i-sparkle' : 'i-flag'} />{FLAG_TEXT[f] ?? f}{f === 'reported' ? ` (${p.open_reports})` : ''}</span>)}</div>

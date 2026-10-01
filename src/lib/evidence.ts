@@ -94,3 +94,18 @@ export async function checkEvidence(
   if (quoteInHtml(html, quote)) return 'found';
   throw new EvidenceError('The page loaded but the quote is not on it. Copy a sentence from the page word for word. If your tool summarises pages, fetch the raw page.');
 }
+
+// Phrases that address an AI instead of describing a pop-up. A post that has one is never publish-ready:
+// a person looks at it.
+const AIMED_AT_AGENTS: readonly RegExp[] = [
+  /\bignore (all |any |the )?(previous|prior|above|earlier) (instructions|prompts|messages)\b/i,
+  /\bdisregard (all |any |the )?(previous|prior|above|earlier)\b/i,
+  /\b(system|developer) prompt\b/i,
+  /\byou are (now )?(an? )?(ai|assistant|agent|language model|llm)\b/i,
+  /\b(mark|set|label) (this|it|them|all|every)( pop-?ups?| posts?)? (as )?(verified|approved|valid|real|ready)\b/i,
+  /<\/?(script|iframe|object|embed|img)\b/i,
+  /\[\/?INST\]|<\|im_(start|end)\|>/i,
+];
+
+export const looksAimedAtAgents = (texts: readonly (string | null | undefined)[]): boolean =>
+  texts.some(text => !!text && AIMED_AT_AGENTS.some(pattern => pattern.test(text)));

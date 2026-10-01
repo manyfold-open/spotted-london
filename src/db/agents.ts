@@ -62,7 +62,7 @@ export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: st
   },
   triage: {
     name: 'Triage',
-    job: 'Reads each post waiting for review, checks its source, and leaves you a note: looks real, needs a check, likely fake or duplicate.',
+    job: 'Checks each post waiting for review against its source on its own, and leaves you a note: looks real, needs a check, likely fake or duplicate. A post it confirmed with its own quote is marked ready to publish.',
     unit: 'notes',
     tools: ['list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
   },

@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.4.0
+version: 1.5.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -150,10 +150,11 @@ Quality beats quantity: five checked drafts are better than twenty guesses. Zack
 
 ## Triage
 
-Goal: help Zack decide on each pending post quickly.
+Goal: check each pending post against its source on your own, so Zack can publish the good ones with one click and look only at the rest.
 
 1. `list_review_queue`. For each post:
 2. Open its `source_url` and `links`, if any, and search for the organiser and event yourself.
+   Do not trust the quote the Scout sent. Read the page again.
 3. Check: does the organiser exist, do the dates and place match a public page, is the address real
    and in London, is it actually a pop-up (see above), is it spam or an advert for something else?
 4. `check_duplicates` with its title, coordinates and dates. A match that is not the post itself
@@ -165,7 +166,14 @@ Goal: help Zack decide on each pending post quickly.
    - `duplicate`: already listed; set `duplicate_of`.
    Give `evidence_url` for the page that decided it. Keep the note to what Zack needs: "Brand site
    confirms 3 to 5 Oct at Coal Drops Yard. Post says 4 to 6 Oct." is ideal.
-6. `finish_run` with how many of each verdict and anything worrying (for example several posts from
+6. **To mark a post ready to publish**, send `looks_real` together with:
+   - `evidence`: 12 to 300 characters copied word for word from `evidence_url`, stating the dates and
+     the place. Spotted looks for it on the page and refuses the note if it is not there.
+   - `dates_match: true` and `place_match: true`, only when you compared them with the post yourself.
+   The answer says `publish_ready: true`, or lists `not_ready_because`. Do not force it: a post that is
+   not ready simply goes to Zack, and that is a fine outcome. Sources Spotted cannot read (login-only
+   pages) can never be ready, so use `needs_check` or `looks_real` without the extra fields there.
+7. `finish_run` with how many of each verdict and anything worrying (for example several posts from
    one new account).
 
 ## Checker

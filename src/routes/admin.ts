@@ -35,7 +35,8 @@ admin.get('/queue', async c => {
     items: results.map(p => toPublic(p, {
       poster: { id: p.created_by, name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((now - p.poster_created_at) / 86_400_000) },
       open_reports: p.open_reports,
-      agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, ...n }) => n),
+      agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, publish_ready, ...n }) => ({ ...n, publish_ready: !!publish_ready })),
+      ready_to_publish: p.status === 'pending' && isReady(notes.filter(n => n.popup_id === p.id)),
       flags: [
         p.created_by.startsWith('agent_') && 'by_agent',
         !p.source_url && 'no_source_link',
@@ -45,6 +46,37 @@ admin.get('/queue', async c => {
       ].filter(Boolean),
     })),
   });
+});
+
+/** An open note says ready, and no open note says otherwise. */
+const isReady = (notes: { verdict: string; publish_ready: number }[]) =>
+  notes.some(n => n.publish_ready) && !notes.some(n => FLAGGING_VERDICTS.includes(n.verdict));
+
+/**
+ * Publishes the posts agents marked ready, as 'community' so votes and reports still apply, and writes an
+ * audit row for each naming the agents behind it. The conditions are checked again here.
+ */
+admin.post('/queue/publish-ready', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const b = await jsonBody(c.req);
+  const only = Array.isArray(b.ids) ? b.ids.filter((id): id is string => typeof id === 'string').slice(0, 100) : null;
+  const { results } = await db.prepare("SELECT * FROM popups WHERE status = 'pending' AND end_at > ? ORDER BY created_at LIMIT 200").bind(now).all<PopupRow>();
+  const candidates = only ? results.filter(p => only.includes(p.id)) : results;
+  const notes = await openNotes(db, candidates.map(p => p.id));
+  let published = 0;
+  for (const p of candidates) {
+    const mine = notes.filter(n => n.popup_id === p.id);
+    if (!isReady(mine)) continue;
+    const moved = await db.prepare("UPDATE popups SET status = 'community', updated_at = ? WHERE id = ? AND status = 'pending'").bind(now, p.id).run();
+    if (!moved.meta.changes) continue;
+    await db.prepare('UPDATE agent_notes SET resolved_at = ? WHERE popup_id = ? AND resolved_at IS NULL').bind(now, p.id).run();
+    await recompute(db, p.id, now);
+    await audit(db, a.id, 'popup.agent_publish', 'popup', p.id, { agents: mine.filter(n => n.publish_ready).map(n => n.agent_id), note_ids: mine.filter(n => n.publish_ready).map(n => n.id), from: 'pending', to: 'community' }, now);
+    published += 1;
+  }
+  return c.json({ published });
 });
 
 const ACTIONS = ['approve', 'reject', 'hide', 'restore', 'merge'] as const;
@@ -92,12 +124,12 @@ admin.post('/popups/:id/decision', async c => {
   return c.json(toPublic(after!));
 });
 
-type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number };
+type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; evidence: string | null; publish_ready: number; duplicate_of: string | null; created_at: number };
 
 async function openNotes(db: D1Database, ids: string[]): Promise<NoteRow[]> {
   if (!ids.length) return [];
   const { results } = await db.prepare(
-    `SELECT n.id, n.popup_id, n.agent_id, a.name AS agent_name, n.verdict, n.note, n.evidence_url, n.duplicate_of, n.created_at
+    `SELECT n.id, n.popup_id, n.agent_id, a.name AS agent_name, n.verdict, n.note, n.evidence_url, n.evidence, n.publish_ready, n.duplicate_of, n.created_at
      FROM agent_notes n LEFT JOIN agents a ON a.id = n.agent_id
      WHERE n.resolved_at IS NULL AND n.popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY n.created_at DESC`,
   ).bind(...ids).all<NoteRow>();

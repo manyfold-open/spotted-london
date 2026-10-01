@@ -56,7 +56,7 @@ export interface ScoutSource {
   track_record: { drafts: number; published: number; rejected: number; waiting: number };
   fetch?: SocialFetch;
 }
-export interface AgentNote { id: string; agent_id: string; agent_name?: string | null; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
+export interface AgentNote { id: string; agent_id: string; agent_name?: string | null; evidence?: string | null; publish_ready?: boolean; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public data?: Record<string, unknown>) { super(message); }

@@ -21,7 +21,7 @@ import { londonDateString, parseLondonDate } from './lib/time';
 import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
-import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, type EvidenceCheck } from './lib/evidence';
+import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
 
 export const mcp = new Hono<AppEnv>();
 
@@ -504,13 +504,16 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   add_note: {
-    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine.',
+    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine. To mark a waiting post ready to publish, use verdict looks_real with evidence (a quote you copied word for word from the page, found by Spotted), dates_match true and place_match true. The answer says whether it is ready and, if not, why.',
     inputSchema: obj({
       run_id: RUN_ID,
       popup_id: S('Pop-up id.'),
       verdict: S('Your finding.', { enum: [...VERDICTS] }),
       note: S('One to three sentences: what you checked and what you found. Say exactly what changed, if anything.'),
-      evidence_url: S('Link that shows it.'),
+      evidence_url: S('Link that shows it. Defaults to the pop-up source link when you give evidence.'),
+      evidence: S(`A passage you copied word for word from evidence_url, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Open the page yourself; do not reuse the Scout's quote.`),
+      dates_match: { type: 'boolean', description: 'The dates on the page are the dates on the post.' },
+      place_match: { type: 'boolean', description: 'The place on the page is the place on the post.' },
       duplicate_of: S('For verdict duplicate: id of the pop-up it repeats.'),
     }, ['run_id', 'popup_id', 'verdict', 'note']),
     async run(a, x) {
@@ -519,20 +522,58 @@ const TOOLS: Record<string, Tool> = {
       const verdict = str(a, 'verdict', 20, true)!;
       if (!(VERDICTS as readonly string[]).includes(verdict)) throw new ToolError(`verdict must be one of: ${VERDICTS.join(', ')}.`);
       const popupId = str(a, 'popup_id', 40, true)!;
-      const p = await db.prepare('SELECT id, status FROM popups WHERE id = ?').bind(popupId).first<{ id: string; status: string }>();
+      const p = await db.prepare('SELECT id, status, title, description, created_by, source_url, evidence, evidence_check FROM popups WHERE id = ?').bind(popupId)
+        .first<{ id: string; status: string; title: string; description: string | null; created_by: string; source_url: string | null; evidence: string | null; evidence_check: string | null }>();
       if (!p) throw new ToolError('No pop-up with that id.');
       const dup = str(a, 'duplicate_of', 40);
       if (verdict === 'duplicate' && !dup) throw new ToolError('Give duplicate_of for verdict duplicate.');
       if (dup && !(await db.prepare('SELECT 1 FROM popups WHERE id = ?').bind(dup).first())) throw new ToolError('duplicate_of is not a pop-up id.');
-      const evidence = str(a, 'evidence_url', 500);
-      if (evidence && !safeUrl(evidence)) throw new ToolError('evidence_url must be a public web address.');
+      const evidenceUrlArg = str(a, 'evidence_url', 500);
+      if (evidenceUrlArg && !safeUrl(evidenceUrlArg)) throw new ToolError('evidence_url must be a public web address.');
+      const note = str(a, 'note', 600, true)!;
+
+      // The agent's own quote, looked up the same way as a Scout's.
+      const quote = str(a, 'evidence', EVIDENCE_MAX + 1);
+      let evidenceUrl = evidenceUrlArg ? safeUrl(evidenceUrlArg)!.toString() : null;
+      let evidenceCheck: EvidenceCheck | null = null;
+      if (quote) {
+        if (quote.length < EVIDENCE_MIN || quote.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${quote.length}.`);
+        const where = normalizeUrl(evidenceUrl ?? p.source_url ?? '');
+        if (!where) throw new ToolError('Give evidence_url: the page the quote comes from.');
+        try { evidenceCheck = await verifyEvidence(db, quote, where); } catch (e) {
+          if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${where})`);
+          throw e;
+        }
+        evidenceUrl = where;
+      }
+
+      // Ready to publish only when every condition holds. The reasons come back so the agent can fix them.
+      const why: string[] = [];
+      let ready = false;
+      if (verdict === 'looks_real' && (quote || a.dates_match !== undefined || a.place_match !== undefined)) {
+        if (p.status !== 'pending') why.push('only posts waiting for review can be published');
+        if (!quote) why.push('give evidence');
+        else if (evidenceCheck !== 'found') why.push('Spotted could not read that page to find your quote, so a person has to look');
+        if (a.dates_match !== true) why.push('dates_match must be true');
+        if (a.place_match !== true) why.push('place_match must be true');
+        if (p.created_by === x.agent!.user_id) why.push('you cannot publish your own post');
+        if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) why.push('the post contains text aimed at AI agents, so a person has to look');
+        if (p.created_by.startsWith('agent_')) {
+          if (p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
+          const scout = await db.prepare("SELECT verdict FROM agent_notes WHERE popup_id = ? AND agent_id IN (SELECT id FROM agents WHERE user_id = ?) ORDER BY created_at LIMIT 1").bind(p.id, p.created_by).first<{ verdict: string }>();
+          if (scout?.verdict !== 'looks_real') why.push('the Scout was not sure (confidence check)');
+        }
+        ready = why.length === 0;
+      }
+
       const existing = await db.prepare('SELECT id FROM agent_notes WHERE run_id = ? AND popup_id = ?').bind(run.id, p.id).first();
       if (!existing) await useItem(x, run);
       await db.prepare(
-        `INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, duplicate_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, duplicate_of = excluded.duplicate_of`,
-      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, str(a, 'note', 600, true), evidence ? safeUrl(evidence)!.toString() : null, dup, x.now).run();
-      return { saved: true };
+        `INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, evidence, publish_ready, duplicate_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, evidence = excluded.evidence,
+           publish_ready = excluded.publish_ready, duplicate_of = excluded.duplicate_of`,
+      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, note, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
+      return { saved: true, publish_ready: ready, ...(why.length ? { not_ready_because: why } : {}) };
     },
   },
   finish_run: {
