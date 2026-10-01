@@ -335,8 +335,8 @@ function Setup({ view }: { view: AgentsView }) {
             <Cmd copy={copy} text={`mf skills library import --url ${view.skill_url}`} />
             <Cmd copy={copy} text="mf skills install spotted-london --agent-id agt_…" /></li>
           <li>Give the agent its Spotted key. Paste this command in the Terminal without pressing Enter, press Create key (or Replace key) and Copy on the agent's card here, then press Enter. The key goes straight from the clipboard into the agent's MCP settings.
-            <Cmd copy={copy} text={`mf mcp add spotted ${view.mcp_url} --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…`} />
-            If the agent already has a server named spotted, run <code>mf mcp remove spotted --agent-id agt_…</code> first.</li>
+            <Cmd copy={copy} text={`mf mcp add spotted ${view.mcp_url} --scope project --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…`} />
+            Keep <code>--scope project</code>: it puts the key in this agent's own workspace. Without it the key goes to a file that every agent on the same Manyfold sandbox shares, and the last key added wins. If the agent already has a server named spotted, run <code>mf mcp remove spotted --agent-id agt_…</code> first.</li>
           <li>Press <b>Connect with Manyfold</b>. In the Manyfold tab, check the code matches, pick the agent, tick Enable A2A exposure, and approve. This page picks it up by itself.</li>
           <li>Press Run now once and read the result below the agent. When it looks right, switch the agent on.</li>
         </ol>
