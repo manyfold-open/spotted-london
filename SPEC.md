@@ -546,6 +546,7 @@ CREATE TABLE audit_log (
 | 範例資料 | 線上放標示「Example」的虛構活動、noindex；正式上線前用 `seed/clear-examples.sql` 清除 |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |
 | AI agents | 跑在 **Manyfold**（不在 Cloudflare 上，不吃 Workers AI 額度）。三個：Scout 找新活動送草稿、Triage 幫審核佇列寫判斷、Checker 複查已上架活動。Spotted 用 A2A 啟動（cron 排程或 admin 按 Run now），agent 透過 `/mcp` 用各自的 key 回寫。**只能寫草稿與備註**，發布與否一律 admin 決定。設定頁 `/admin/agent`（2026-09-30） |
+| Scout 資料庫 | Scout 有來源清單（`scout_sources`）與讀過頁面的紀錄（`scout_seen`），活動可掛多個連結（`popup_links`）。Scout 只能建議新來源，啟用由 admin 決定；IG/TikTok/小紅書只透過搜尋找公開貼文、存連結當補充證據，不登入不爬取（2026-10-01） |
 | MCP | `POST /mcp`，無狀態 Streamable HTTP、手寫 JSON-RPC（不用 SDK）。無 key：`search_popups`、`get_popup` 給任何人的 AI 助手用；有 key：依 agent 角色多開工具 |
 | Icons | [Koboyo hand-drawn icons](https://koboyo.com/icons)：手繪風格 SVG，`fill="currentColor"`，商用免費、免標註。限制：不可把 icon 當成產品功能讓用戶挑選或下載，也不可重新散布整套 icon 庫 |
 
@@ -594,3 +595,9 @@ CREATE TABLE audit_log (
 - **審核佇列**：agent 備註顯示在該 pop-up 底下；已上架活動被標 cancelled / details_changed / likely_fake / duplicate / needs_check 會重新進佇列。admin 做決定或按 Dismiss 後備註結案。
 - **安全**：網頁與貼文內容一律當資料不當指令（防 prompt injection，寫在 skill 裡）；不登入任何網站、不爬 IG/TikTok。
 - **Agent 的知識**：`skills/spotted-london/SKILL.md`，從 GitHub 匯入 Manyfold 安裝。
+- **Scout 的資料庫（2026-10-01，migration 0005）**：
+  - `scout_sources` 來源清單：列表網站、場地 what's on 頁、品牌官網、社群帳號、搜尋關鍵字，各自設定幾天查一次。Scout 用 `list_sources` 取到期的來源、查完呼叫 `mark_source_checked`。Scout 只能 `suggest_source` 提建議（狀態 `suggested`），由 admin 決定是否啟用。
+  - `scout_seen` 讀過的網址與結果（sent / duplicate / not_popup / ended / no_details…）。`check_seen` 讓 Scout 跳過 30 天內看過的頁面，`skip_url` 記錄沒送出的原因。沒送出的紀錄 90 天後由 cron 清掉；有送出草稿的保留，用來算來源的成績。
+  - 來源成績（送出幾篇、上架幾篇、被拒幾篇）從草稿現在的狀態即時計算，不另存計數器。
+  - `popup_links` 每個活動可以有多個連結（官網、場地、票務、文章、Instagram、TikTok、小紅書），社群連結從網址自動辨識。
+  - 社群平台：只透過搜尋引擎找到公開貼文並存連結，不登入、不爬 feed、不用第三方爬蟲；日期與地點一定要在看得到的頁面（官網、場地、票務、文章）確認。

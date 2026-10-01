@@ -151,6 +151,12 @@ One-time setup:
 2. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote`.
 3. For each agent, follow the steps at the bottom of /admin/agent: create the agent in Manyfold, install the skill from `https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london`, give the agent its own Spotted key with `mf mcp add spotted <APP_URL>/mcp --scope project --header "Authorization: Bearer $(pbpaste)" --agent-id agt_…` (Manyfold has no per-agent secrets; the key lives in the MCP server's header). Keep `--scope project`: the default scope writes `~/.claude.json`, which every agent on the same Manyfold sandbox shares, so the last key added would win for all of them (seen on 1 Oct: Triage ran with the Checker's key), press Connect with Manyfold and approve, then Run now.
 
+Scout's memory (migration `0005_scout_sources.sql`, `src/db/scout.ts`):
+
+- **Sources** (`scout_sources`): listing sites, venue pages, brand sites, social accounts and web searches, each checked every N days. Scout reads them with `list_sources` and marks them with `mark_source_checked`. Scout can only `suggest_source`; the admin turns a suggestion on with `PATCH /api/v1/admin/agents/sources/:id` (`status: active`). `GET` lists them with a track record (drafts sent, published, rejected) counted from the drafts themselves.
+- **Pages already read** (`scout_seen`): `check_seen` tells Scout which pages it read in the last 30 days, `skip_url` records why a page was not sent. Skipped pages are purged after 90 days; pages that led to drafts stay for the track record.
+- **Extra links** (`popup_links`): a draft can carry up to 5 more links (brand site, venue, tickets, Instagram, TikTok, Xiaohongshu). Social posts are found through web searches only; Scout never logs in or scrapes them, and confirms details on a page it can read.
+
 A run counts as done only when the agent reports back with `finish_run`. A turn that ends without it is marked failed, which usually means the agent's `spotted` MCP server is missing or carries another agent's key.
 
 When a Manyfold token expires or is revoked, runs fail with "Manyfold rejected the agent token"; press Connect again on that agent.

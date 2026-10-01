@@ -53,7 +53,7 @@ export const AGENT_INFO: Record<AgentId, { name: string; job: string; unit: stri
     name: 'Scout',
     job: 'Finds new London pop-ups on the web and sends them in as drafts. Every draft waits in the review queue for you.',
     unit: 'drafts',
-    tools: ['find_place', 'check_duplicates', 'submit_draft', 'finish_run'],
+    tools: ['list_sources', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run'],
   },
   triage: {
     name: 'Triage',

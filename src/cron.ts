@@ -4,6 +4,7 @@ import type { Bindings, PopupRow } from './types';
 import { DAY, hot, KARMA } from './lib/scoring';
 import { awardKarma } from './db/karma';
 import { runAgents } from './db/agents';
+import { SEEN_KEEP } from './db/scout';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
@@ -20,6 +21,7 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await settleKarma(env.DB, now);
       await purgeCheckinCoordinates(env.DB, now);
       await purgeExpiredAuth(env.DB, now);
+      await purgeScoutSeen(env.DB, now);
       break;
     default:
       console.warn('unknown cron', cron);
@@ -96,4 +98,9 @@ export async function purgeExpiredAuth(db: D1Database, now: number) {
     db.prepare('DELETE FROM login_tokens WHERE created_at < ?').bind(now - DAY),
     db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').bind(now),
   ]);
+}
+
+/** Pages Scout skipped are forgotten after 90 days; pages that led to drafts stay for the track record. */
+export async function purgeScoutSeen(db: D1Database, now: number) {
+  await db.prepare("DELETE FROM scout_seen WHERE outcome != 'sent' AND seen_at < ?").bind(now - SEEN_KEEP).run();
 }
