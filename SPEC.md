@@ -551,6 +551,7 @@ CREATE TABLE audit_log (
 | Icons | [Koboyo hand-drawn icons](https://koboyo.com/icons)：手繪風格 SVG，`fill="currentColor"`，商用免費、免標註。限制：不可把 icon 當成產品功能讓用戶挑選或下載，也不可重新散布整套 icon 庫 |
 | 分類 | 11 類，每個活動一類：`food`、`dining`（主廚駐店與晚宴）、`market`（市集與藝博會）、`exhibition`（畫廊與美術館展覽）、`art`（一次性裝置與公共藝術）、`event`、`fashion`、`sample`、`beauty`、`tech`、`other`。清單只寫在 `src/shared/categories.ts`；新增一類要同時加 migration、icon、封面圖案。Scout 與 Triage 的判斷規則在 `skills/spotted-london/SKILL.md`。新分類的 icon 是自繪的線條圖，不是 Koboyo。設計：`docs/superpowers/specs/2026-10-02-category-split-design.md` |
 | 收錄範圍 | 只要活動本身是限時的就收，不管場地是不是常設：博物館 Lates、常設餐廳的一晚限定晚宴或限期菜單、藝術博覽會都算。不收常駐的東西（固定菜單、常設館藏、沒有結束日的固定派對）。Scout 的 `confidence: high` 改為：主辦或場地頁面確認日期與地點，或兩個獨立頁面一致；缺營業時間或價格不影響。描述裡每個細節都要在讀過的頁面上（2026-10-02） |
+| 舊草稿特例 | migration 0007 之前送的 Scout 草稿沒有 `evidence_check`，只要 Triage 自己引用的原文在網頁上找到、日期地點都對，就算 ready，不看 Scout 的原文與信心。這些草稿若 Triage 看過一次但沒 ready，一天後會再回到 Triage 佇列一次（2026-10-02） |
 
 ### 待決問題
 1. 是否 MVP 就開放「pending 新提交」頁給高 karma 用戶協助審核？

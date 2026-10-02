@@ -185,7 +185,8 @@ Quality beats quantity: five checked drafts are better than twenty guesses. Zack
 
 Goal: check each pending post against its source on your own, so Zack can publish the good ones with one click and look only at the rest.
 
-1. `list_review_queue`. For each post:
+1. `list_review_queue`. For each post (an older Scout draft you or another Triage agent noted
+   before may come back once; check it again from the start, as if new):
 2. Open its `source_url` and `links`, if any, and search for the organiser and event yourself.
    Do not trust the quote the Scout sent. Read the page again.
 3. Check: does the organiser exist, do the dates and place match a public page, is the address real
