@@ -14,6 +14,11 @@ describe('proposing a category for an old row', () => {
     expect(proposeCategory(row('food', 'Gourmet Odyssey Shoreditch', 'London Restaurant Festival')).to).toBe('dining');
   });
 
+  it('does not treat a brand takeover as dining', () => {
+    expect(proposeCategory(row('food', 'Gucci takeover at Selfridges')).to).not.toBe('dining');
+    expect(proposeCategory(row('food', 'Kitchen takeover at Peckham Levels', 'Hot Stone')).to).toBe('dining');
+  });
+
   it('moves street-food markets to market', () => {
     expect(proposeCategory(row('food', 'BANCARELLA Italian Street Food Market', 'We Love It CIC at Lower Stable Street Market')))
       .toMatchObject({ to: 'market', sure: true });

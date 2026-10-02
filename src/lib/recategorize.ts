@@ -8,7 +8,7 @@ export interface Row { id: string; title: string; host: string | null; descripti
 export interface Proposal { id: string; from: string; to: Category; sure: boolean; why: string }
 
 const MARKET = /art fair|design fair|craft fair|book fair|\bfairs?\b|\bmarkets?\b|car boot|flea/i;
-const DINING = /supper club|residenc(?:y|ies)|takeover|dinner series|set menu|tasting menu|\bdinners?\b|\bchef\b|restaurant festival/i;
+const DINING = /supper club|residenc(?:y|ies)|(?:chef|kitchen|restaurant|bar)\s+takeovers?|dinner series|set menu|tasting menu|\bdinners?\b|\bchef\b|restaurant festival/i;
 const EVENT = /\blates?\b|festival|anniversary|birthday|party|\btalks?\b|\bturns \d+\b/i;
 const ART = /installation|sculpture|public art|mural|immersive|\bzines?\b|ceramic|pottery|\btrail\b/i;
 const EXHIBITION = /exhibition|gallery|museum|solo show|group show|retrospective/i;

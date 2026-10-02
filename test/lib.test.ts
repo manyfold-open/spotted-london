@@ -128,8 +128,30 @@ describe('link autofill parsing (SPEC 3.8)', () => {
     // 3. a programme or a crowd is an event
     expect(guessCategory('Tate Modern Lates: 10th Birthday')).toBe('event');
     expect(guessCategory('Japan Matsuri festival')).toBe('event');
+    // 4. only a kitchen, restaurant or bar takeover is dining, a brand takeover is not
+    expect(guessCategory('Chef takeover at Pavyllon')).toBe('dining');
+    expect(guessCategory('Gucci takeover at Selfridges')).not.toBe('dining');
+    expect(guessCategory('Immersive installation at a gallery')).toBe('art');
     // nothing to go on
     expect(guessCategory('Open studio weekend')).toBeNull();
+  });
+
+  it('lets the title decide the fallback guess before page chrome does', () => {
+    const e = emptyExtraction();
+    mergeInto(e, { title: 'Solo exhibition at Pace Gallery' }, 'llm_text', 'high');
+    finalise(e, 'Shop our markets. Cookie notice: third-party cookies. Nav: Markets | About', NOW);
+    expect(e.category).toBe('exhibition');
+    expect(e.confidence.category).toBe('check');
+
+    // when the title has no signal the description is tried, then the page context
+    const d = emptyExtraction();
+    mergeInto(d, { title: 'Open weekend', description: 'A ceramic installation' }, 'llm_text', 'high');
+    finalise(d, 'Markets and more', NOW);
+    expect(d.category).toBe('art');
+    const c = emptyExtraction();
+    mergeInto(c, { title: 'Open weekend' }, 'llm_text', 'high');
+    finalise(c, 'Weekend flea', NOW);
+    expect(c.category).toBe('market');
   });
 
   it('turns an answer into a category key', () => {

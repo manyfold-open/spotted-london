@@ -174,7 +174,7 @@ export function missing(e: Extracted): Field[] {
 const CATEGORY_WORDS: [Category, RegExp][] = [
   ['sample', /sample sale|warehouse sale|% off|up to \d+%|clearance/i],
   ['market', /art fair|design fair|craft fair|book fair|\bfairs?\b|\bmarkets?\b|car boot|makers|flea|stalls/i],
-  ['dining', /supper club|residenc(?:y|ies)|takeover|dinner series|set menu|tasting menu|\bdinners?\b|restaurant festival/i],
+  ['dining', /supper club|residenc(?:y|ies)|(?:chef|kitchen|restaurant|bar)\s+takeovers?|dinner series|set menu|tasting menu|\bdinners?\b|restaurant festival/i],
   ['food', /food|coffee|matcha|bakery|noodle|ramen|pizza|burger|brunch|dessert|gelato|tasting|chef|wine|beer|cocktail/i],
   ['event', /\blates?\b|festival|anniversary|birthday|party|\btalks?\b/i],
   ['art', /installation|sculpture|public art|mural|immersive|\bzines?\b|ceramic|pottery|\btrail\b/i],
@@ -224,7 +224,8 @@ function timeOf(v: string | null): string | null {
 /** Final pass: enum category, sane dates, trimmed strings. Flags anything doubtful as 'check'. */
 export function finalise(e: Extracted, context: string, now: number): Extracted {
   if (e.category == null) {
-    const g = guessCategory([e.title, e.description, context].filter(Boolean).join(' '));
+    // Title first, then description, then the page text, so page chrome never outvotes what the title says.
+    const g = guessCategory(e.title ?? '') ?? guessCategory(e.description ?? '') ?? guessCategory(context);
     if (g) { e.category = g; e.confidence.category = 'check'; }
   }
   const today = londonDateString(now);
