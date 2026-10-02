@@ -33,7 +33,7 @@ async function popup(u: string, over: Record<string, unknown> = {}) {
 afterEach(() => vi.restoreAllMocks());
 
 describe('lists for the app', () => {
-  it('include the cover photo and the signed-in user state', async () => {
+  it('include the cover photo, and your state comes from /me/state', async () => {
     const poster = await user(), viewer = await user();
     const p = await popup(poster);
     const img = await call(`/api/v1/popups/${p.id}/images`, poster, { method: 'POST', headers: { 'content-type': 'image/webp' }, body: new Uint8Array([1, 2, 3]) });
@@ -46,7 +46,9 @@ describe('lists for the app', () => {
     expect(row.me).toBeUndefined();
 
     const mine = (await (await call('/api/v1/popups?when=all&limit=50', viewer)).json()) as { items: any[] };
-    expect(mine.items.find(i => i.id === p.id).me).toEqual({ saved: true, existence_vote: 0, quality_vote: 0 });
+    expect(mine.items.find(i => i.id === p.id).me).toBeUndefined();
+    const state = (await (await call('/api/v1/me/state', viewer)).json()) as { saved: string[] };
+    expect(state.saved).toContain(p.id);
 
     const served = await call(new URL(row.cover_url, 'http://x').pathname);
     expect(served.headers.get('content-type')).toBe('image/webp');

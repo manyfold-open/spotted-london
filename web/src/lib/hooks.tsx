@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, type Category, type Me, type When } from './api';
+import { api, ApiError, type Category, type Me, type MyStateMap, type When } from './api';
 import { seedPopup } from './cache';
 import { reducedMotion } from './motion';
 import { Icon, type IconName } from '../components/Icon';
@@ -15,6 +15,13 @@ export function useMe() {
     },
     staleTime: 60_000,
   });
+}
+
+/** Your saves and votes on current pop-ups, or undefined when signed out or still loading. The public list does not carry them. */
+export function useMyState() {
+  const { data: me } = useMe();
+  const q = useQuery({ queryKey: ['me', 'state'], queryFn: () => api<MyStateMap>('/me/state'), enabled: !!me, staleTime: 60_000 });
+  return me ? q.data : undefined;
 }
 
 /** Wraps an action so signed-out people are sent to sign in and come back here afterwards. */

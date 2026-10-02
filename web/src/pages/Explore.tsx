@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, listQuery, type Popup } from '../lib/api';
 import { CAT_LIST, CATS, catIcon, fmtDay, isLive, looksLikeEmail } from '../lib/format';
-import { currentPosition, useDebounced, useErrorToast, useFilters, useMe } from '../lib/hooks';
+import { mergeMe } from '../lib/cache';
+import { currentPosition, useDebounced, useErrorToast, useFilters, useMe, useMyState } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CardSkeletons, PopupCard } from '../components/PopupBits';
 
@@ -13,11 +14,15 @@ export function usePopups(near?: [number, number] | null) {
   const f = useFilters();
   const q = useDebounced(f.q, 250); // one request when typing pauses, not one per letter
   const params = { when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) };
-  return useQuery({
+  const res = useQuery({
     queryKey: ['popups', params],
     queryFn: () => api<{ items: Popup[] }>(`/popups?${listQuery(params)}`),
     placeholderData: prev => prev,
   });
+  // The list is the same for everyone; your saves and votes come separately and are laid over it here.
+  const mine = useMyState();
+  const data = useMemo(() => res.data && { ...res.data, items: mergeMe(res.data.items, mine) }, [res.data, mine]);
+  return { ...res, data };
 }
 
 export function Filters({ near, setNear }: { near?: [number, number] | null; setNear?: (v: [number, number] | null) => void }) {

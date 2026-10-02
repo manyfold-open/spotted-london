@@ -27,10 +27,10 @@ function canSee(p: PopupRow, u: UserRow | null): boolean {
 }
 
 /* ---------- GET /popups ---------- */
-popups.get('/', async c => c.json(await listPopups(c.env.DB, c.req.query(), c.get('now'), c.get('user'))));
+popups.get('/', async c => c.json(await listPopups(c.env.DB, c.req.query(), c.get('now'))));
 
-/** The public list with its filters. Also used by the MCP search tool. */
-export async function listPopups(db: D1Database, q: Record<string, string>, now: number, user: UserRow | null) {
+/** The public list with its filters. Same for everyone: your own votes and saves come from GET /me/state. Also used by the MCP search tool. */
+export async function listPopups(db: D1Database, q: Record<string, string>, now: number) {
   const when = (['today', 'weekend', 'week', 'all'].includes(q.when) ? q.when : 'week') as When;
   const { from, to } = windowFor(when, now);
   const limit = Math.min(50, Math.max(1, Number(q.limit) || 20));
@@ -84,28 +84,11 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
   }
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
-  const mine = await myState(db, user, page.map(r => r.p.id));
   return {
-    items: page.map(r => toPublic(r.p, { ...(r.d !== null ? { distance_m: Math.round(r.d) } : {}), ...(mine ? { me: mine(r.p.id) } : {}) })),
+    items: page.map(r => toPublic(r.p, r.d !== null ? { distance_m: Math.round(r.d) } : {})),
     next_cursor: more ? (offset + limit).toString(36) : null,
     window: { when, from, to: to === Number.MAX_SAFE_INTEGER ? null : to },
   };
-}
-
-/** Saved flag and votes of the signed-in user for a page of pop-ups, in two queries. */
-async function myState(db: D1Database, u: UserRow | null, ids: string[]) {
-  if (!u || !ids.length) return null;
-  const marks = ids.map(() => '?').join(',');
-  const [saves, votes] = await Promise.all([
-    db.prepare(`SELECT popup_id FROM saves WHERE user_id = ? AND popup_id IN (${marks})`).bind(u.id, ...ids).all<{ popup_id: string }>(),
-    db.prepare(`SELECT popup_id, kind, value FROM votes WHERE user_id = ? AND popup_id IN (${marks})`).bind(u.id, ...ids).all<{ popup_id: string; kind: string; value: number }>(),
-  ]);
-  const saved = new Set(saves.results.map(r => r.popup_id));
-  return (id: string) => ({
-    saved: saved.has(id),
-    existence_vote: votes.results.find(v => v.popup_id === id && v.kind === 'existence')?.value ?? 0,
-    quality_vote: votes.results.find(v => v.popup_id === id && v.kind === 'quality')?.value ?? 0,
-  });
 }
 
 /* ---------- GET /popups/:idOrSlug ---------- */

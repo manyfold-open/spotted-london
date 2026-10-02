@@ -5,6 +5,7 @@ export type Status = 'pending' | 'community' | 'verified_community' | 'verified_
 export type When = 'today' | 'weekend' | 'week' | 'all';
 
 export interface MyState { saved: boolean; existence_vote: number; quality_vote: number; vote_weight?: number }
+export type { MyStateMap } from '../../../src/shared/my-state';
 
 export interface Popup {
   id: string; slug: string; title: string; host: string | null; description: string | null; category: Category;

@@ -198,7 +198,7 @@ const TOOLS: Record<string, Tool> = {
       if (lat !== null && lng !== null) { q.near = `${lat},${lng}`; q.sort = 'distance'; const r = numArg(a, 'radius_km'); if (r) q.radius_km = String(r); }
       if (a.free_only === true) q.free = '1';
       if (a.verified_only === true) q.verified = '1';
-      const out = await listPopups(x.c.env.DB, q, x.now, null);
+      const out = await listPopups(x.c.env.DB, q, x.now);
       return { count: out.items.length, popups: out.items.map(p => brief(p, x.origin)) };
     },
   },
