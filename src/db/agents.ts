@@ -34,6 +34,8 @@ export interface AgentRow {
   next_run_at: number | null;
   updated_at: number;
   created_at: number;
+  /** 1 when a Manyfold automation starts this agent at its schedule and Spotted is only the backup. */
+  manyfold_scheduled: number;
 }
 
 export interface RunRow {
@@ -48,7 +50,14 @@ export interface RunRow {
   started_at: number;
   finished_at: number | null;
   checked_at: number | null;
+  /** How the run began: 'manyfold' (start_run), 'fallback' (Spotted, after the wait), or null (Spotted's own schedule or Run now). */
+  via: string | null;
 }
+
+/** An agent scheduled on Manyfold gets this long to start; then Spotted starts it, unless a run began near its slot. */
+export const BACKUP_GRACE = 30 * 60_000;
+/** A run that began this long before the slot, or later, counts as the slot's run. */
+const BACKUP_EARLY = 20 * 60_000;
 
 /** A run that has not finished after this long is marked failed. */
 export const RUN_TIMEOUT = 3 * HOUR;
@@ -122,13 +131,13 @@ export async function blocker(db: D1Database, a: AgentRow, now: number): Promise
 }
 
 /** Starts a run on Manyfold. The run is recorded first, so a failure to start is visible too. */
-export async function startRun(env: Bindings, a: AgentRow, trigger: RunRow['trigger'], now: number): Promise<RunRow> {
+export async function startRun(env: Bindings, a: AgentRow, trigger: RunRow['trigger'], now: number, via: string | null = null): Promise<RunRow> {
   const db = env.DB;
   const stop = await blocker(db, a, now);
   if (stop) throw stop;
   const token = await unseal(env.AGENTS_KEY, a.token_sealed!);
   const id = newId();
-  await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at) VALUES (?, ?, ?, 'running', ?)").bind(id, a.id, trigger, now).run();
+  await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, via) VALUES (?, ?, ?, 'running', ?, ?)").bind(id, a.id, trigger, now, via).run();
   try {
     const info = await startTask({ rpcUrl: a.rpc_url!, token }, `spotted-run-${id}`, brief(a, id, env.APP_URL, now));
     await db.prepare('UPDATE agent_runs SET task_id = ?, checked_at = ? WHERE id = ?').bind(info.taskId, now, id).run();
@@ -181,26 +190,35 @@ export async function checkRuns(env: Bindings, now: number): Promise<void> {
   }
 }
 
-/** Cron: starts every enabled agent whose scheduled time has come. */
+/**
+ * Cron: starts every enabled agent whose scheduled time has come. An agent scheduled on Manyfold is
+ * only a backup here: Spotted waits BACKUP_GRACE past the slot and starts it only if no run began near
+ * the slot, which happens when Manyfold could not wake the agent's sandbox.
+ */
 export async function dispatchDue(env: Bindings, now: number): Promise<void> {
   const db = env.DB;
   const { results } = await db.prepare(
-    "SELECT * FROM agents WHERE enabled = 1 AND schedule != 'manual' AND next_run_at IS NOT NULL AND next_run_at <= ?",
-  ).bind(now).all<AgentRow>();
+    `SELECT * FROM agents WHERE enabled = 1 AND schedule != 'manual' AND next_run_at IS NOT NULL
+       AND next_run_at + CASE manyfold_scheduled WHEN 1 THEN ? ELSE 0 END <= ?`,
+  ).bind(BACKUP_GRACE, now).all<AgentRow>();
   for (const a of results) {
     // Claim the slot first so two overlapping cron runs cannot start the same agent twice.
     const claim = await db.prepare('UPDATE agents SET next_run_at = ? WHERE id = ? AND next_run_at = ?').bind(nextRunAt(a, now), a.id, a.next_run_at).run();
     if (!claim.meta.changes) continue;
+    if (a.manyfold_scheduled) {
+      const began = await db.prepare('SELECT 1 FROM agent_runs WHERE agent_id = ? AND started_at >= ?').bind(a.id, a.next_run_at! - BACKUP_EARLY).first();
+      if (began) continue;
+    }
     const stop = await blocker(db, a, now);
     if (stop) {
       // A busy agent just skips this slot. Anything else is recorded so the admin sees why.
       if (stop.code !== 'agent_busy') {
-        await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, error, started_at, finished_at) VALUES (?, ?, 'schedule', 'failed', ?, ?, ?)")
-          .bind(newId(), a.id, stop.message, now, now).run();
+        await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, error, started_at, finished_at, via) VALUES (?, ?, 'schedule', 'failed', ?, ?, ?, ?)")
+          .bind(newId(), a.id, stop.message, now, now, a.manyfold_scheduled ? 'fallback' : null).run();
       }
       continue;
     }
-    await startRun(env, a, 'schedule', now).catch(e => console.warn('agent run failed to start', a.id, safeErrorText(e)));
+    await startRun(env, a, 'schedule', now, a.manyfold_scheduled ? 'fallback' : null).catch(e => console.warn('agent run failed to start', a.id, safeErrorText(e)));
   }
 }
 
