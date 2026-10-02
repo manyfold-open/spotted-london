@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { CATEGORIES, CATEGORY_LABELS, isCategory } from '../src/shared/categories';
 
 const NEW_KEYS = ['food', 'dining', 'market', 'exhibition', 'art', 'event', 'fashion', 'sample', 'beauty', 'tech', 'other'];
 
@@ -36,5 +37,32 @@ describe('popups schema after 0014', () => {
     const cols = (await env.DB.prepare('PRAGMA table_info(popups)').all<{ name: string }>()).results.map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['is_example', 'evidence', 'evidence_url', 'evidence_check', 'lease_agent', 'lease_until']));
     expect(cols).toHaveLength(38);
+  });
+});
+
+describe('shared category list', () => {
+  it('has the eleven keys in chip order', () => {
+    expect([...CATEGORIES]).toEqual(NEW_KEYS);
+  });
+
+  it('gives every key one unique label with no dashes', () => {
+    expect(Object.keys(CATEGORY_LABELS)).toEqual([...CATEGORIES]);
+    const labels = Object.values(CATEGORY_LABELS);
+    expect(new Set(labels).size).toBe(CATEGORIES.length);
+    for (const l of labels) expect(l).not.toMatch(/[–—]| - /);
+  });
+
+  it('isCategory accepts keys and nothing else', () => {
+    expect(isCategory('dining')).toBe(true);
+    expect(isCategory('rave')).toBe(false);
+    expect(isCategory('')).toBe(false);
+  });
+
+  it('matches the CHECK in the live popups table, so the two cannot drift apart', async () => {
+    const row = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'popups'").first<{ sql: string }>();
+    const m = row!.sql.match(/category TEXT NOT NULL CHECK \(category IN \(([^)]*)\)\)/);
+    expect(m).not.toBeNull();
+    const inDb = m![1].split(',').map(s => s.trim().replace(/'/g, ''));
+    expect([...inDb].sort()).toEqual([...CATEGORIES].sort());
   });
 });

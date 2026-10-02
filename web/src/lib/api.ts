@@ -1,6 +1,7 @@
 // Typed client for /api/v1. Errors keep the server's stable `code` and readable `message`.
 
-export type Category = 'food' | 'fashion' | 'sample' | 'art' | 'market' | 'beauty' | 'tech' | 'other';
+import type { Category } from '../../../src/shared/categories';
+export type { Category };
 export type Status = 'pending' | 'community' | 'verified_community' | 'verified_admin' | 'hidden' | 'removed' | 'ended';
 export type When = 'today' | 'weekend' | 'week' | 'all';
 

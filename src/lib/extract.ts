@@ -5,9 +5,10 @@
 // 3. deterministic post-processing (dates to London, category enum)
 
 import { londonDateString, londonParts } from './time';
+import { CATEGORIES, type Category } from '../shared/categories';
 
-export const CATEGORIES = ['food', 'fashion', 'sample', 'art', 'market', 'beauty', 'tech', 'other'] as const;
-export type Category = (typeof CATEGORIES)[number];
+export { CATEGORIES };
+export type { Category };
 
 export type Confidence = 'high' | 'check';
 export type Source = 'json_ld' | 'og' | 'llm_text' | 'llm_vision';
