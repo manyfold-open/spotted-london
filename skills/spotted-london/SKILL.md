@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.7.0
+version: 1.8.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -89,6 +89,14 @@ launch events open to walk-ins, tastings.
 No: permanent openings, concerts, theatre, club nights, conferences, classes, private or invite-only
 events, online-only sales, anything outside Greater London.
 
+A permanent shop can host a pop-up. A cafe, bakery, ice cream shop, bookshop or bar counts when it
+runs something with a clear end or a short run that walk-ins can join: a collab with another brand or
+maker, a guest chef, baker or bartender, a limited flavour or menu launch, a seasonal stand, a
+weekend stall, a residency in its kitchen. The shop stays permanent, the thing is the pop-up: title it
+by what happens ("Gelupo x Maison Francois, summer flavour"), and give the dates of the run. A new
+branch, a reopening, a price change or a permanent menu item is not a pop-up. When a post says "new"
+or "now open" with no end date and no collab, skip it.
+
 Categories, one per pop-up:
 
 - `food`: pop-up restaurants, stalls, bars, bakeries, tastings.
@@ -118,6 +126,10 @@ Scout has a memory: a list of sources to check, and every page it already read.
    Yard, Seven Dials, Boxpark, Battersea Power Station and more), brand sites, social accounts and
    web searches. Each has a track record: how many drafts it led to and how many the admin published
    or rejected. Spend your time on sources that publish well. Follow the admin's notes on focus.
+   Small food and shop sources (`brand` sources named after a cafe, bakery, bar or shop, and searches
+   about ice cream, coffee, bakeries or residencies): look for the shop's news, events or Instagram
+   links for collabs, guests and limited runs. Quiet pages are normal for these; mark them checked
+   and move on. Do not send a draft for the shop itself.
 2. **Work through each source.**
    - Pages: open it and collect links to single pop-ups (the article, brand page or event page).
    - Social sources with `new_posts`: call `get_social_posts` with the source id. Each post is a lead
