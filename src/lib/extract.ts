@@ -169,13 +169,18 @@ export function missing(e: Extracted): Field[] {
   return (['title', 'address', 'start_date', 'end_date', 'category'] as Field[]).filter(f => e[f] == null);
 }
 
+// Order matters: the first rule that matches wins. A dated chef or restaurant meal is dining before it is food,
+// an art fair is a market before it is art, and a festival dinner is dining before it is an event.
 const CATEGORY_WORDS: [Category, RegExp][] = [
   ['sample', /sample sale|warehouse sale|% off|up to \d+%|clearance/i],
-  ['food', /food|coffee|matcha|bakery|noodle|ramen|pizza|burger|brunch|dessert|gelato|street food|supper club|tasting|chef|wine|beer|cocktail/i],
-  ['market', /market|fair|car boot|makers|flea|stalls/i],
+  ['market', /art fair|design fair|craft fair|book fair|\bfairs?\b|\bmarkets?\b|car boot|makers|flea|stalls/i],
+  ['dining', /supper club|residenc(?:y|ies)|takeover|dinner series|set menu|tasting menu|\bdinners?\b|restaurant festival/i],
+  ['food', /food|coffee|matcha|bakery|noodle|ramen|pizza|burger|brunch|dessert|gelato|tasting|chef|wine|beer|cocktail/i],
+  ['event', /\blates?\b|festival|anniversary|birthday|party|\btalks?\b/i],
+  ['art', /installation|sculpture|public art|mural|immersive|\bzines?\b|ceramic|pottery|\btrail\b/i],
+  ['exhibition', /exhibition|gallery|museum|solo show|group show|retrospective/i],
   ['fashion', /fashion|vintage|clothing|denim|sneaker|streetwear|thrift|kilo sale|jewellery|jewelry/i],
   ['beauty', /beauty|perfume|fragrance|skincare|makeup|cosmetic|nail/i],
-  ['art', /art|exhibition|gallery|print|zine|ceramic|pottery|workshop|photography|design/i],
   ['tech', /tech|gadget|gaming|robot|repair|3d print|vr\b/i],
 ];
 export function guessCategory(text: string): Category | null {
@@ -183,10 +188,20 @@ export function guessCategory(text: string): Category | null {
   return null;
 }
 
+// Spoken forms an LLM or a person might answer with, tried when the answer is not a key.
+const CATEGORY_ALIASES: [RegExp, Category][] = [
+  [/sample/, 'sample'],
+  [/supper|residen|dinner/, 'dining'],
+  [/fair/, 'market'],
+  [/exhibit|gallery|museum/, 'exhibition'],
+  [/festival|event|party|\blates?\b/, 'event'],
+  [/installation|sculpture|public art/, 'art'],
+];
+
 export function normaliseCategory(v: unknown): Category | null {
   const s = typeof v === 'string' ? v.toLowerCase().trim() : '';
   if ((CATEGORIES as readonly string[]).includes(s)) return s as Category;
-  if (/sample/.test(s)) return 'sample';
+  for (const [re, c] of CATEGORY_ALIASES) if (re.test(s)) return c;
   return s ? guessCategory(s) : null;
 }
 

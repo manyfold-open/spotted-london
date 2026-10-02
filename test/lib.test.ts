@@ -3,7 +3,7 @@ import { londonDateString, parseLondonDate, windowFor } from '../src/lib/time';
 import { geohash, haversine, inLondon } from '../src/lib/geo';
 import { titleSimilarity } from '../src/lib/util';
 import {
-  emptyExtraction, finalise, fromLlm, guessCategory, mergeInto, parseJsonLdEvent, parseOpenGraph, readableText, safeUrl,
+  emptyExtraction, finalise, fromLlm, guessCategory, mergeInto, normaliseCategory, parseJsonLdEvent, parseOpenGraph, readableText, safeUrl,
 } from '../src/lib/extract';
 
 const NOW = Date.UTC(2026, 8, 30, 13); // Wed 30 Sep 2026, 14:00 London (BST)
@@ -110,6 +110,41 @@ describe('link autofill parsing (SPEC 3.8)', () => {
   it('guesses categories from words', () => {
     expect(guessCategory('Archive denim sample sale, up to 70% off')).toBe('sample');
     expect(guessCategory('Hand pulled noodles')).toBe('food');
+    expect(guessCategory('Matcha Lab by Kettl')).toBe('food');
+  });
+
+  it('guesses the finer categories, following the tie-break rules', () => {
+    // 1. dated chef or restaurant meals are dining, stalls and bars are food, a market of stalls is market
+    expect(guessCategory("Frank's Dinner Series: The Seahorse")).toBe('dining');
+    expect(guessCategory('A.Wong Residency at Mandarin Oriental Mayfair')).toBe('dining');
+    expect(guessCategory('Pernod Ricard Charity Supper Club')).toBe('dining');
+    expect(guessCategory("Chet's Thai Dinner, London Restaurant Festival")).toBe('dining');
+    expect(guessCategory('BANCARELLA Italian Street Food Market')).toBe('market');
+    // 2. an art fair is a market, a gallery show an exhibition, a one-off piece art
+    expect(guessCategory('Affordable Art Fair Battersea Autumn')).toBe('market');
+    expect(guessCategory('Solo exhibition at White Cube gallery')).toBe('exhibition');
+    expect(guessCategory('Frieze Sculpture 2026')).toBe('art');
+    expect(guessCategory('Immersive light installation')).toBe('art');
+    // 3. a programme or a crowd is an event
+    expect(guessCategory('Tate Modern Lates: 10th Birthday')).toBe('event');
+    expect(guessCategory('Japan Matsuri festival')).toBe('event');
+    // nothing to go on
+    expect(guessCategory('Open studio weekend')).toBeNull();
+  });
+
+  it('turns an answer into a category key', () => {
+    expect(normaliseCategory('Food')).toBe('food');
+    expect(normaliseCategory('dining')).toBe('dining');
+    expect(normaliseCategory('Supper Club')).toBe('dining');
+    expect(normaliseCategory('chef residency')).toBe('dining');
+    expect(normaliseCategory('art fair')).toBe('market');
+    expect(normaliseCategory('Gallery')).toBe('exhibition');
+    expect(normaliseCategory('Festival')).toBe('event');
+    expect(normaliseCategory('Installation')).toBe('art');
+    expect(normaliseCategory('sample sale')).toBe('sample');
+    expect(normaliseCategory('rave')).toBeNull();
+    expect(normaliseCategory('')).toBeNull();
+    expect(normaliseCategory(42)).toBeNull();
   });
 
   it('only fetches public http(s) links', () => {
