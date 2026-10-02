@@ -543,12 +543,13 @@ CREATE TABLE audit_log (
 | AI 自動填表 | Workers AI（2026-09-30 接上）。文字：`@cf/meta/llama-3.3-70b-instruct-fp8-fast`；截圖：`@cf/meta/llama-4-scout-17b-16e-instruct`（吃 base64 圖片、支援 JSON schema）。截圖在前端縮成長邊 1600px 的 JPEG 再上傳（≤ 2 MB），伺服器不存圖。免費額度用完回 503 `ai_quota`，請用戶自己填 |
 | 表單元件 | 全部自製，不用瀏覽器原生 UI：日期選擇器（英式格式、週一開始、手機為底部 sheet）、搜尋清除鈕、Email 驗證訊息、捲軸、地圖縮放鈕 |
 | 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
-| 範例資料 | 線上放標示「Example」的虛構活動、noindex；正式上線前用 `seed/clear-examples.sql` 清除 |
+| 範例資料 | 已於 2026-10-02 用 `seed/clear-examples.sql` 從線上清除（9 個虛構活動、165 個假帳號）。`is_example` 欄位與 Example 標示保留，之後要用範例資料可重新載入 `seed/examples.sql` |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |
 | AI agents | 跑在 **Manyfold**（不在 Cloudflare 上，不吃 Workers AI 額度）。三個：Scout 找新活動送草稿、Triage 幫審核佇列寫判斷、Checker 複查已上架活動。Spotted 用 A2A 啟動（cron 排程或 admin 按 Run now），agent 透過 `/mcp` 用各自的 key 回寫。**只能寫草稿與備註**，發布與否一律 admin 決定。設定頁 `/admin/agent`（2026-09-30） |
 | Scout 資料庫 | Scout 有來源清單（`scout_sources`）與讀過頁面的紀錄（`scout_seen`），活動可掛多個連結（`popup_links`）。Scout 只能建議新來源，啟用由 admin 決定；IG/TikTok/小紅書只透過搜尋找公開貼文、存連結當補充證據，不登入不爬取（2026-10-01） |
 | MCP | `POST /mcp`，無狀態 Streamable HTTP、手寫 JSON-RPC（不用 SDK）。無 key：`search_popups`、`get_popup` 給任何人的 AI 助手用；有 key：依 agent 角色多開工具 |
 | Icons | [Koboyo hand-drawn icons](https://koboyo.com/icons)：手繪風格 SVG，`fill="currentColor"`，商用免費、免標註。限制：不可把 icon 當成產品功能讓用戶挑選或下載，也不可重新散布整套 icon 庫 |
+| 分類 | 11 類，每個活動一類：`food`、`dining`（主廚駐店與晚宴）、`market`（市集與藝博會）、`exhibition`（畫廊與美術館展覽）、`art`（一次性裝置與公共藝術）、`event`、`fashion`、`sample`、`beauty`、`tech`、`other`。清單只寫在 `src/shared/categories.ts`；新增一類要同時加 migration、icon、封面圖案。Scout 與 Triage 的判斷規則在 `skills/spotted-london/SKILL.md`。新分類的 icon 是自繪的線條圖，不是 Koboyo。設計：`docs/superpowers/specs/2026-10-02-category-split-design.md` |
 
 ### 待決問題
 1. 是否 MVP 就開放「pending 新提交」頁給高 karma 用戶協助審核？

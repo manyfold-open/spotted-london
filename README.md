@@ -230,11 +230,11 @@ npx wrangler tail                                                     # live log
 
 ### Example data
 
-The live site has fictional pop-ups marked **Example** (`is_example = 1`), hidden from search engines. Their accounts use `@example.invalid` addresses, so nobody can sign in as them. Regenerate with `python3 scripts/seed.py`.
+The live site had fictional pop-ups marked **Example** (`is_example = 1`) until 2026-10-02, when they were removed with `seed/clear-examples.sql`. The column and the label stay. Their accounts used `@example.invalid` addresses, so nobody could sign in as them. To load examples again, regenerate with `python3 scripts/seed.py` and run the first command below.
 
 ```bash
 npx wrangler d1 execute spotted-db --remote --file=./seed/examples.sql        # load
-npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # remove before launch
+npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # remove again
 ```
 
 ### Still to switch on
