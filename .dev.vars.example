@@ -10,3 +10,5 @@ IP_SALT=local-dev-salt
 # MAPBOX_TOKEN=
 # Encrypts the Manyfold caller tokens of the AI agents (32+ characters). Needed for /admin/agent.
 AGENTS_KEY=local-dev-agents-key-at-least-32-chars
+# Optional: lets scripts manage agents (create, keys, connect, run) and nothing else
+AGENT_ADMIN_TOKEN=local-dev-agent-manager-token-32-chars

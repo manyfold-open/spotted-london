@@ -45,6 +45,33 @@ export function requireAdmin(c: Context<AppEnv>): UserRow {
   return u;
 }
 
+/** The user behind calls made with AGENT_ADMIN_TOKEN, so the audit log names it. It cannot sign in. */
+const MANAGER_ID = 'sys_agent_manager';
+
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([sha256(a), sha256(b)]);
+  const enc = new TextEncoder();
+  return crypto.subtle.timingSafeEqual(enc.encode(x), enc.encode(y));
+}
+
+/**
+ * For the routes that manage AI agents only: an admin session, or the AGENT_ADMIN_TOKEN secret sent as
+ * `Authorization: Bearer <token>`. The token is for Claude Code and scripts. It opens nothing else:
+ * not the review queue, users, reports or the Publishing switch.
+ */
+export async function requireAgentManager(c: Context<AppEnv>): Promise<UserRow> {
+  const bearer = c.req.header('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!bearer) return requireAdmin(c);
+  const secret = c.env.AGENT_ADMIN_TOKEN;
+  if (!secret || secret.length < 32 || !(await sameSecret(bearer, secret))) {
+    throw new ApiError(401, 'agent_token_invalid', 'That agent manager token is not valid.');
+  }
+  await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES (?, 'agent-manager@system.invalid', 'Agent manager token', 'user', 0, 0, ?)",
+  ).bind(MANAGER_ID, c.get('now')).run();
+  return (await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(MANAGER_ID).first<UserRow>())!;
+}
+
 /** Cloudflare Turnstile. Skipped when no secret is configured (local dev). */
 export async function verifyTurnstile(c: Context<AppEnv>, token: string | undefined): Promise<void> {
   const secret = c.env.TURNSTILE_SECRET;

@@ -90,6 +90,7 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - The dev fallback that returns sign-in links in the response must stay development only.
 - Agents write drafts (`pending`) and notes. The one thing a Checker may do beyond that is publish a draft as `community` under the auto-publish rule in "Agent fleet" below. No MCP tool may approve as `verified_admin`, remove, vote or edit a live pop-up.
 - Every Scout draft carries a word-for-word `evidence` quote. `src/lib/evidence.ts` looks for it: in the stored text for posts in `social_posts`, on the fetched page otherwise. A page that loads without the quote is refused; a page that cannot be read (blocked, login-only social page) is stored as `evidence_check = 'unchecked'` and the admin note says so.
+- `AGENT_ADMIN_TOKEN` (optional secret, 32+ characters) lets Claude Code and scripts manage agents: `requireAgentManager()` in `src/middleware.ts` accepts it as `Authorization: Bearer` on the agent routes only (list, create, delete, rename, key, connect, test, run, undo). It does not open the review queue, users, reports, sources, the Publishing switch or note dismissal; those stay `requireAdmin`. Its calls are logged as the user `sys_agent_manager`, which has role `user` and cannot sign in. Keep any new admin route on `requireAdmin` unless it is about managing agents. To revoke: `npx wrangler secret delete AGENT_ADMIN_TOKEN`.
 - Agent secrets are write-only: the Manyfold token is sealed with `AGENTS_KEY`, Spotted keys are stored as SHA-256, and the API returns only the last four characters.
 - Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
 - The social fetcher (`src/db/social.ts`) never writes `scout_sources.due_at` or `last_checked_at`; those are Scout's clock. Its own clock is `social_runs`. The Apify cap (US$4 in any rolling 30 days) is `SOCIAL_MONTHLY_BUDGET_USD`; Instagram and Threads actors and prices live in `src/lib/social.ts`.
@@ -118,7 +119,7 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
-- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`.
+- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`. Optional: `AGENT_ADMIN_TOKEN` (see Rules), also kept in `~/.config/spotted-london/agent-admin-token` (mode 600) for Claude Code.
 - Optional secret `APIFY_TOKEN` (not set yet): turns on Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month; we cap at US$4 in any 30 days. Posts and runs are in `social_posts` and `social_runs` (migration 0006).
 - AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.

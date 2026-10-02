@@ -597,6 +597,62 @@ describe('agent runs', () => {
     expect((await call('PATCH', `/admin/agents/${id2}`, { user: admin, body: { name: 'Codex Scout' } })).status).toBe(200);
   });
 
+  describe('agent manager token', () => {
+    const TOKEN = 'test-agent-manager-token-at-least-32-chars';
+    async function withToken(method: string, path: string, body?: unknown, token = TOKEN) {
+      const headers: Record<string, string> = { 'x-now': String(NOW), authorization: `Bearer ${token}` };
+      if (body !== undefined) headers['content-type'] = 'application/json';
+      const res = await exports.default.fetch(new Request(`http://spotted.test/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }));
+      return { status: res.status, json: (await res.json()) as any };
+    }
+
+    it('manages agents with the token, and the audit log names the token, not a person', async () => {
+      const list = await withToken('GET', '/admin/agents');
+      expect(list.status).toBe(200);
+      const made = await withToken('POST', '/admin/agents', { role: 'scout', name: 'Token Scout' });
+      expect(made.status).toBe(201);
+      const key = await withToken('POST', `/admin/agents/${made.json.id}/key`);
+      expect(key.status).toBe(201);
+      expect(key.json.key).toMatch(/^spk_/);
+      expect((await withToken('PATCH', `/admin/agents/${made.json.id}`, { name: 'Token Scout 2' })).json.name).toBe('Token Scout 2');
+      const log = await env.DB.prepare("SELECT admin_id FROM audit_log WHERE action = 'agent.create' AND target_id = ?").bind(made.json.id).first<{ admin_id: string }>();
+      expect(log!.admin_id).toBe('sys_agent_manager');
+      // that user can never sign in or act as an admin
+      const manager = await env.DB.prepare("SELECT role FROM users WHERE id = 'sys_agent_manager'").first<{ role: string }>();
+      expect(manager!.role).toBe('user');
+    });
+
+    it('refuses a wrong, empty or near-miss token', async () => {
+      for (const token of ['wrong', TOKEN.slice(0, -1), `${TOKEN}x`, 'x'.repeat(40)]) {
+        const r = await withToken('GET', '/admin/agents', undefined, token);
+        expect(r.status, token).toBe(401);
+        expect(r.json.error.code).toBe('agent_token_invalid');
+      }
+      expect((await call('GET', '/admin/agents')).status).toBe(401); // no token, no session
+    });
+
+    it('opens nothing outside agent management', async () => {
+      const closed: [string, string, unknown?][] = [
+        ['GET', '/admin/queue'], ['POST', '/admin/queue/publish-ready', {}], ['PUT', '/admin/agents/settings', { auto_publish: 'auto' }],
+        ['GET', '/admin/agents/sources'], ['POST', '/admin/agents/sources', { kind: 'search', target: 'x', label: 'x' }],
+        ['POST', '/admin/agents/notes/abc/dismiss'], ['POST', '/admin/users/someone/action', { action: 'ban' }],
+        ['POST', '/admin/popups/abc/decision', { action: 'approve' }],
+      ];
+      for (const [method, path, body] of closed) {
+        const r = await withToken(method, path, body);
+        expect(r.status, `${method} ${path}`).toBe(401);
+        expect(r.json.error.code, `${method} ${path}`).toBe('auth_required');
+      }
+      expect((await env.DB.prepare("SELECT value FROM settings WHERE key = 'auto_publish'").first<{ value: string }>())!.value).toBe('suggest');
+    });
+
+    it('still lets a signed-in admin manage agents, and keeps ordinary users out', async () => {
+      expect((await call('GET', '/admin/agents', { user: admin })).status).toBe(200);
+      const plain = await user();
+      expect((await call('GET', '/admin/agents', { user: plain })).status).toBe(403);
+    });
+  });
+
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
     const key = await connect('scout');
     const runId = await startRun('scout');

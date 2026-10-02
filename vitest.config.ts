@@ -14,6 +14,7 @@ export default defineConfig(async () => {
             ENVIRONMENT: 'development', APP_URL: 'http://spotted.test', IP_SALT: 'test-salt',
             GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'test-secret',
             AGENTS_KEY: 'test-agents-key-that-is-at-least-32-chars',
+            AGENT_ADMIN_TOKEN: 'test-agent-manager-token-at-least-32-chars',
             MANYFOLD_API_URL: 'https://api.manyfold.ai',
             TEST_MIGRATIONS: migrations,
           },

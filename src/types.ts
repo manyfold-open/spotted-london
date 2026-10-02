@@ -13,6 +13,8 @@ export type Bindings = Cloudflare.Env & {
   GOOGLE_CLIENT_SECRET?: string;
   /** Seals the Manyfold caller tokens of the AI agents. 32+ characters. */
   AGENTS_KEY?: string;
+  /** Lets Claude Code and scripts manage AI agents (create, keys, connect, run), and nothing else. */
+  AGENT_ADMIN_TOKEN?: string;
   /** Manyfold API for Connect A2A. Defaults to https://api.manyfold.ai. */
   MANYFOLD_API_URL?: string;
   /** Apify API token for fetching Instagram and Threads posts. Without it nothing is fetched. */
