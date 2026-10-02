@@ -100,7 +100,8 @@ export const PopupMap = forwardRef<PopupMapHandle, {
         entry = { m: mk, el: b };
         markers.current.set(p.id, entry);
       }
-      entry.el.className = `pinm ${p.status} ${isLive(p) ? 'live' : ''} ${fresh ? 'in' : ''}`;
+      // Keep MapLibre's own class: it carries the position:absolute the marker transform relies on.
+      entry.el.className = `maplibregl-marker pinm ${p.status} ${isLive(p) ? 'live' : ''} ${fresh ? 'in' : ''}`;
       // New pins drop in one after another.
       entry.el.style.animationDelay = fresh ? `${Math.min(added++, 16) * 25}ms` : '';
       entry.el.innerHTML = iconMarkup(catIcon(p.category));
