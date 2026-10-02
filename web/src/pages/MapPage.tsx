@@ -57,7 +57,7 @@ export default function MapPage() {
       <Filters />
       <div className="mapwrap">
         <div className="mapbox">
-          <PopupMap items={items} highlight={hl} onPin={onPin} />
+          <PopupMap items={items} highlight={hl} onPin={onPin} me={null} padding={{ top: 0, right: 0, bottom: 0, left: 0 }} onAway={() => {}} />
           <div className="legend">
             <span className="tag t-ink"><Icon name="i-shield" />Verified</span>
             <span className="tag t-eng"><Icon name="i-checkc" />Community</span>
