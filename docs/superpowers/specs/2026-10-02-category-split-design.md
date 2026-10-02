@@ -46,7 +46,7 @@ These go into the agent skill and into `guessCategory` so Scout, Triage and the 
 
 ## Data model
 
-`popups.category` has a `CHECK` list of eight values. SQLite cannot change a `CHECK` in place, so migration `0013_categories.sql` rebuilds the table.
+`popups.category` has a `CHECK` list of eight values. SQLite cannot change a `CHECK` in place, so migration `0014_categories.sql` rebuilds the table.
 
 - Nine tables reference `popups(id)`, and `popups` references itself through `merged_into`. The rebuild order is create `popups_new`, copy every row, drop `popups`, rename `popups_new` to `popups`. Never rename the old table first: SQLite would rewrite the children's references to the old name.
 - The migration starts with `PRAGMA defer_foreign_keys = on`, so the drop does not fail on the children and the constraint is checked once, at the end.
@@ -86,13 +86,15 @@ Scout and Triage read their category list from the skill in Zack's Manyfold skil
 
 ## Order of rollout
 
-1. Merge the code and migration on a branch; local rehearsal on the backup.
-2. Fresh backup. Apply `0013` to remote D1 (`env -u` the two Cloudflare vars, as in the project notes). Old code keeps working because the new table accepts a superset.
-3. Deploy the Worker and web build.
+Production deploys run on Cloudflare Workers Builds: a push to `main` deploys, other branches only get preview versions, and the build token has no D1 access. So the migration goes first, by hand, and the merge is the deploy. Migration number `0013` is taken by the Manyfold-scheduling work (already applied to production), so this one is `0014`.
+
+1. Work on branch `category-split` in its own git worktree. Local rehearsal on the newest backup.
+2. Fresh backup. Apply `0014` to remote D1 (`env -u` the two Cloudflare vars, as in the project notes). Old code keeps working because the new table accepts a superset, and branch previews share production D1, so this must come before the PR.
+3. Open the PR, saying it adds a migration that is already applied. Zack merges, and the merge deploys the Worker and web build.
 4. Run the reclassification after Zack has read the unsure-rows table. Fresh backup first.
 5. Publish the new skill version to the Manyfold library.
 
-Steps 2, 4 and 5 write to production or to live agents, so each waits for an explicit go.
+Steps 2, 3, 4 and 5 write to production or to live agents, or publish outward, so each waits for an explicit go.
 
 ## Tests
 
