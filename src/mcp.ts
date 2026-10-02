@@ -479,17 +479,16 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_review_queue: {
-    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. Older Scout drafts that a Triage agent noted once without marking them ready come back once more for a second look. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
+    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. Older Scout drafts that no Triage note has quoted the page for come back once a day for another look. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      // A legacy draft (see isLegacyDraft) noted once, a day or more ago, without being marked ready gets one more look.
+      // A legacy draft (see isLegacyDraft) comes back once a day until a Triage note on it carries the agent's own quote.
       const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
         AND (NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))
           OR (substr(p.created_by, 1, 6) = 'agent_' AND p.evidence_check IS NULL
-            AND (SELECT COUNT(*) FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)) = 1
-            AND EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)
-              AND n.resolved_at IS NULL AND n.publish_ready = 0 AND n.verdict IN ('looks_real', 'needs_check') AND n.created_at < ?3)))`, 'p.created_at', x.now - DAY);
+            AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)
+              AND (n.created_at >= ?3 OR n.evidence IS NOT NULL OR n.verdict NOT IN ('looks_real', 'needs_check')))))`, 'p.created_at', x.now - DAY);
       const posters = await userRows(x.c.env.DB, results.map(p => p.created_by));
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
@@ -563,9 +562,10 @@ const TOOLS: Record<string, Tool> = {
       // Ready to publish only when every condition holds. The reasons come back so the agent can fix them.
       const why: string[] = [];
       let ready = false;
-      if (verdict === 'looks_real' && (quote || a.dates_match !== undefined || a.place_match !== undefined)) {
+      // On a waiting post, looks_real always gets the reasons back, so an agent that left out its quote learns to send it.
+      if (verdict === 'looks_real' && (p.status === 'pending' || quote || a.dates_match !== undefined || a.place_match !== undefined)) {
         if (p.status !== 'pending') why.push('only posts waiting for review can be published');
-        if (!quote) why.push('give evidence');
+        if (!quote) why.push('give evidence: a passage copied word for word from the page, with dates_match and place_match; putting it in the note is not enough');
         else if (evidenceCheck !== 'found') why.push('Spotted could not read that page to find your quote, so a person has to look');
         if (a.dates_match !== true) why.push('dates_match must be true');
         if (a.place_match !== true) why.push('place_match must be true');
