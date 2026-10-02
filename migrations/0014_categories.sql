@@ -1,10 +1,15 @@
 -- Finer categories, see docs/superpowers/specs/2026-10-02-category-split-design.md.
--- SQLite cannot change a CHECK in place, so popups is rebuilt: create the new table, copy, drop, rename.
--- Never rename the old table first, because SQLite would then point every child table at the old name.
--- defer_foreign_keys lets the drop run while nine tables still reference popups and checks them once at the end.
+-- SQLite cannot change a CHECK in place, so popups is rebuilt: park the rows, drop, recreate under the same name, put the rows back.
+-- Never rename tables here: dropping popups counts one deferred foreign-key violation per child row, a rename never clears them,
+-- but inserting the rows back into the recreated popups does, so the commit passes.
+-- defer_foreign_keys postpones the check to the end while nine tables still reference popups.
 PRAGMA defer_foreign_keys = on;
 
-CREATE TABLE popups_new (
+CREATE TABLE popups_park AS SELECT * FROM popups;
+
+DROP TABLE popups;
+
+CREATE TABLE popups (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
   title TEXT NOT NULL,
@@ -46,7 +51,7 @@ CREATE TABLE popups_new (
   lease_until INTEGER
 );
 
-INSERT INTO popups_new (
+INSERT INTO popups (
   id, slug, title, host, description, category, price_type, price_text, address, borough, lat, lng, geohash,
   start_at, end_at, hours_text, source_url, status, final_verdict, merged_into, created_by,
   exist_pos, exist_neg, voter_count, checkin_count, confidence, quality_pos, quality_neg, hot, report_weight,
@@ -56,10 +61,9 @@ INSERT INTO popups_new (
   start_at, end_at, hours_text, source_url, status, final_verdict, merged_into, created_by,
   exist_pos, exist_neg, voter_count, checkin_count, confidence, quality_pos, quality_neg, hot, report_weight,
   created_at, updated_at, is_example, evidence, evidence_url, evidence_check, lease_agent, lease_until
-FROM popups;
+FROM popups_park;
 
-DROP TABLE popups;
-ALTER TABLE popups_new RENAME TO popups;
+DROP TABLE popups_park;
 
 CREATE INDEX idx_popups_list ON popups(status, end_at, hot DESC);
 CREATE INDEX idx_popups_geo ON popups(geohash);
