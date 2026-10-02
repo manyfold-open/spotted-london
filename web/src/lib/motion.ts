@@ -1,5 +1,5 @@
 // Small motion helpers. CSS does most of the work; these cover what CSS cannot.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 const reducedQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 export const reducedMotion = () => !!reducedQuery?.matches;
@@ -32,3 +32,12 @@ export function useExit<T>(value: T | null, ms: number): [T | null, boolean] {
 }
 
 export const scrollBehavior = (): ScrollBehavior => (reducedMotion() ? 'auto' : 'smooth');
+
+/** True under 900 px, and follows the window when it is resized or rotated. */
+export function usePhone() {
+  return useSyncExternalStore(
+    cb => { const q = matchMedia('(max-width: 899px)'); q.addEventListener('change', cb); return () => q.removeEventListener('change', cb); },
+    isPhone,
+    () => false,
+  );
+}
