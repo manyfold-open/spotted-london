@@ -53,10 +53,12 @@ if (changed.length > 0) {
   }
   console.log(`\nAll changes (${changed.length}):`);
   for (const key of Object.keys(grouped).sort()) {
-    for (const p of grouped[key]) {
+    const sorted = grouped[key].sort((a, b) => byId.get(a.id).title.localeCompare(byId.get(b.id).title));
+    for (const p of sorted) {
       const r = byId.get(p.id);
-      const status = p.sure ? '[sure]' : '[not sure]';
-      console.log(`  ${p.id}  ${r.status.padEnd(18)} ${p.from} -> ${p.to}  ${r.title}  |  ${r.host ?? ''}  (${p.why})  ${status}`);
+      const tag = p.sure ? '[sure]' : '[not sure]';
+      const tagPadded = tag.padEnd(11);
+      console.log(`  ${tagPadded} ${p.id}  ${r.status.padEnd(18)} ${p.from} -> ${p.to}  ${r.title}  |  ${r.host ?? ''}  (${p.why})`);
     }
   }
 }
