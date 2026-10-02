@@ -13,7 +13,7 @@ on food media (Hot Dinners, The Infatuation, Eater) and at small food markets, n
 
 A permanent shop can host a pop-up: a dated collab, a guest chef, baker or bartender, a limited flavour or
 menu, a seasonal stand, a weekend stall, a residency in its kitchen. A new branch, a reopening or a
-permanent menu item does not count. The rule is in `skills/spotted-london/SKILL.md` (version 1.8.0).
+permanent menu item does not count. The rule is in `skills/spotted-london/SKILL.md` (version 1.9.0).
 
 ## Changes
 
