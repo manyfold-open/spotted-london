@@ -142,6 +142,7 @@ function AgentCard({ a }: { a: Agent }) {
   const onError = useErrorToast();
   const save = useSave(a.id);
   const [notes, setNotes] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(null);
   const [open, setOpen] = useState(!a.connected || !a.key_hint);
   const running = a.runs.find(r => r.status === 'running');
   const put = (x: Agent) => qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: v.agents.map(y => (y.id === x.id ? x : y)) });
@@ -165,6 +166,12 @@ function AgentCard({ a }: { a: Agent }) {
         </button>
       </div>
       <p className="muted" style={{ marginTop: 6 }}>{a.job}</p>
+
+      <form className="row" style={{ marginTop: 10 }} noValidate onSubmit={e => { e.preventDefault(); if (name !== null && name.trim() && name.trim() !== a.name) save.mutate({ name: name.trim() }, { onSuccess: () => { setName(null); toast('Name saved'); } }); }}>
+        <label className="lbl" htmlFor={`nm-${a.id}`}>Name</label>
+        <input id={`nm-${a.id}`} className="input" style={{ maxWidth: 240 }} maxLength={40} value={name ?? a.name} onChange={e => setName(e.target.value)} />
+        {name !== null && name.trim() && name.trim() !== a.name ? <button className="btn sm primary" disabled={save.isPending}>Save name</button> : null}
+      </form>
 
       <div className="agrid">
         <div className="field">
