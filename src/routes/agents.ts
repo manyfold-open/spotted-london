@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { requireAdmin } from '../middleware';
+import { requireAdmin, requireAgentManager } from '../middleware';
 import { ApiError, bad, newId, sha256 } from '../lib/util';
 import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { randomToken } from '../lib/auth';
@@ -37,7 +37,7 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { publ
 }
 
 agentsAdmin.get('/', async c => {
-  requireAdmin(c);
+  await requireAgentManager(c);
   const db = c.env.DB;
   const [{ results: agents }, { results: runs }, { results: notes }, mode, stats] = await Promise.all([
     db.prepare('SELECT * FROM agents').all<AgentRow>(),
@@ -72,7 +72,7 @@ agentsAdmin.put('/settings', async c => {
 
 /** Puts back in the review queue what this agent's work made public in the last `hours` hours. */
 agentsAdmin.post('/:id/undo', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const db = c.env.DB;
   const a = await loadAgent(db, c.req.param('id'));
@@ -85,7 +85,7 @@ agentsAdmin.post('/:id/undo', async c => {
 
 /** Adds another agent of a role. It starts off, unconnected and without a key, like the first ones did. */
 agentsAdmin.post('/', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const db = c.env.DB;
   const b = await jsonBody(c.req);
@@ -107,7 +107,7 @@ agentsAdmin.post('/', async c => {
 
 /** Only an agent that never ran and never left a note can be deleted. Otherwise switch it off. */
 agentsAdmin.delete('/:id', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const db = c.env.DB;
   const a = await loadAgent(db, c.req.param('id'));
@@ -120,7 +120,7 @@ agentsAdmin.delete('/:id', async c => {
 });
 
 agentsAdmin.patch('/:id', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const db = c.env.DB;
   const a = await loadAgent(db, c.req.param('id'));
@@ -174,7 +174,7 @@ agentsAdmin.patch('/:id', async c => {
 
 /** New Spotted key for the agent. Shown once; only its hash is kept. */
 agentsAdmin.post('/:id/key', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const a = await loadAgent(c.env.DB, c.req.param('id'));
   const key = `spk_${randomToken(24)}`;
@@ -185,7 +185,7 @@ agentsAdmin.post('/:id/key', async c => {
 
 /** Revoking the key also turns the agent off, because it can no longer do anything. */
 agentsAdmin.delete('/:id/key', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const a = await loadAgent(c.env.DB, c.req.param('id'));
   await c.env.DB.prepare('UPDATE agents SET key_hash = NULL, key_hint = NULL, enabled = 0, next_run_at = NULL, updated_at = ? WHERE id = ?').bind(now, a.id).run();
@@ -202,7 +202,7 @@ const CONNECT_TTL = 15 * 60;
 const connectKey = (id: string) => `mf-connect:${id}`;
 
 agentsAdmin.post('/:id/connect', async c => {
-  requireAdmin(c);
+  await requireAgentManager(c);
   const a = await loadAgent(c.env.DB, c.req.param('id'));
   // Fail before Manyfold hands out anything we could not store.
   await seal(c.env.AGENTS_KEY, 'check');
@@ -213,7 +213,7 @@ agentsAdmin.post('/:id/connect', async c => {
 });
 
 agentsAdmin.post('/:id/connect/poll', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const db = c.env.DB;
   const a = await loadAgent(db, c.req.param('id'));
@@ -239,7 +239,7 @@ agentsAdmin.post('/:id/connect/poll', async c => {
 
 /** Checks the A2A address and token without starting a billed turn. */
 agentsAdmin.post('/:id/test', async c => {
-  requireAdmin(c);
+  await requireAgentManager(c);
   const a = await loadAgent(c.env.DB, c.req.param('id'));
   if (!a.rpc_url || !a.token_sealed) throw new ApiError(409, 'agent_not_connected', 'Connect this agent first: press Connect with Manyfold.');
   await probe({ rpcUrl: a.rpc_url, token: await unseal(c.env.AGENTS_KEY, a.token_sealed) });
@@ -247,7 +247,7 @@ agentsAdmin.post('/:id/test', async c => {
 });
 
 agentsAdmin.post('/:id/run', async c => {
-  const admin = requireAdmin(c);
+  const admin = await requireAgentManager(c);
   const now = c.get('now');
   const a = await loadAgent(c.env.DB, c.req.param('id'));
   const run = await startRun(c.env, a, 'manual', now);
