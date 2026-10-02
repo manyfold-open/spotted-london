@@ -8,7 +8,8 @@
 // Needs Node 22.18 or later, which runs the .ts imports below without a flag.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { CATEGORIES } from '../src/shared/categories.ts';
 import { proposeCategory, updateSql } from '../src/lib/recategorize.ts';
 
@@ -42,6 +43,24 @@ console.log(`${rows.length} pop-ups read from ${where.slice(2)}, ${proposals.fil
 console.log('Moves:');
 for (const [k, n] of Object.entries(moves).sort()) console.log(`  ${String(n).padStart(3)}  ${k}`);
 
+const changed = proposals.filter(p => p.from !== p.to);
+if (changed.length > 0) {
+  const grouped = {};
+  for (const p of changed) {
+    const key = `${p.from} -> ${p.to}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(p);
+  }
+  console.log(`\nAll changes (${changed.length}):`);
+  for (const key of Object.keys(grouped).sort()) {
+    for (const p of grouped[key]) {
+      const r = byId.get(p.id);
+      const status = p.sure ? '[sure]' : '[not sure]';
+      console.log(`  ${p.id}  ${r.status.padEnd(18)} ${p.from} -> ${p.to}  ${r.title}  |  ${r.host ?? ''}  (${p.why})  ${status}`);
+    }
+  }
+}
+
 const unsure = proposals.filter(p => !p.sure);
 console.log(`\nNot sure (${unsure.length}). Settle these in scripts/recategorize-overrides.json, then run again:`);
 for (const p of unsure) {
@@ -49,6 +68,13 @@ for (const p of unsure) {
   console.log(`  ${p.id}  ${r.status.padEnd(18)} ${p.from} -> ${p.to}  ${r.title}  |  ${r.host ?? ''}  (${p.why})`);
 }
 
-mkdirSync('.wrangler', { recursive: true });
-writeFileSync('.wrangler/recategorize.sql', updateSql(proposals));
-console.log('\nWrote .wrangler/recategorize.sql');
+const repoRoot = fileURLToPath(new URL('../.wrangler/', import.meta.url));
+mkdirSync(repoRoot, { recursive: true });
+const sql = updateSql(proposals);
+if (sql === '') {
+  rmSync(`${repoRoot}recategorize.sql`, { force: true });
+  console.log('\nNothing to change, no SQL written.');
+} else {
+  writeFileSync(`${repoRoot}recategorize.sql`, sql);
+  console.log('\nWrote .wrangler/recategorize.sql');
+}
