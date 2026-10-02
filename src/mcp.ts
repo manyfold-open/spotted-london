@@ -179,10 +179,10 @@ async function verifyEvidence(db: D1Database, quote: string, url: string): Promi
 
 const TOOLS: Record<string, Tool> = {
   search_popups: {
-    description: 'Search pop-ups in London listed on Spotted London: food, fashion, samples, art, markets, beauty and tech. Returns up to 20, soonest and most popular first, each with a link.',
+    description: 'Search pop-ups in London listed on Spotted London: food, supper clubs and residencies, markets and fairs, exhibitions, art pop-ups, events, fashion, sample sales, beauty and tech. Returns up to 20, soonest and most popular first, each with a link.',
     inputSchema: obj({
       when: S('Time window, London time. Defaults to week.', { enum: ['today', 'weekend', 'week', 'all'] }),
-      category: S('Only this category.', { enum: [...CATEGORIES] }),
+      category: S('Only this category. food: stalls, bars, tastings. dining: supper clubs, chef residencies, dinner series. market: markets and fairs, including art fairs. exhibition: gallery and museum shows. art: one-off installations and public art. event: lates, festivals, parties, talks.', { enum: [...CATEGORIES] }),
       query: S('Words to match in the title, host or area, like "matcha" or "Shoreditch".'),
       near_lat: N('Latitude to search around. Use with near_lng.'),
       near_lng: N('Longitude to search around. Use with near_lat.'),
@@ -397,7 +397,7 @@ const TOOLS: Record<string, Tool> = {
     inputSchema: obj({
       run_id: RUN_ID,
       title: S('Name of the pop-up, as the organiser writes it. 3 to 100 characters.'),
-      category: S('Best fitting category.', { enum: [...CATEGORIES] }),
+      category: S('Best fitting category. A dated dinner or residency by a chef or restaurant is dining, a stall, bar or tasting is food, a market of stalls or an art fair is market, a gallery or museum show is exhibition, a one-off installation or public art is art, a late, festival, party or talk is event. A brand shop stays fashion, beauty or tech, and a discount is sample. When none fits, other.', { enum: [...CATEGORIES] }),
       start_date: S('The real first day, YYYY-MM-DD, London. Give it even if it is in the past for a pop-up that is still running.'),
       end_date: S('Last day, YYYY-MM-DD, London. Same as start_date for one-day events. Must not have passed.'),
       lat: N('Latitude from find_place.'),

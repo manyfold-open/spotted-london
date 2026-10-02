@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 import { endExpired, settleKarma } from '../src/cron';
+import { CATEGORIES } from '../src/shared/categories';
 
 const DAY = 86_400_000, HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 8, 30, 13); // Wed 30 Sep 2026, 14:00 London
@@ -64,6 +65,17 @@ describe('creating pop-ups', () => {
     expect((await api('POST', '/popups', { user: u, body: popupBody({ end_at: NOW }) })).json.error.code).toBe('dates_invalid');
     expect((await api('POST', '/popups', { user: u, body: popupBody({ category: 'rave' }) })).json.error.code).toBe('category_invalid');
     expect((await api('POST', '/popups', { user: u, body: popupBody({ source_url: 'http://localhost/x' }) })).json.error.code).toBe('source_url_invalid');
+  });
+
+  it('accepts every category and names them all when one is wrong', async () => {
+    const boss = await user({ role: 'admin' });
+    for (const [i, category] of CATEGORIES.entries()) {
+      const r = await api('POST', '/popups', { user: boss, body: popupBody({ title: `Category check ${category} ${i}`, category, lat: 51.45 + i * 0.02, lng: -0.2 + i * 0.02 }) });
+      expect([category, r.status]).toEqual([category, 201]);
+    }
+    const bad = await api('POST', '/popups', { user: boss, body: popupBody({ category: 'rave' }) });
+    expect(bad.json.error.code).toBe('category_invalid');
+    for (const c of CATEGORIES) expect(bad.json.error.message).toContain(c);
   });
 
   it('flags likely duplicates unless forced', async () => {
@@ -170,6 +182,18 @@ describe('lists', () => {
     const near = (await api('GET', '/popups?when=all&near=51.4626,-0.1146&radius_km=1&sort=distance')).json.items;
     expect(near[0].title).toBe('Vintage kilo sale');
     expect(near[0].distance_m).toBeLessThan(50);
+  });
+
+  it('filters by several of the new categories at once', async () => {
+    const boss = await user({ role: 'admin' });
+    const make = (title: string, category: string, i: number) =>
+      api('POST', '/popups', { user: boss, body: popupBody({ title, category, lat: 51.4 + i * 0.03, lng: -0.3 + i * 0.03 }) });
+    await make('Zebra supper club', 'dining', 1);
+    await make('Zebra gallery show', 'exhibition', 2);
+    await make('Zebra street stall', 'food', 3);
+    const titles = async (q: string) => (await api('GET', `/popups?${q}&q=Zebra`)).json.items.map((p: any) => p.title).sort();
+    expect(await titles('when=all&category=dining,exhibition')).toEqual(['Zebra gallery show', 'Zebra supper club']);
+    expect(await titles('when=all&category=food')).toEqual(['Zebra street stall']);
   });
 });
 
