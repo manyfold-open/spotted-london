@@ -58,19 +58,19 @@ export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: st
     name: 'Scout',
     job: 'Finds new London pop-ups on the web and sends them in as drafts. Every draft waits in the review queue for you.',
     unit: 'drafts',
-    tools: ['list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run'],
+    tools: ['start_run', 'list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run'],
   },
   triage: {
     name: 'Triage',
     job: 'Checks each post waiting for review against its source on its own, and leaves you a note: looks real, needs a check, likely fake or duplicate. A post it confirmed with its own quote is marked ready to publish.',
     unit: 'notes',
-    tools: ['list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
+    tools: ['start_run', 'list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
   },
   checker: {
     name: 'Checker',
     job: 'Rechecks live pop-ups against their source links and flags the ones that were cancelled or changed dates or place.',
     unit: 'notes',
-    tools: ['list_live_popups', 'add_note', 'finish_run'],
+    tools: ['start_run', 'list_live_popups', 'add_note', 'finish_run'],
   },
 };
 

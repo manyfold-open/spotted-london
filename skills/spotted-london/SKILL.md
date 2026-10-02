@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.6.0
+version: 1.7.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -21,6 +21,8 @@ Write at most 20 drafts in this run. Pass run_id "3f9a1c2b7d4e5f60" to every too
 Notes from the admin: …
 ```
 
+Some runs are scheduled on Manyfold and start with a message like `Spotted London: scheduled Scout run.` with no run id. Then call `start_run` first. It returns your `run_id`, today's date in London, your limit and the admin's notes, written as the brief above. If a run of yours is still open you get that one back, so carry on with it. Pass the `run_id` to every tool that asks for it.
+
 Do the job in the section for your role, stay within the limit, and always end with `finish_run`.
 
 Several agents of your role may run at the same time. The list tools lease work to you: a source or
@@ -37,6 +39,7 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | Tool | Who | What it does |
 | --- | --- | --- |
 | `search_popups`, `get_popup` | everyone | Search and read what is already listed |
+| `start_run` | Scout, Triage, Checker | Start a scheduled run and get your run_id, limit and the admin's notes |
 | `list_sources` | Scout | Leases sources due a check (sites, venues, brands, social accounts, searches), with their track record |
 | `get_social_posts` | Scout | Instagram and Threads posts Spotted fetched for a social source, as leads |
 | `check_seen` | Scout | Which pages Scout already read in the last 30 days, or that are already on Spotted |

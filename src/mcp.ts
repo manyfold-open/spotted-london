@@ -10,7 +10,7 @@
 
 import { Hono, type Context } from 'hono';
 import type { AppEnv, PopupRow } from './types';
-import { AGENT_INFO, agentByKey, type AgentRow, type RunRow } from './db/agents';
+import { AGENT_INFO, agentByKey, brief as runBrief, RUN_TIMEOUT, type AgentRow, type RunRow } from './db/agents';
 import { findDuplicates, listPopups, parsePopupInput } from './routes/popups';
 import { searchPlaces, type WaitUntil } from './routes/geocode';
 import { toPublic } from './db/popups';
@@ -579,6 +579,22 @@ const TOOLS: Record<string, Tool> = {
       const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
       if (published) rebuildSnapshotSoon(x.c);
       return { saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}) };
+    },
+  },
+  start_run: {
+    description: 'Start your run when your message does not give you a run_id, which is the case for runs scheduled on Manyfold. Returns your run_id, today\'s date in London, your limit and the admin\'s notes, written as the brief a run normally starts with. If a run of yours is still open (started in the last 3 hours and not finished), you get that one back so you can carry on.',
+    inputSchema: obj({}),
+    async run(_a, x) {
+      const db = x.c.env.DB;
+      const agent = x.agent!;
+      const open = await db.prepare("SELECT * FROM agent_runs WHERE agent_id = ? AND status = 'running' AND started_at > ? ORDER BY started_at DESC LIMIT 1")
+        .bind(agent.id, x.now - RUN_TIMEOUT).first<RunRow>();
+      let id = open?.id;
+      if (!id) {
+        id = newId();
+        await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at) VALUES (?, ?, 'schedule', 'running', ?)").bind(id, agent.id, x.now).run();
+      }
+      return { run_id: id, resumed: !!open, items_used: open?.items ?? 0, limit: agent.max_items, brief: runBrief(agent, id, x.origin, x.now) };
     },
   },
   finish_run: {
