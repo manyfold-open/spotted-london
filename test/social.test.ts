@@ -61,6 +61,8 @@ beforeEach(async () => {
     env.DB.prepare('DELETE FROM social_runs'),
     env.DB.prepare('DELETE FROM scout_seen'),
     env.DB.prepare("DELETE FROM scout_sources WHERE id LIKE 'tsrc%'"),
+    // Later migrations seed more sources; keep only the first seed so list_sources limits stay predictable.
+    env.DB.prepare('DELETE FROM scout_sources WHERE created_at != 1790812800000'),
   ]);
 });
 
