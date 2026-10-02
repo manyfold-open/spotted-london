@@ -52,7 +52,7 @@ src/shared/             plain TS used by both the Worker and web/ (imported by r
 src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
 src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
-src/cron.ts             end expired, recompute hot, settle karma, purge, reminders (stub), start/check agent runs, fetch Instagram/Threads posts
+src/cron.ts             end expired, hourly recompute hot (writes only rows that moved 0.01+), settle karma, purge, reminders (stub), start/check agent runs, fetch Instagram/Threads posts
 src/mcp.ts              MCP server at POST /mcp: public search tools, agent tools behind a per-agent key
 src/db/publish.ts       publish what agents verified (batch or auto), undo by agent, per-agent publish stats, the auto_publish setting
 src/db/agents.ts        AI agents on Manyfold, many per role (scout, triage, checker): schedules, briefs, run life cycle

@@ -13,13 +13,13 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
     case '*/10 * * * *':
       await endExpired(env.DB, now);
       await buildPopupSnapshot(env.DB, now).catch(e => console.error('snapshot cron failed', e));
-      await recomputeHot(env.DB, now);
       // AI agents on Manyfold: check open runs, start the ones that are due (SPEC §13.4)
       await runAgents(env, now).catch(e => console.error('agents cron failed', e));
       // Instagram and Threads posts for Scout, through Apify (does nothing until APIFY_TOKEN is set)
       await runSocial({ db: env.DB, token: env.APIFY_TOKEN }, now).catch(e => console.error('social cron failed', e));
       break;
     case '0 * * * *':
+      await recomputeHot(env.DB, now);
       await reminders(env.DB, now);
       break;
     case '0 4 * * *':
@@ -43,16 +43,23 @@ export async function endExpired(db: D1Database, now: number) {
   ]);
 }
 
-/** Hot decays with time, so it is refreshed for everything still upcoming or live. */
+/** Smallest change in hot worth a write. Hot sits in an index, so every UPDATE costs two rows written. */
+const HOT_EPSILON = 0.01;
+
+/**
+ * Hot decays with time, so it is refreshed for everything still upcoming or live.
+ * Only rows that moved by HOT_EPSILON or more are written. Returns how many were.
+ */
 export async function recomputeHot(db: D1Database, now: number) {
   const { results } = await db.prepare(
-    "SELECT id, status, quality_pos, quality_neg, start_at, end_at FROM popups WHERE end_at >= ? AND status IN ('community', 'verified_community', 'verified_admin')",
-  ).bind(now).all<Pick<PopupRow, 'id' | 'status' | 'quality_pos' | 'quality_neg' | 'start_at' | 'end_at'>>();
-  const stmts = results.map(p =>
-    db.prepare('UPDATE popups SET hot = ? WHERE id = ?').bind(hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, startAt: p.start_at, endAt: p.end_at }, now), p.id),
-  );
+    "SELECT id, status, quality_pos, quality_neg, start_at, end_at, hot FROM popups WHERE end_at >= ? AND status IN ('community', 'verified_community', 'verified_admin')",
+  ).bind(now).all<Pick<PopupRow, 'id' | 'status' | 'quality_pos' | 'quality_neg' | 'start_at' | 'end_at' | 'hot'>>();
+  const stmts = results.flatMap(p => {
+    const h = hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, startAt: p.start_at, endAt: p.end_at }, now);
+    return Math.abs(h - p.hot) >= HOT_EPSILON ? [db.prepare('UPDATE popups SET hot = ? WHERE id = ?').bind(h, p.id)] : [];
+  });
   for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
-  return results.length;
+  return stmts.length;
 }
 
 /**
