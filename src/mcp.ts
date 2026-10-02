@@ -168,6 +168,12 @@ async function userRows(db: D1Database, ids: string[]): Promise<Map<string, { di
   return new Map(results.map(u => [u.id, u]));
 }
 
+/**
+ * A Scout draft sent before Spotted checked Scout quotes (migration 0007) has no evidence_check. Zack decided on
+ * 2026-10-02 that the Triage agent's own found quote is enough for these: the Scout quote and confidence checks are skipped.
+ */
+const isLegacyDraft = (p: { created_by: string; evidence_check: string | null }) => p.created_by.startsWith('agent_') && p.evidence_check === null;
+
 /** Social platforms need a login to read, so a quote from one is checked only against posts Spotted fetched itself. */
 const SOCIAL_HOSTS = /(^|\.)(instagram\.com|instagr\.am|threads\.net|threads\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com)$/;
 
@@ -412,7 +418,7 @@ const TOOLS: Record<string, Tool> = {
       source_url: S('Public link where the details are published: the organiser page, ticket page or article. Or the Instagram or Threads post, when no organiser page exists.'),
       evidence: S(`A passage copied word for word from the page or post, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Spotted looks for it there and refuses the draft if it is not found.`),
       evidence_url: S('The page or post the evidence comes from. Defaults to source_url.'),
-      confidence: S('high: dates and place confirmed by the organiser. check: something is unclear.', { enum: ['high', 'check'] }),
+      confidence: S('high: dates and place confirmed by the organiser or venue page, or by two independent pages that agree; missing hours or price does not matter. check: dates or place come from one page or search snippets only, or pages disagree.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
       source_id: S('Id from list_sources of the source that led you here, if any.'),
@@ -473,12 +479,16 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_review_queue: {
-    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
+    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. Older Scout drafts that no Triage note has quoted the page for come back once a day for another look. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
+      // A legacy draft (see isLegacyDraft) comes back once a day until a Triage note on it carries the agent's own quote.
       const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
-        AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))`, 'p.created_at', x.now);
+        AND (NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))
+          OR (substr(p.created_by, 1, 6) = 'agent_' AND p.evidence_check IS NULL
+            AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)
+              AND (n.created_at >= ?3 OR n.evidence IS NOT NULL OR n.verdict NOT IN ('looks_real', 'needs_check')))))`, 'p.created_at', x.now - DAY);
       const posters = await userRows(x.c.env.DB, results.map(p => p.created_by));
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
@@ -552,15 +562,16 @@ const TOOLS: Record<string, Tool> = {
       // Ready to publish only when every condition holds. The reasons come back so the agent can fix them.
       const why: string[] = [];
       let ready = false;
-      if (verdict === 'looks_real' && (quote || a.dates_match !== undefined || a.place_match !== undefined)) {
+      // On a waiting post, looks_real always gets the reasons back, so an agent that left out its quote learns to send it.
+      if (verdict === 'looks_real' && (p.status === 'pending' || quote || a.dates_match !== undefined || a.place_match !== undefined)) {
         if (p.status !== 'pending') why.push('only posts waiting for review can be published');
-        if (!quote) why.push('give evidence');
+        if (!quote) why.push('give evidence: a passage copied word for word from the page, with dates_match and place_match; putting it in the note is not enough');
         else if (evidenceCheck !== 'found') why.push('Spotted could not read that page to find your quote, so a person has to look');
         if (a.dates_match !== true) why.push('dates_match must be true');
         if (a.place_match !== true) why.push('place_match must be true');
         if (p.created_by === x.agent!.user_id) why.push('you cannot publish your own post');
         if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) why.push('the post contains text aimed at AI agents, so a person has to look');
-        if (p.created_by.startsWith('agent_')) {
+        if (p.created_by.startsWith('agent_') && !isLegacyDraft(p)) {
           if (p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
           const scout = await db.prepare("SELECT verdict FROM agent_notes WHERE popup_id = ? AND agent_id IN (SELECT id FROM agents WHERE user_id = ?) ORDER BY created_at LIMIT 1").bind(p.id, p.created_by).first<{ verdict: string }>();
           if (scout?.verdict !== 'looks_real') why.push('the Scout was not sure (confidence check)');
@@ -575,6 +586,13 @@ const TOOLS: Record<string, Tool> = {
          ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, evidence = excluded.evidence,
            publish_ready = excluded.publish_ready, duplicate_of = excluded.duplicate_of`,
       ).bind(newId(), x.agent!.id, run.id, p.id, verdict, note, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
+      if (isLegacyDraft(p) && x.agent!.role === 'triage') {
+        // The second look replaces the first Triage note, and a ready one also the Scout's old "not sure" note.
+        await db.prepare(
+          `UPDATE agent_notes SET resolved_at = ?1 WHERE popup_id = ?2 AND run_id != ?3 AND resolved_at IS NULL
+             AND (agent_id IN (SELECT id FROM agents WHERE role = 'triage') OR (?4 AND agent_id IN (SELECT id FROM agents WHERE user_id = ?5)))`,
+        ).bind(x.now, p.id, run.id, ready ? 1 : 0, p.created_by).run();
+      }
       // In auto mode the server publishes at once; the same conditions are checked again against every open note.
       const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
       if (published) rebuildSnapshotSoon(x.c);

@@ -540,6 +540,46 @@ describe('agent runs', () => {
     expect((await call('POST', '/admin/queue/publish-ready', { user: admin, body: {} })).json.published).toBe(0);
   });
 
+  it('brings a draft sent before quotes were checked back until Triage quotes the page, and lets that quote alone make it ready', async () => {
+    const scoutKey = await connect('scout');
+    const scoutRun = await startRun('scout');
+    const triageKey = await connect('triage');
+    const page = () => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Supper club on Saturday 3 October at Ouna</p>', { headers: { 'content-type': 'text/html' } }));
+    page();
+    const sent = await tool('submit_draft', draft(scoutRun, { title: 'Legacy Supper Club', lat: 51.59, lng: -0.17, confidence: 'check', evidence: 'Supper club on Saturday 3 October', evidence_url: 'https://legacy.test/p' }), scoutKey);
+    const id = sent.structuredContent.id as string;
+    // as it was before migration 0007, with a Triage note from two days ago that did not make it ready
+    await env.DB.batch([
+      env.DB.prepare('UPDATE popups SET evidence_check = NULL WHERE id = ?').bind(id),
+      env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, finished_at) VALUES ('old-triage-run', 'triage', 'schedule', 'done', ?, ?)").bind(NOW - 2 * DAY, NOW - 2 * DAY),
+      env.DB.prepare("INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, publish_ready, created_at) VALUES ('old-triage', 'triage', 'old-triage-run', ?, 'looks_real', 'Looks fine.', 0, ?)").bind(id, NOW - 2 * DAY),
+    ]);
+
+    const run = await startRun('triage');
+    page();
+    const ids = async () => (await tool('list_review_queue', { run_id: run }, triageKey)).structuredContent.posts.map((p: { id: string }) => p.id);
+    expect(await ids()).toContain(id);
+
+    // a looks_real without its own quote is told why, and the post waits a day before it comes back
+    const bare = await tool('add_note', { run_id: run, popup_id: id, verdict: 'looks_real', note: 'Page says "Supper club on Saturday 3 October".' }, triageKey);
+    expect(bare.structuredContent.publish_ready).toBe(false);
+    expect(bare.structuredContent.not_ready_because[0]).toMatch(/^give evidence/);
+    expect(await ids()).not.toContain(id);
+    await env.DB.prepare('UPDATE agent_notes SET created_at = ? WHERE run_id = ? AND popup_id = ?').bind(NOW - 2 * DAY, run, id).run();
+    expect(await ids()).toContain(id);
+
+    const r = await tool('add_note', { run_id: run, popup_id: id, verdict: 'looks_real', note: 'Checked.', evidence: 'Supper club on Saturday 3 October at Ouna', evidence_url: 'https://legacy.test/p', dates_match: true, place_match: true }, triageKey);
+    expect(r.structuredContent).toMatchObject({ saved: true, publish_ready: true });
+    expect(r.structuredContent.not_ready_because).toBeUndefined();
+
+    // the old Triage note and the Scout's "not sure" note are replaced, so it is ready, and it does not come back again
+    const open = await env.DB.prepare('SELECT agent_id FROM agent_notes WHERE popup_id = ? AND resolved_at IS NULL').bind(id).all<{ agent_id: string }>();
+    expect(open.results.map(n => n.agent_id)).toEqual(['triage']);
+    const item = (await call('GET', '/admin/queue', { user: admin })).json.items.find((p: { id: string }) => p.id === id);
+    expect(item.ready_to_publish).toBe(true);
+    expect(await ids()).not.toContain(id);
+  });
+
   it('publishes at once in auto mode, and takes back what an agent published, except posts people voted on', async () => {
     await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE status = 'community' AND created_by LIKE 'agent\\_%' ESCAPE '\\'").run(); // earlier tests' publishes
     const scoutKey = await connect('scout');
