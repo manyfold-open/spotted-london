@@ -7,6 +7,9 @@ import { SESSION_COOKIE } from './lib/auth';
 
 const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 
+/** GET routes that never read the user, so the session lookup is skipped for them. */
+const PUBLIC_PATHS = new Set(['/api/v1/popups']);
+
 /**
  * Loads the signed-in user.
  * - `sid` session cookie from sign in; the database only holds its SHA-256.
@@ -15,6 +18,12 @@ const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 export const session = createMiddleware<AppEnv>(async (c, next) => {
   const pinned = isDev(c) ? Number(c.req.header('x-now')) : NaN;
   c.set('now', Number.isFinite(pinned) && pinned > 0 ? pinned : Date.now());
+
+  // The public list is the same for everyone, so it does not need to know who is asking.
+  if (c.req.method === 'GET' && PUBLIC_PATHS.has(c.req.path.replace(/\/+$/, ''))) {
+    c.set('user', null);
+    return next();
+  }
 
   let user: UserRow | null = null;
   const devUser = isDev(c) ? c.req.header('x-dev-user') : undefined;

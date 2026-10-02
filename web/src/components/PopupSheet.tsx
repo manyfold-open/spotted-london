@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useLocation } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Popup } from '../lib/api';
-import { fromLists, patchPopup, popupQuery, withMe } from '../lib/cache';
+import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib/cache';
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { bump, haptic, isPhone } from '../lib/motion';
@@ -177,6 +177,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
 
   const after = (status_change: { from: string; to: string } | null) => {
     qc.invalidateQueries({ queryKey: ['popups'] });
+    qc.invalidateQueries({ queryKey: MY_STATE_KEY, refetchType: 'none' });
     if (status_change?.to === 'hidden') {
       // It is no longer public, so reloading it would 404. Close and say what happened.
       toast('Thanks. Your vote hid this pop-up and sent it to an admin.', 'i-flag');
@@ -191,7 +192,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const exist = useMutation({
     scope: { id: `exist-${p.id}` },
     mutationFn: (value: number) => api<{ popup: Popup; status_change: { from: string; to: string } | null }>(`/popups/${p.id}/vote`, { method: 'PUT', json: { kind: 'existence', value } }),
-    onMutate: value => { haptic(); return patchPopup(qc, p.id, x => withMe(x, { existence_vote: value })); },
+    onMutate: value => { haptic(); return patchMe(qc, p.id, { existence_vote: value }); },
     onSuccess: (d, value) => {
       patchPopup(qc, p.id, x => ({ ...x, verification: d.popup.verification, status: d.popup.status }));
       if (value && !d.status_change) toast(`Vote counted at ${weight.toFixed(1)}x`);
