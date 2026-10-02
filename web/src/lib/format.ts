@@ -1,12 +1,10 @@
-import type { Category, Popup, Status } from './api';
+import type { Popup, Status } from './api';
 import type { IconName } from '../components/Icon';
+import { CATEGORIES, CATEGORY_LABELS, type Category } from '../../../src/shared/categories';
 
-export const CATS: Record<Category, string> = {
-  food: 'Food & Drink', fashion: 'Fashion', sample: 'Sample Sale', art: 'Art & Culture',
-  market: 'Market', beauty: 'Beauty', tech: 'Tech', other: 'Other',
-};
-export const CAT_LIST = Object.keys(CATS) as Category[];
-export const catIcon = (c: Category) => `c-${c}` as IconName;
+export const CATS: Record<Category, string> = CATEGORY_LABELS;
+export const CAT_LIST: Category[] = [...CATEGORIES];
+export const catIcon = (c: Category): IconName => `c-${c}`;
 
 const TZ = 'Europe/London';
 const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });

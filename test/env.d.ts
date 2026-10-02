@@ -5,3 +5,8 @@ declare namespace Cloudflare {
     AGENT_ADMIN_TOKEN: string;
   }
 }
+
+declare module '*?raw' {
+  const text: string;
+  export default text;
+}

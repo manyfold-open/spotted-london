@@ -10,6 +10,7 @@
     "db:migrate": "wrangler d1 migrations apply spotted-db --local",
     "db:seed": "wrangler d1 execute spotted-db --local --file=./seed/seed.sql",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate && npm run db:seed",
+    "recategorize": "node scripts/recategorize.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",

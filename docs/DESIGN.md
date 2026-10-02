@@ -39,7 +39,7 @@ State pairs (text on background):
 | Example data | `.t-sim` | `#553095` | `#ebe0fa` |
 | On now | `.t-new` | `--card` | `--accent` |
 
-Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top.
+Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top. Related categories share a tint and differ by hatch: food (diagonal) and dining (cross-hatch) are orange, exhibition (stripes) and art (dots) are blue. The eleven keys live in `src/shared/categories.ts`, and a new one needs a symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule, which `test/category-assets.test.ts` enforces.
 
 ## Typography
 

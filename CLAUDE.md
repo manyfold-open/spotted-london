@@ -48,7 +48,7 @@ src/lib/extract.ts      paste-a-link autofill parsing (JSON-LD, Open Graph, LLM 
 src/lib/time.ts         Europe/London calendar maths (BST safe)
 src/db/popups.ts        recompute(): aggregates + status after every vote/check-in/report
 src/db/snapshot.ts      the public list as one row in `snapshots` (key 'popups'): built by cron and by waitUntil when a pop-up enters or leaves the public set; GET /popups/snapshot sends it as stored
-src/shared/             plain TS used by both the Worker and web/ (imported by relative path): filterPopups (the browser-side twin of listPopups; test/snapshot.test.ts keeps them equal), my-state
+src/shared/             plain TS used by both the Worker and web/ (imported by relative path): filterPopups (the browser-side twin of listPopups; test/snapshot.test.ts keeps them equal), my-state, categories (the one list of pop-up categories)
 src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
 src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
@@ -99,9 +99,10 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
 - The social fetcher (`src/db/social.ts`) never writes `scout_sources.due_at` or `last_checked_at`; those are Scout's clock. Its own clock is `social_runs`. The Apify cap (US$4 in any rolling 30 days) is `SOCIAL_MONTHLY_BUDGET_USD`; Instagram and Threads actors and prices live in `src/lib/social.ts`.
 - The public list (`GET /popups`, `/popups/snapshot`) is the same for everyone and skips the session lookup: never put per-user data in it. Your saves and votes come from `GET /me/state` and are laid over the list in the browser (`mergeMe`). Change a list filter in both `listPopups` and `filterPopups`, or the old/new comparison test fails.
+- Categories live only in `src/shared/categories.ts`. A new key needs, in the same change: a migration that rebuilds `popups` to widen its CHECK (SQLite cannot alter one, so park the rows in a copy table, drop `popups`, recreate it under the same name, insert the rows back and drop the copy, with `PRAGMA defer_foreign_keys = on`. Never rename: a rename leaves the deferred foreign-key violations raised by the drop uncleared and the commit fails once any child row exists. See `migrations/0014_categories.sql`), an icon symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule in `styles.css`. `test/categories.test.ts` and `test/category-assets.test.ts` fail when one is missing. The tie-break rules are in `skills/spotted-london/SKILL.md` and in the `submit_draft` category text in `src/mcp.ts`: keep them in step.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
-- Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.
+- Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons. The category icons for dining, art and event are drawn in-house as strokes, not Koboyo.
 - No native browser UI: dates use `web/src/components/DatePicker.tsx`, forms use `noValidate` with our own `.ferr` messages, and inputs are 16 px on phones so iOS does not zoom.
 - Phone layout is under 900 px (`@media (max-width: 899px)`): a menu button instead of a sidebar or tabs, bottom sheets. Check every screen at 375 px. On the home page nothing may overlap: chips, locate/Add buttons, toasts, the map's attribution and the sheet each have their own space (see `docs/superpowers/specs/2026-10-02-map-home-design.md`, "No-overlap rules").
 - The map home never sends your position anywhere: `useNearMe` keeps it in memory, `localStorage spotted.near` only remembers whether you agreed. Map chrome uses `mp-` class names because `.drawer`, `.scrim`, `.panel`, `.me`, `.nav` mean other things.
@@ -129,7 +130,7 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 - Optional secret `APIFY_TOKEN` (not set yet): turns on Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month; we cap at US$4 in any 30 days. Posts and runs are in `social_posts` and `social_runs` (migration 0006).
 - AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
-- Live data is fictional examples (`is_example = 1`, labelled, noindex). Clear before launch with `seed/clear-examples.sql`.
+- The fictional examples (`is_example = 1`) were cleared on 2026-10-02 with `seed/clear-examples.sql`, so production holds only real pop-ups. The column and the Example label stay.
 
 ## Status and next steps
 

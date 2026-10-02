@@ -4,8 +4,8 @@
 
 import { boxAround, haversine } from '../lib/geo';
 import { windowFor, type When } from '../lib/time';
+import { CATEGORIES, isCategory } from './categories';
 
-const CATEGORIES = ['food', 'fashion', 'sample', 'art', 'market', 'beauty', 'tech', 'other'];
 const PUBLIC = ['community', 'verified_community', 'verified_admin'];
 const VERIFIED = ['verified_community', 'verified_admin'];
 
@@ -29,7 +29,7 @@ export function filterPopups<T extends ListItem>(all: T[], q: Record<string, str
   let rows = all.filter(p => p.end_at > from && p.start_at < to && statuses.includes(p.status));
 
   if (q.category) {
-    const cats = q.category.split(',').filter(x => CATEGORIES.includes(x));
+    const cats: string[] = q.category.split(',').filter(isCategory);
     if (!cats.length) throw new Error(`Category must be one of: ${CATEGORIES.join(', ')}.`);
     rows = rows.filter(p => cats.includes(p.category));
   }

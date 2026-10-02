@@ -5,6 +5,7 @@ import { linkKind, normalizeUrl } from '../src/db/scout';
 import { purgeScoutSeen } from '../src/cron';
 import { checkRpcUrl, readResult } from '../src/lib/a2a';
 import { seal, unseal } from '../src/lib/seal';
+import { CATEGORIES } from '../src/shared/categories';
 
 const DAY = 86_400_000, HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 8, 30, 13); // Wed 30 Sep 2026, 14:00 London (BST)
@@ -98,6 +99,13 @@ describe('MCP server, public', () => {
     expect(init.json.result.capabilities.tools).toBeTruthy();
     const list = await mcp('tools/list', {});
     expect(list.json.result.tools.map((t: { name: string }) => t.name)).toEqual(['search_popups', 'get_popup']);
+  });
+
+  it('offers every category in the search filter and explains the new ones', async () => {
+    const search = (await mcp('tools/list', {})).json.result.tools.find((t: { name: string }) => t.name === 'search_popups');
+    expect(search.inputSchema.properties.category.enum).toEqual([...CATEGORIES]);
+    expect(search.inputSchema.properties.category.description).toMatch(/dining/);
+    expect(search.description).toMatch(/exhibitions/);
   });
 
   it('answers notifications with 202 and no body', async () => {

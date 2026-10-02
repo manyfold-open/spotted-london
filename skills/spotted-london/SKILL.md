@@ -89,9 +89,24 @@ launch events open to walk-ins, tastings.
 No: permanent openings, concerts, theatre, club nights, conferences, classes, private or invite-only
 events, online-only sales, anything outside Greater London.
 
-Categories: `food` (food and drink), `fashion` (clothing, shoes, vintage), `sample` (sample sales and
-brand giveaways), `art` (exhibitions, installations), `market` (markets and fairs), `beauty`,
-`tech`, `other`.
+Categories, one per pop-up:
+
+- `food`: pop-up restaurants, stalls, bars, bakeries, tastings.
+- `dining`: supper clubs, chef residencies and takeovers, dinner series, festival dinners.
+- `market`: street-food, craft, vintage and design markets, and art and design fairs.
+- `exhibition`: gallery and museum shows.
+- `art`: one-off installations, public art, sculpture trails, immersive work.
+- `event`: museum lates, festivals, anniversary parties, talks.
+- `fashion` (clothing, shoes, vintage), `sample` (sample sales and brand giveaways), `beauty`, `tech`.
+- `other`: anything that fits nothing above.
+
+When two fit, use these rules in order:
+
+1. A meal or drinks night run by a named chef or restaurant at a venue, with a set menu or a dated series, is `dining`. A stall, bar, bakery or tasting open to walk-ins is `food`. A market of several food stalls is `market`.
+2. An art fair is `market`. A show of works in a gallery or museum, even a short one, is `exhibition`. A one-off piece, trail or installation in a shop, street or park is `art`.
+3. Something with a programme or a crowd rather than a thing to see or buy (a museum late, a festival day, an anniversary party, a talk) is `event`.
+4. A brand's temporary shop stays `fashion`, `beauty` or `tech`. If the point is a discount, it is `sample`.
+5. Otherwise pick the one a reader would browse under. When none fits, `other`.
 
 ## Scout
 
