@@ -280,7 +280,7 @@ describe('agent runs', () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
     const tools = (await mcp('tools/list', {}, key)).json.result.tools.map((t: { name: string }) => t.name);
-    expect(tools).toEqual(['search_popups', 'get_popup', 'list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run']);
+    expect(tools).toEqual(['search_popups', 'get_popup', 'start_run', 'list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run']);
 
     const sent = await tool('submit_draft', draft(runId), key);
     expect(sent.structuredContent).toMatchObject({ sent: true, status: 'pending' });
@@ -665,6 +665,37 @@ describe('agent runs', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Closed</p>', { headers: { 'content-type': 'text/html' } }));
     const refused = await tool('submit_draft', draft(runId, { title: 'Short Page Sale', lat: 51.46, lng: -0.21, evidence: 'Open 7 and 8 November at Coal Drops Yard', evidence_url: 'https://short.test/p', source_url: 'https://short.test/p' }), key);
     expect(refused.isError).toBe(true);
+  });
+
+  it('starts a run from the agent side for runs scheduled on Manyfold, and carries on an open one', async () => {
+    const key = await connect('scout');
+    await call('PATCH', '/admin/agents/scout', { user: admin, body: { instructions: 'Venues only.', max_items: 7 } });
+    const first = (await tool('start_run', {}, key)).structuredContent;
+    expect(first).toMatchObject({ resumed: false, items_used: 0, limit: 7 });
+    expect(first.brief).toContain(`run_id "${first.run_id}"`);
+    expect(first.brief).toContain('Venues only.');
+    expect(first.brief).toContain('Write at most 7 drafts');
+
+    // the run id works for the other tools, and asking again carries on the same run
+    const sent = await tool('submit_draft', draft(first.run_id, { title: 'Scheduled Run Sale', lat: 51.43, lng: -0.22 }), key);
+    expect(sent.structuredContent.sent).toBe(true);
+    const again = (await tool('start_run', {}, key)).structuredContent;
+    expect(again).toMatchObject({ run_id: first.run_id, resumed: true, items_used: 1 });
+
+    // after finish_run the next start is a new run, recorded as scheduled
+    await tool('finish_run', { run_id: first.run_id, summary: 'Done.' }, key);
+    const next = (await tool('start_run', {}, key)).structuredContent;
+    expect(next.run_id).not.toBe(first.run_id);
+    const row = await env.DB.prepare('SELECT trigger, status FROM agent_runs WHERE id = ?').bind(next.run_id).first<any>();
+    expect(row).toMatchObject({ trigger: 'schedule', status: 'running' });
+
+    // a run that never finished is not carried on after three hours
+    const late = await mcp('tools/call', { name: 'start_run', arguments: {} }, key, NOW + 4 * HOUR);
+    expect(late.json.result.structuredContent.run_id).not.toBe(next.run_id);
+
+    // every role can start a run
+    const tk = await connect('triage');
+    expect((await tool('start_run', {}, tk)).structuredContent.limit).toBeGreaterThan(0);
   });
 
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
