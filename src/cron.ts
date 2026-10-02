@@ -6,11 +6,13 @@ import { awardKarma } from './db/karma';
 import { runAgents } from './db/agents';
 import { SEEN_KEEP } from './db/scout';
 import { purgeSocial, runSocial } from './db/social';
+import { buildPopupSnapshot } from './db/snapshot';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
     case '*/10 * * * *':
       await endExpired(env.DB, now);
+      await buildPopupSnapshot(env.DB, now).catch(e => console.error('snapshot cron failed', e));
       // AI agents on Manyfold: check open runs, start the ones that are due (SPEC §13.4)
       await runAgents(env, now).catch(e => console.error('agents cron failed', e));
       // Instagram and Threads posts for Scout, through Apify (does nothing until APIFY_TOKEN is set)

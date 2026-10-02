@@ -10,6 +10,7 @@ import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_ROLES, AGENTS_PER_ROLE_MAX, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
 import { publishMode, publishStats, setPublishMode, undoAgent } from '../db/publish';
+import { rebuildSnapshotSoon } from '../db/snapshot';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
@@ -80,6 +81,7 @@ agentsAdmin.post('/:id/undo', async c => {
   const hours = num(b, 'hours', { required: true, min: 1, max: 24 * 90 })!;
   const result = await undoAgent(db, a, now - hours * 3_600_000, admin.id, now);
   await audit(db, admin.id, 'agent.undo', 'agent', a.id, { hours, reverted: result.reverted, skipped: result.skipped.length }, now);
+  if (result.reverted) rebuildSnapshotSoon(c);
   return c.json(result);
 });
 

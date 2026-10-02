@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { api, listQuery, type Popup } from '../lib/api';
+import { api, listParams, type Popup } from '../lib/api';
+import { filterPopups } from '../../../src/shared/filter-popups';
 import { CAT_LIST, CATS, catIcon, fmtDay, isLive, looksLikeEmail } from '../lib/format';
 import { mergeMe } from '../lib/cache';
 import { currentPosition, useDebounced, useErrorToast, useFilters, useMe, useMyState } from '../lib/hooks';
@@ -10,19 +11,31 @@ import { CardSkeletons, PopupCard } from '../components/PopupBits';
 
 const WHENS = [['today', 'Today'], ['weekend', 'This weekend'], ['week', 'Next 7 days'], ['all', 'All upcoming']] as const;
 
+/**
+ * The public list is fetched once, whole, and filtered here, so changing a filter or typing in the search
+ * box sends no request. The key starts with 'popups', so the places that refresh or patch lists reach it.
+ */
 export function usePopups(near?: [number, number] | null) {
   const f = useFilters();
-  const q = useDebounced(f.q, 250); // one request when typing pauses, not one per letter
-  const params = { when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) };
-  const res = useQuery({
-    queryKey: ['popups', params],
-    queryFn: () => api<{ items: Popup[] }>(`/popups?${listQuery(params)}`),
-    placeholderData: prev => prev,
+  const q = useDebounced(f.q, 250);
+  const snap = useQuery({
+    queryKey: ['popups', 'snapshot'],
+    // revalidate with the ETag: one row read when nothing changed, and a pop-up you just added shows up
+    queryFn: () => api<{ items: Popup[] }>('/popups/snapshot', { cache: 'no-cache' }),
+    staleTime: 60_000,
   });
-  // The list is the same for everyone; your saves and votes come separately and are laid over it here.
   const mine = useMyState();
-  const data = useMemo(() => res.data && { ...res.data, items: mergeMe(res.data.items, mine) }, [res.data, mine]);
-  return { ...res, data };
+  const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
+  useEffect(() => { const t = setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 60_000); return () => clearInterval(t); }, []); // "today" and "on now" move with the clock
+  const [lat, lng] = near ?? [];
+  const data = useMemo(() => {
+    if (!snap.data) return undefined;
+    const params = listParams({ when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) });
+    const page = filterPopups(snap.data.items, params, Date.now());
+    return { ...page, items: mergeMe(page.items, mine) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is rebuilt on every render; lat and lng stand in for it
+  }, [snap.data, f.when, f.category, f.verified, q, lat, lng, mine, minute]);
+  return { ...snap, data };
 }
 
 export function Filters({ near, setNear }: { near?: [number, number] | null; setNear?: (v: [number, number] | null) => void }) {
