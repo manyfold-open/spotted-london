@@ -47,6 +47,8 @@ src/lib/scoring.ts      ALL verification rules: vote weight, Wilson, status tran
 src/lib/extract.ts      paste-a-link autofill parsing (JSON-LD, Open Graph, LLM prompt/schema)
 src/lib/time.ts         Europe/London calendar maths (BST safe)
 src/db/popups.ts        recompute(): aggregates + status after every vote/check-in/report
+src/db/snapshot.ts      the public list as one row in `snapshots` (key 'popups'): built by cron and by waitUntil when a pop-up enters or leaves the public set; GET /popups/snapshot sends it as stored
+src/shared/             plain TS used by both the Worker and web/ (imported by relative path): filterPopups (the browser-side twin of listPopups; test/snapshot.test.ts keeps them equal), my-state
 src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
 src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
@@ -94,6 +96,7 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - Agent secrets are write-only: the Manyfold token is sealed with `AGENTS_KEY`, Spotted keys are stored as SHA-256, and the API returns only the last four characters.
 - Changing an MCP tool's name or inputs means updating `skills/spotted-london/SKILL.md` and `AGENT_INFO` in `src/db/agents.ts`.
 - The social fetcher (`src/db/social.ts`) never writes `scout_sources.due_at` or `last_checked_at`; those are Scout's clock. Its own clock is `social_runs`. The Apify cap (US$4 in any rolling 30 days) is `SOCIAL_MONTHLY_BUDGET_USD`; Instagram and Threads actors and prices live in `src/lib/social.ts`.
+- The public list (`GET /popups`, `/popups/snapshot`) is the same for everyone and skips the session lookup: never put per-user data in it. Your saves and votes come from `GET /me/state` and are laid over the list in the browser (`mergeMe`). Change a list filter in both `listPopups` and `filterPopups`, or the old/new comparison test fails.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.

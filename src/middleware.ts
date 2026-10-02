@@ -8,7 +8,7 @@ import { SESSION_COOKIE } from './lib/auth';
 const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 
 /** GET routes that never read the user, so the session lookup is skipped for them. */
-const PUBLIC_PATHS = new Set(['/api/v1/popups']);
+const PUBLIC_PATHS = new Set(['/api/v1/popups', '/api/v1/popups/snapshot']);
 
 /**
  * Loads the signed-in user.

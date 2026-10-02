@@ -8,6 +8,7 @@ import { boxAround, CHECKIN_RADIUS_M, geohash, haversine, inLondon } from '../li
 import { DAY, hot, initialStatus, KARMA, PUBLIC_STATUSES, voteWeight } from '../lib/scoring';
 import { MAX_DURATION, windowFor, type When } from '../lib/time';
 import { recompute, toPublic } from '../db/popups';
+import { buildPopupSnapshot, entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 import { awardKarma } from '../db/karma';
 
 export const popups = new Hono<AppEnv>();
@@ -91,6 +92,20 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
   };
 }
 
+/* ---------- GET /popups/snapshot ---------- */
+// The whole public list as one stored string, forwarded as it is (the Worker has about 10 ms of CPU, so no
+// JSON.parse). The browser filters it. Registered before /:id so "snapshot" is not read as a pop-up id.
+popups.get('/snapshot', async c => {
+  const row = await c.env.DB.prepare("SELECT version, json FROM snapshots WHERE key = 'popups'").first<{ version: string; json: string }>();
+  // Nothing stored yet (first deploy) or it was too big to store: build one now and send that.
+  const { version, json } = row ?? await buildPopupSnapshot(c.env.DB, c.get('now'));
+  const etag = `"${version}"`;
+  const sent = (c.req.header('if-none-match') ?? '').split(',').map(t => t.trim().replace(/^W\//, ''));
+  const headers = { etag, 'cache-control': 'public, max-age=60' };
+  if (sent.includes(etag) || sent.includes('*')) return c.body(null, 304, headers);
+  return c.body(json, 200, { ...headers, 'content-type': 'application/json; charset=utf-8' });
+});
+
 /* ---------- GET /popups/:idOrSlug ---------- */
 popups.get('/:id', async c => {
   const p = await load(c.env.DB, c.req.param('id'));
@@ -157,6 +172,7 @@ popups.post('/', async c => {
     db.prepare("INSERT INTO votes (user_id, popup_id, kind, value, weight, created_at) VALUES (?, ?, 'quality', 1, 1, ?)").bind(u.id, id, now),
   ]);
   const created = await load(db, id);
+  if (PUBLIC_STATUSES.includes(status)) rebuildSnapshotSoon(c);
   return c.json(toPublic(created), 201);
 });
 
@@ -192,7 +208,8 @@ popups.patch('/:id', async c => {
   // Changing where or when a pop-up is invalidates what people confirmed (SPEC §3.2).
   if (moved) stmts.push(c.env.DB.prepare("DELETE FROM votes WHERE popup_id = ? AND kind = 'existence'").bind(p.id));
   await c.env.DB.batch(stmts);
-  await recompute(c.env.DB, p.id, now);
+  const change = await recompute(c.env.DB, p.id, now);
+  if (PUBLIC_STATUSES.includes(p.status) || entersOrLeavesPublic(change)) rebuildSnapshotSoon(c); // a public pop-up changed
   return c.json(toPublic(await load(c.env.DB, p.id), { votes_reset: moved }));
 });
 
@@ -226,6 +243,7 @@ popups.put('/:id/vote', async c => {
     ).bind(u.id, p.id, kind, value, weight, await ipHash(c), now).run();
   }
   const change = await recompute(db, p.id, now);
+  if (entersOrLeavesPublic(change)) rebuildSnapshotSoon(c);
   return c.json({ popup: toPublic(await load(db, p.id)), status_change: change });
 });
 
@@ -259,6 +277,7 @@ popups.post('/:id/checkin', async c => {
     ).bind(u.id, p.id, weight, await ipHash(c), now).run();
   }
   const change = await recompute(db, p.id, now);
+  if (entersOrLeavesPublic(change)) rebuildSnapshotSoon(c);
   return c.json({
     valid: !!valid,
     distance_m: Math.round(distance),
@@ -285,6 +304,7 @@ popups.post('/:id/report', async c => {
   ).bind(newId(), u.id, p.id, reason, note, voteWeight(voter(u), now), now).run();
   if (!ins.meta.changes) throw new ApiError(409, 'already_reported', 'You already reported this pop-up.');
   const change = await recompute(db, p.id, now);
+  if (entersOrLeavesPublic(change)) rebuildSnapshotSoon(c);
   return c.json({ ok: true, status_change: change }, 201);
 });
 

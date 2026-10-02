@@ -79,13 +79,14 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
 
 export interface ListParams { when: When; category?: Category | ''; verified?: boolean; q?: string; near?: [number, number]; radius_km?: number; sort?: 'distance' }
 
-export function listQuery(p: ListParams): string {
-  const q = new URLSearchParams({ when: p.when, limit: '50' });
-  if (p.category) q.set('category', p.category);
-  if (p.verified) q.set('verified', '1');
-  if (p.q) q.set('q', p.q);
-  if (p.near) q.set('near', p.near.join(','));
-  if (p.radius_km) q.set('radius_km', String(p.radius_km));
-  if (p.sort) q.set('sort', p.sort);
-  return q.toString();
+/** The filters as GET /popups spells them, which is also what filterPopups reads. */
+export function listParams(p: ListParams): Record<string, string> {
+  const q: Record<string, string> = { when: p.when, limit: '50' };
+  if (p.category) q.category = p.category;
+  if (p.verified) q.verified = '1';
+  if (p.q) q.q = p.q;
+  if (p.near) q.near = p.near.join(',');
+  if (p.radius_km) q.radius_km = String(p.radius_km);
+  if (p.sort) q.sort = p.sort;
+  return q;
 }

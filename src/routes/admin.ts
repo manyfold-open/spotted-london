@@ -7,6 +7,7 @@ import { KARMA, type Status } from '../lib/scoring';
 import { onStatusChange, recompute, toPublic } from '../db/popups';
 import { awardKarma } from '../db/karma';
 import { FLAGGING_VERDICTS, isReady, publishReady } from '../db/publish';
+import { entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 
 export const admin = new Hono<AppEnv>();
 
@@ -63,6 +64,7 @@ admin.post('/queue/publish-ready', async c => {
     if (only && !only.includes(p.id)) continue;
     if (await publishReady(db, p.id, a.id, 'batch', now)) published += 1;
   }
+  if (published) rebuildSnapshotSoon(c);
   return c.json({ published });
 });
 
@@ -108,6 +110,7 @@ admin.post('/popups/:id/decision', async c => {
 
   await audit(db, a.id, `popup.${action}`, 'popup', p.id, { reason, merge_into: mergeInto, from: p.status, to }, now);
   const after = await db.prepare('SELECT * FROM popups WHERE id = ?').bind(p.id).first<PopupRow>();
+  rebuildSnapshotSoon(c); // hide, remove, approve, restore and merge all change what the public list holds
   return c.json(toPublic(after!));
 });
 
@@ -143,7 +146,7 @@ admin.post('/reports/:id/resolve', async c => {
   if (r.resolution) throw new ApiError(409, 'already_resolved', 'This report is already resolved.');
   await db.prepare('UPDATE reports SET resolution = ? WHERE id = ?').bind(resolution, r.id).run();
   await awardKarma(db, r.user_id, resolution === 'upheld' ? KARMA.reportUpheld : KARMA.reportRejected, `report_${resolution}`, r.id, now);
-  await recompute(db, r.popup_id, now);
+  if (entersOrLeavesPublic(await recompute(db, r.popup_id, now))) rebuildSnapshotSoon(c);
   await audit(db, a.id, `report.${resolution}`, 'report', r.id, null, now);
   return c.json({ ok: true });
 });
