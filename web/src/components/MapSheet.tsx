@@ -21,7 +21,7 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children }: {
     if (!phone || !el || !hd) return;
     const measure = () => {
       const h = el.offsetHeight, below = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-      const peekVisible = hd.offsetHeight + 4 + 70 + 10 + below;
+      const peekVisible = hd.offsetHeight + 4 + 78 + 14 + below;
       const halfVisible = Math.round(window.innerHeight * 0.5);
       setSize({ h, peek: Math.max(0, h - peekVisible), half: Math.max(0, h - halfVisible) });
     };

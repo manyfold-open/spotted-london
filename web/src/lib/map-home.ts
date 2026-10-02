@@ -18,8 +18,11 @@ export function isAway(dx: number, dy: number, threshold = 70): boolean {
   return Math.hypot(dx, dy) > threshold;
 }
 
+/** The browser's answer for geolocation, or 'unknown' when it has no Permissions API. */
+export type GeoPermission = 'granted' | 'denied' | 'prompt' | 'unknown';
+
 /** What to do about location when the home page opens. */
-export function nearMeStart(permission: PermissionState | 'unknown', stored: '1' | '0' | null): 'auto' | 'prompt' | 'none' {
+export function nearMeStart(permission: GeoPermission, stored: '1' | '0' | null): 'auto' | 'prompt' | 'none' {
   if (permission === 'denied' || stored === '0') return 'none';
   if (permission === 'granted' && stored === '1') return 'auto';
   return 'prompt';

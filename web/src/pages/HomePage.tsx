@@ -219,7 +219,7 @@ export default function HomePage() {
 function ModeSwitch({ view, onView }: { view: View; onView: (v: View) => void }) {
   return (
     <div className="mp-mode" data-view={view} role="group" aria-label="Display mode">
-      <span className="thumb" aria-hidden="true" />
+      <span className="mp-thumb" aria-hidden="true" />
       <button type="button" aria-pressed={view === 'map'} onClick={() => onView('map')}><Icon name="i-map" />Map</button>
       <button type="button" aria-pressed={view === 'list'} onClick={() => onView('list')}><Icon name="i-list" />List</button>
     </div>

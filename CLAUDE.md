@@ -65,8 +65,9 @@ src/lib/manyfold.ts     "Connect with Manyfold": Connect A2A device-code sign-in
 skills/spotted-london/  SKILL.md the Manyfold agents install from GitHub; keep it in step with the MCP tools
 migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
-web/src/components/     Shell (sidebar, top bar, bottom tabs), PopupSheet, PopupBits, maps, Icon, Turnstile
-web/src/pages/          Explore, MapPage (lazy), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent, with ScoutSources)
+web/src/components/     Shell (menu + bar per route), TopBar, NavMenu, MapSheet, ListBits (usePopups, Filters), PopupSheet, PopupBits, maps, Icon, Turnstile
+web/src/pages/          HomePage (full-screen map + list, `/`, `/p/:slug`; `/map` redirects here), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent, with ScoutSources)
+web/src/lib/            map-home (pure: sheet snap, away check, location start; tested in test/map-home.test.ts), near-me (useNearMe)
 ```
 
 ## Agent fleet (quantity first, quality later)
@@ -102,7 +103,8 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons.
 - No native browser UI: dates use `web/src/components/DatePicker.tsx`, forms use `noValidate` with our own `.ferr` messages, and inputs are 16 px on phones so iOS does not zoom.
-- Phone layout is under 900 px (`@media (max-width: 899px)`): bottom tabs, bottom sheets. Check every screen at 375 px.
+- Phone layout is under 900 px (`@media (max-width: 899px)`): a menu button instead of a sidebar or tabs, bottom sheets. Check every screen at 375 px. On the home page nothing may overlap: chips, locate/Add buttons, toasts, the map's attribution and the sheet each have their own space (see `docs/superpowers/specs/2026-10-02-map-home-design.md`, "No-overlap rules").
+- The map home never sends your position anywhere: `useNearMe` keeps it in memory, `localStorage spotted.near` only remembers whether you agreed. Map chrome uses `mp-` class names because `.drawer`, `.scrim`, `.panel`, `.me`, `.nav` mean other things.
 
 ## Gotchas
 

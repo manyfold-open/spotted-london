@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { currentPosition, useErrorToast } from './hooks';
-import { nearMeStart } from './map-home';
+import { nearMeStart, type GeoPermission } from './map-home';
 
 export type NearState = 'idle' | 'asking' | 'on' | 'denied' | 'unsupported';
 
@@ -42,7 +42,7 @@ export function useNearMe() {
   useEffect(() => {
     if (state === 'unsupported') return;
     let live = true;
-    const start = (perm: PermissionState | 'unknown') => {
+    const start = (perm: GeoPermission) => {
       if (!live) return;
       if (perm === 'denied') setState('denied');
       const what = nearMeStart(perm, read());

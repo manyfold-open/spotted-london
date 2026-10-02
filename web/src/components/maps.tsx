@@ -25,6 +25,14 @@ interface MapOptions { zoomButtons?: boolean; attribution?: 'bottom-right' | 'bo
 function newMap(el: HTMLElement, center = LONDON, zoom = 11.3, { zoomButtons = true, attribution = 'bottom-right' }: MapOptions = {}) {
   const map = new MLMap({ container: el, style: STYLE, center, zoom, maxBounds: [[-0.9, 51.1], [0.7, 51.9]], attributionControl: false });
   map.addControl(new AttributionControl({ compact: true }), attribution);
+  // Start folded to its (i) button; opened it would run into the buttons on top of the map.
+  const fold = () => {
+    const credit = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+    credit?.removeAttribute('open');
+    credit?.classList.remove('maplibregl-compact-show');
+  };
+  fold();
+  map.once('load', fold);
   if (zoomButtons) map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   return map;
 }
@@ -123,8 +131,13 @@ export const PopupMap = forwardRef<PopupMapHandle, {
     const pad = padRef.current, you = meRef.current;
     if (items.length || you) {
       const b = new LngLatBounds();
-      items.forEach(p => b.extend([p.location.lng, p.location.lat]));
-      if (you) b.extend([you[1], you[0]]);
+      if (you) {
+        // Fit the pins with you in the middle, so the map does not start out looking panned away from you.
+        let dx = 0.004, dy = 0.003;
+        for (const p of items) { dx = Math.max(dx, Math.abs(p.location.lng - you[1])); dy = Math.max(dy, Math.abs(p.location.lat - you[0])); }
+        b.extend([you[1] - dx, you[0] - dy]);
+        b.extend([you[1] + dx, you[0] + dy]);
+      } else items.forEach(p => b.extend([p.location.lng, p.location.lat]));
       m.fitBounds(b, { padding: pad, maxZoom: you ? 15 : 14, duration });
       fitted.current = true;
     } else {
