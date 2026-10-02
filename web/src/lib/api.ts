@@ -36,10 +36,10 @@ export interface Extracted {
 export interface Place { label: string; name: string | null; address: string; area: string | null; lat: number; lng: number }
 
 export type Schedule = 'hourly' | 'every_6h' | 'daily' | 'weekly' | 'manual';
-export interface AgentRun { id: string; trigger: 'schedule' | 'manual'; status: 'running' | 'done' | 'failed'; summary: string | null; error: string | null; items: number; started_at: number; finished_at: number | null }
+export interface AgentRun { id: string; via?: string | null; trigger: 'schedule' | 'manual'; status: 'running' | 'done' | 'failed'; summary: string | null; error: string | null; items: number; started_at: number; finished_at: number | null }
 export interface Agent {
   id: string; role: 'scout' | 'triage' | 'checker'; name: string; job: string; unit: string;
-  enabled: boolean; schedule: Schedule; run_hour: number; instructions: string | null; max_items: number;
+  enabled: boolean; manyfold_scheduled: boolean; schedule: Schedule; run_hour: number; instructions: string | null; max_items: number;
   rpc_url: string | null; token_hint: string | null; key_hint: string | null; connected: boolean; next_run_at: number | null;
   open_notes: number; runs: AgentRun[]; published: { published: number; undone: number; hidden_after: number };
 }

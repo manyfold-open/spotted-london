@@ -592,7 +592,7 @@ const TOOLS: Record<string, Tool> = {
       let id = open?.id;
       if (!id) {
         id = newId();
-        await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at) VALUES (?, ?, 'schedule', 'running', ?)").bind(id, agent.id, x.now).run();
+        await db.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, via) VALUES (?, ?, 'schedule', 'running', ?, 'manyfold')").bind(id, agent.id, x.now).run();
       }
       return { run_id: id, resumed: !!open, items_used: open?.items ?? 0, limit: agent.max_items, brief: runBrief(agent, id, x.origin, x.now) };
     },
