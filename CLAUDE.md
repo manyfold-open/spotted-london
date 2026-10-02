@@ -113,6 +113,7 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - `compatibility_date` is 2026-08-20 because `@cloudflare/vitest-pool-workers` bundles an older workerd. Raise it only together with that package.
 - MapLibre v6 must get its worker via `setWorkerUrl` from `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (see `web/src/components/maps.tsx`), or the map stays blank.
 - Map pins are plain DOM, not React roots (unmounting roots during render caused races).
+- Never use the CSS `scale`, `rotate` or `translate` properties on a map marker to grow or tilt it (hover, highlight). MapLibre places markers with an inline `transform`, these properties apply before it, so `scale: 1.3` multiplies the pin's offset from the map corner and the pin is drawn in the wrong place, drifting as you pan. Change `width`/`height` instead (see `.pinm.hl`).
 - Branch builds run `wrangler preview`, which reads only the `previews` block in `wrangler.jsonc`. Add every new var or binding there too, or preview builds fail.
 - Tests never reach Cloudflare: `vitest.config.ts` sets `remoteBindings: false` and `test/setup.ts` swaps `env.AI` for a stub; mock `env.AI.run` per test.
 - After `npm run build:web`, a running `wrangler dev` can serve 404s for every page. Restart it.

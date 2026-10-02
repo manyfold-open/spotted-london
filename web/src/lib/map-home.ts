@@ -13,6 +13,14 @@ export function pickSnap(y: number, velocity: number, heights: Record<Snap, numb
   return best;
 }
 
+/**
+ * Which pins are on the map, as one string. The list is rebuilt every minute (and when your saves change) even
+ * when nothing in it moved, so the map re-fits and re-centres only when this string changes.
+ */
+export function pinSetKey(items: readonly { id: string }[]): string {
+  return items.map(p => p.id).sort().join(',');
+}
+
 /** The map counts as panned away from you when your dot is this far (px) from the visible centre. */
 export function isAway(dx: number, dy: number, threshold = 70): boolean {
   return Math.hypot(dx, dy) > threshold;

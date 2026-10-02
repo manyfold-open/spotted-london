@@ -1,11 +1,11 @@
 // MapLibre + OpenFreeMap tiles (free, no API key). Loaded lazily; only map screens pay for it.
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { AttributionControl, LngLatBounds, Map as MLMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Popup } from '../lib/api';
 import { catIcon, isLive } from '../lib/format';
-import { isAway } from '../lib/map-home';
+import { isAway, pinSetKey } from '../lib/map-home';
 import { isPhone, reducedMotion } from '../lib/motion';
 import type { IconName } from './Icon';
 
@@ -126,6 +126,10 @@ export const PopupMap = forwardRef<PopupMapHandle, {
   // Fit the pins (and you) whenever the list changes or you first appear. The first fit is instant;
   // later ones glide so you can see where things went.
   const hasMe = !!me;
+  // The list is rebuilt every minute with the same pins: only refit when the set of pins changes.
+  const pinSet = useMemo(() => pinSetKey(items), [items]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   useEffect(() => {
     const m = map.current!;
     const duration = fitted.current && !reducedMotion() ? (meRef.current ? 900 : 700) : 0;
@@ -144,18 +148,21 @@ export const PopupMap = forwardRef<PopupMapHandle, {
     } else {
       m.fitBounds(LONDON_BOUNDS, { padding: pad, duration });
     }
-  }, [items, hasMe]);
+  }, [pinSet, hasMe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The sheet or panel moved: keep the middle of the map clear of it.
   useEffect(() => {
     map.current?.easeTo({ padding, duration: reducedMotion() ? 0 : 300 });
   }, [padding.top, padding.right, padding.bottom, padding.left]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The ring is put back whenever pins are rebuilt; the map only glides when the highlight itself changes.
   useEffect(() => {
     for (const [id, x] of markers.current) x.el.classList.toggle('hl', id === highlight);
-    const h = highlight && items.find(p => p.id === highlight);
-    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], padding: padRef.current, duration: reducedMotion() ? 0 : 400 });
   }, [highlight, items]);
+  useEffect(() => {
+    const h = highlight && itemsRef.current.find(p => p.id === highlight);
+    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], padding: padRef.current, duration: reducedMotion() ? 0 : 400 });
+  }, [highlight]);
 
   useImperativeHandle(ref, () => ({
     recenter() {

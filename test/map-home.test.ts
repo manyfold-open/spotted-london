@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAway, nearMeStart, pickSnap } from '../web/src/lib/map-home';
+import { isAway, nearMeStart, pickSnap, pinSetKey } from '../web/src/lib/map-home';
 
 const H = { peek: 434, half: 228, full: 0 };
 
@@ -35,5 +35,14 @@ describe('nearMeStart', () => {
   });
   it('asks when the Permissions API is missing and nothing is stored', () => {
     expect(nearMeStart('unknown', null)).toBe('prompt');
+  });
+});
+
+describe('pinSetKey', () => {
+  it('ignores order and rebuilt objects, but notices a pin added or removed', () => {
+    const a = [{ id: 'x' }, { id: 'y' }];
+    expect(pinSetKey([{ id: 'y' }, { id: 'x' }])).toBe(pinSetKey(a));
+    expect(pinSetKey([...a, { id: 'z' }])).not.toBe(pinSetKey(a));
+    expect(pinSetKey([])).toBe('');
   });
 });
