@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.7.0
+version: 1.8.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
