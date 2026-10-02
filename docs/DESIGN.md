@@ -17,7 +17,7 @@ Adapted from Zack's Sketchbook system used in another project.
 | Token | Value | Use |
 |---|---|---|
 | `--paper` | `#f4efe6` | Page background with a 22px dot grid |
-| `--paper2` | `#efe8db` | Desktop sidebar |
+| `--paper2` | `#efe8db` | Menu panel, search field |
 | `--dot` / `--hair` | `#d6cbb9` | Dot grid, dashed dividers |
 | `--card` | `#fffdf8` | Cards, inputs, buttons |
 | `--soft` | `#e8e1d5` | Muted tags, skeletons, code |
@@ -62,13 +62,13 @@ Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat
 
 ## Layout
 
-- Desktop (900px and up): 232px sticky sidebar, sticky 60px top bar with search, page max width 1180px, pop-up details in a 520px right drawer.
-- Phone (under 900px): top bar with logo, karma pill and full-width search; bottom tab bar Explore, Map, **Add (raised orange circle)**, Saved, Me; details in a bottom sheet (92% height, handle, sticky Save and Directions footer). Filter chips scroll sideways.
+- Desktop (900px and up): no sidebar. The home page is a full-screen map with a floating top bar (menu, logo, search, Map | List, Add, karma) and a 372px list panel on the left; List mode widens the panel to a card grid. Other pages use a sticky top bar and a page centred at max width 1180px. Pop-up details are in a 520px right drawer. The menu (hamburger) slides in from the left.
+- Phone (under 900px): the home page is a full-screen map. A floating pill bar (menu, search, karma) with one row of filter chips under it; a bottom sheet with three stops (peek, half, full) holds the list, and Map | List in its header moves it; locate (blue when you are shared, orange when you have panned away) and Add buttons ride above the sheet. No bottom tab bar: Saved and Me are in the menu. Details open in a bottom sheet (92% height, handle, sticky Save and Directions footer).
 - No hamburger menu. Less used things (review queue, newsletter, reminders, sign out) live on Me.
 
 ## Components
 
-- **Logo**: the favicon mark (paper pin on an orange dot with an ink ring and offset shadow), `Logo` in `Shell.tsx`. Used in the sidebar, top bar, crash page and the server sign-in page.
+- **Logo**: the favicon mark (paper pin on an orange dot with an ink ring and offset shadow), `Logo` in `Shell.tsx`. Used in the menu, top bar, crash page and the server sign-in page.
 - **Cards**: cover (photo or pattern) with the category tag on it, status tag, title, place and dates, footer with "% real", confidence meter and up/down score. On phones they become rows with a 100px cover on the left. The title is a stretched link; buttons sit above it.
 - **Confidence meter**: green at 75% and up, yellow from 40%, red below.
 - **Pop-up sheet**: facts list, "Is this real?" panel with the verification checklist, It's real / Fake, check-in, vote weight note.
@@ -77,11 +77,11 @@ Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat
 - **Date picker**: a field button showing "Sat 3 Oct" (year only when not this year) that opens a month calendar: Monday first, today dashed, selected day ink with orange shadow, the start to end range shaded, quick chips Today, Tomorrow, Saturday. A popover on desktop, a bottom sheet on phones. Full keyboard support.
 - **No native browser UI**: no `type="date"`, no browser validation bubbles (forms use `noValidate` and `.ferr` text), a custom clear button in search, ink scrollbars, orange text selection, autofill kept on paper, MapLibre zoom buttons in the Sketchbook style, inputs 16px on phones so iOS does not zoom.
 - **Empty states and errors**: dashed box with a large ink3 icon, a heading, one line of help and a button. Router crashes show `CrashPage` instead of the default error screen.
-- **Toasts**: ink pill with orange offset shadow, above the tab bar on phones.
+- **Toasts**: ink pill with orange offset shadow, above the bottom sheet on the home page on phones, left of the buttons.
 
 ## Icons
 
-Koboyo hand-drawn icons (koboyo.com/icons), stored as an SVG sprite in `web/src/components/Icon.tsx`. They are filled paths: style them with `fill: currentColor`, never stroke. 18px by default, 22px in the tab bar. Path coordinates are rounded to whole numbers (SVGO `--precision 0`), which halves the sprite and is invisible even at 2x the largest size we use. Free for commercial use; do not let users browse, pick or download them.
+Koboyo hand-drawn icons (koboyo.com/icons), stored as an SVG sprite in `web/src/components/Icon.tsx`. They are filled paths: style them with `fill: currentColor`, never stroke. 18px by default, 22px on the map buttons. Path coordinates are rounded to whole numbers (SVGO `--precision 0`), which halves the sprite and is invisible even at 2x the largest size we use. Free for commercial use; do not let users browse, pick or download them.
 
 ## Motion
 
@@ -92,7 +92,7 @@ Short and functional. Motion says where something came from, confirms a tap, or 
 - **Phones**: pull the sheet down to close it. The top bar tucks away while scrolling down. Tapping the current tab scrolls to the top. Press states use `:active` (scale down a little); hover lifts only apply on `@media (hover: hover)` so they never stick after a tap. Small buttons get a 44 px touch target with `::before`. Android gets a short `haptic()` buzz on save, vote and check in.
 - **Waiting**: skeletons have the same shape as what they replace and stay invisible for the first 150 ms, so fast loads never flash. Sheets open at once with the list copy of a pop-up and fill in the rest. Saves and votes update straight away and undo themselves if the server says no. Changing filters dims the old list and shows a thin line under the top bar.
 - **Small moments**: cards rise in one after another, meters grow, counts roll up or down (`Ticker`), buttons pop when they change state (`bump`), photos fade in over their category pattern.
-- **Page transitions** (View Transitions API, via React Router's `viewTransition` on the tabs and sidebar): pages cross-fade and the selected tab or nav item slides to its new place. Opening a pop-up from a card or mini row passes its cover to `useSheet().open(slug, cover)`; the cover grows into the sheet's header while the sheet slides in. Browsers without view transitions get the CSS animations instead. Each page keeps its scroll position (`ScrollRestoration` keyed by path).
+- **Page transitions** (View Transitions API, via React Router's `viewTransition` on the menu links): pages cross-fade. Opening a pop-up from a card or mini row passes its cover to `useSheet().open(slug, cover)`; the cover grows into the sheet's header while the sheet slides in. Browsers without view transitions get the CSS animations instead. Each page keeps its scroll position (`ScrollRestoration` keyed by path).
 - **Map**: pins drop in one after another, later filter changes glide to the new bounds, and on phones the card row and the pins follow each other.
 - **Add**: fields filled by AI light up one after another, and posting ends on a screen that says what happens next instead of a toast.
 - **Status changes** stamp in (`.stamp`), for example when your vote verifies a pop-up.

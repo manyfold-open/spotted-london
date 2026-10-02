@@ -1,11 +1,12 @@
 // MapLibre + OpenFreeMap tiles (free, no API key). Loaded lazily; only map screens pay for it.
-import { useEffect, useRef } from 'react';
-import { LngLatBounds, Map as MLMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { AttributionControl, LngLatBounds, Map as MLMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Popup } from '../lib/api';
 import { catIcon, isLive } from '../lib/format';
-import { reducedMotion } from '../lib/motion';
+import { isAway } from '../lib/map-home';
+import { isPhone, reducedMotion } from '../lib/motion';
 import type { IconName } from './Icon';
 
 // MapLibre finds its worker relative to its own file, which breaks once bundled. Point it at
@@ -19,25 +20,67 @@ const STYLE = 'https://tiles.openfreemap.org/styles/positron';
 const LONDON: [number, number] = [-0.1276, 51.5072];
 const LONDON_BOUNDS: [[number, number], [number, number]] = [[-0.52, 51.28], [0.34, 51.7]];
 
-function newMap(el: HTMLElement, center = LONDON, zoom = 11.3) {
-  const map = new MLMap({ container: el, style: STYLE, center, zoom, maxBounds: [[-0.9, 51.1], [0.7, 51.9]], attributionControl: { compact: true } });
-  map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+interface MapOptions { zoomButtons?: boolean; attribution?: 'bottom-right' | 'bottom-left' }
+
+function newMap(el: HTMLElement, center = LONDON, zoom = 11.3, { zoomButtons = true, attribution = 'bottom-right' }: MapOptions = {}) {
+  const map = new MLMap({ container: el, style: STYLE, center, zoom, maxBounds: [[-0.9, 51.1], [0.7, 51.9]], attributionControl: false });
+  map.addControl(new AttributionControl({ compact: true }), attribution);
+  // Start folded to its (i) button; opened it would run into the buttons on top of the map.
+  const fold = () => {
+    const credit = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+    credit?.removeAttribute('open');
+    credit?.classList.remove('maplibregl-compact-show');
+  };
+  fold();
+  map.once('load', fold);
+  if (zoomButtons) map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   return map;
 }
 
-/** All pop-ups as pins. Tapping a pin calls onPin; the highlighted one grows. */
-export function PopupMap({ items, highlight, onPin }: { items: Popup[]; highlight: string | null; onPin: (p: Popup) => void }) {
+export interface PopupMapHandle { recenter(): void }
+type Padding = { top: number; right: number; bottom: number; left: number };
+
+/**
+ * All pop-ups as pins, and you as a blue dot once you share your position. Tapping a pin calls onPin;
+ * the highlighted one grows. `padding` keeps the middle of the map clear of the sheet or panel on top
+ * of it. `onAway` says whether you have panned away from the dot.
+ */
+export const PopupMap = forwardRef<PopupMapHandle, {
+  items: Popup[]; highlight: string | null; onPin: (p: Popup) => void;
+  me: [number, number] | null; padding: Padding; onAway: (away: boolean) => void;
+}>(function PopupMap({ items, highlight, onPin, me, padding, onAway }, ref) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const markers = useRef(new Map<string, { m: Marker; el: HTMLButtonElement }>());
+  const dot = useRef<Marker | null>(null);
   const onPinRef = useRef(onPin);
   onPinRef.current = onPin;
+  const onAwayRef = useRef(onAway);
+  onAwayRef.current = onAway;
+  const meRef = useRef(me);
+  meRef.current = me;
+  const padRef = useRef(padding);
+  padRef.current = padding;
   const fitted = useRef(false);
+  const away = useRef(false);
 
   useEffect(() => {
-    map.current = newMap(el.current!);
+    const phone = isPhone();
+    const m = newMap(el.current!, LONDON, 11.3, { zoomButtons: !phone, attribution: phone ? 'bottom-left' : 'bottom-right' });
+    map.current = m;
+    // You are "away" when your dot is far from the middle of the part of the map you can see.
+    const check = () => {
+      const you = meRef.current;
+      if (!you) return;
+      const pt = m.project([you[1], you[0]]), pad = padRef.current, c = m.getCanvas();
+      const cx = (pad.left + c.clientWidth - pad.right) / 2, cy = (pad.top + c.clientHeight - pad.bottom) / 2;
+      const now = isAway(pt.x - cx, pt.y - cy);
+      if (now !== away.current) { away.current = now; onAwayRef.current(now); }
+    };
+    m.on('move', check);
+    m.on('moveend', check);
     const ms = markers.current;
-    return () => { ms.clear(); map.current?.remove(); map.current = null; };
+    return () => { ms.clear(); dot.current = null; m.remove(); map.current = null; };
   }, []);
 
   useEffect(() => {
@@ -64,26 +107,66 @@ export function PopupMap({ items, highlight, onPin }: { items: Popup[]; highligh
       entry.el.innerHTML = iconMarkup(catIcon(p.category));
     }
     for (const [id, x] of markers.current) if (!seen.has(id)) { x.m.remove(); markers.current.delete(id); }
-    // The first fit is instant; later ones (new filters) glide so you can see where things went.
-    const duration = fitted.current && !reducedMotion() ? 700 : 0;
-    if (items.length) {
+  }, [items]);
+
+  // Your dot.
+  useEffect(() => {
+    const m = map.current!;
+    if (!me) { dot.current?.remove(); dot.current = null; away.current = false; return; }
+    if (!dot.current) {
+      const d = document.createElement('div');
+      d.className = 'mp-you';
+      d.setAttribute('role', 'img');
+      d.setAttribute('aria-label', 'You are here');
+      d.innerHTML = '<i></i>';
+      dot.current = new Marker({ element: d }).setLngLat([me[1], me[0]]).addTo(m);
+    } else dot.current.setLngLat([me[1], me[0]]);
+  }, [me]);
+
+  // Fit the pins (and you) whenever the list changes or you first appear. The first fit is instant;
+  // later ones glide so you can see where things went.
+  const hasMe = !!me;
+  useEffect(() => {
+    const m = map.current!;
+    const duration = fitted.current && !reducedMotion() ? (meRef.current ? 900 : 700) : 0;
+    const pad = padRef.current, you = meRef.current;
+    if (items.length || you) {
       const b = new LngLatBounds();
-      items.forEach(p => b.extend([p.location.lng, p.location.lat]));
-      m.fitBounds(b, { padding: 60, maxZoom: 14, duration });
+      if (you) {
+        // Fit the pins with you in the middle, so the map does not start out looking panned away from you.
+        let dx = 0.004, dy = 0.003;
+        for (const p of items) { dx = Math.max(dx, Math.abs(p.location.lng - you[1])); dy = Math.max(dy, Math.abs(p.location.lat - you[0])); }
+        b.extend([you[1] - dx, you[0] - dy]);
+        b.extend([you[1] + dx, you[0] + dy]);
+      } else items.forEach(p => b.extend([p.location.lng, p.location.lat]));
+      m.fitBounds(b, { padding: pad, maxZoom: you ? 15 : 14, duration });
       fitted.current = true;
     } else {
-      m.fitBounds(LONDON_BOUNDS, { duration });
+      m.fitBounds(LONDON_BOUNDS, { padding: pad, duration });
     }
-  }, [items]);
+  }, [items, hasMe]);
+
+  // The sheet or panel moved: keep the middle of the map clear of it.
+  useEffect(() => {
+    map.current?.easeTo({ padding, duration: reducedMotion() ? 0 : 300 });
+  }, [padding.top, padding.right, padding.bottom, padding.left]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     for (const [id, x] of markers.current) x.el.classList.toggle('hl', id === highlight);
     const h = highlight && items.find(p => p.id === highlight);
-    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], duration: reducedMotion() ? 0 : 400 });
+    if (h && map.current) map.current.easeTo({ center: [h.location.lng, h.location.lat], padding: padRef.current, duration: reducedMotion() ? 0 : 400 });
   }, [highlight, items]);
 
+  useImperativeHandle(ref, () => ({
+    recenter() {
+      const m = map.current, you = meRef.current;
+      if (!m || !you) return;
+      m.easeTo({ center: [you[1], you[0]], zoom: Math.max(m.getZoom(), 14), padding: padRef.current, duration: reducedMotion() ? 0 : 700 });
+    },
+  }), []);
+
   return <div className="ml" ref={el} />;
-}
+});
 
 /** One draggable pin for the Add form. */
 export function PinPicker({ lat, lng, onMove }: { lat: number; lng: number; onMove: (lat: number, lng: number) => void }) {

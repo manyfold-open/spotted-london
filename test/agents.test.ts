@@ -63,7 +63,7 @@ beforeEach(async () => {
     env.DB.prepare("UPDATE scout_sources SET status = 'active', due_at = NULL, last_checked_at = NULL"),
     env.DB.prepare('DELETE FROM agent_runs'),
     env.DB.prepare("DELETE FROM agents WHERE id NOT IN ('scout', 'triage', 'checker')"),
-    env.DB.prepare("UPDATE agents SET enabled = 0, rpc_url = NULL, token_sealed = NULL, token_hint = NULL, key_hash = NULL, key_hint = NULL, next_run_at = NULL, max_items = 20, instructions = NULL"),
+    env.DB.prepare("UPDATE agents SET manyfold_scheduled = 0, enabled = 0, rpc_url = NULL, token_sealed = NULL, token_hint = NULL, key_hash = NULL, key_hint = NULL, next_run_at = NULL, max_items = 20, instructions = NULL"),
   ]);
 });
 afterEach(() => vi.restoreAllMocks());
@@ -704,6 +704,51 @@ describe('agent runs', () => {
     // every role can start a run
     const tk = await connect('triage');
     expect((await tool('start_run', {}, tk)).structuredContent.limit).toBeGreaterThan(0);
+  });
+
+  it('starts an agent scheduled on Manyfold only when no run began within 30 minutes of its slot', async () => {
+    await connect('scout');
+    await connect('checker');
+    const slot = (await call('PATCH', '/admin/agents/scout', { user: admin, body: { enabled: true, schedule: 'daily', run_hour: 5, manyfold_scheduled: true } })).json;
+    expect(slot.manyfold_scheduled).toBe(true);
+    await call('PATCH', '/admin/agents/checker', { user: admin, body: { enabled: true, schedule: 'daily', run_hour: 5, manyfold_scheduled: true } });
+    const S = 1_800_000_000_000;
+    await env.DB.prepare("UPDATE agents SET next_run_at = ? WHERE id IN ('scout', 'checker')").bind(S).run();
+    const spy = fakeManyfold();
+
+    // not yet: the slot has come, but the wait has not passed
+    await dispatchDue(env, S + 10 * 60_000);
+    expect(spy).not.toHaveBeenCalled();
+
+    // the Checker's run began (Manyfold called start_run) at the slot; the Scout's did not
+    await env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, via) VALUES ('mf-run', 'checker', 'schedule', 'running', ?, 'manyfold')").bind(S + 60_000).run();
+    await dispatchDue(env, S + 31 * 60_000);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const runs = (await env.DB.prepare("SELECT agent_id, trigger, via FROM agent_runs WHERE id != 'mf-run' ORDER BY agent_id").all<any>()).results;
+    expect(runs).toEqual([{ agent_id: 'scout', trigger: 'schedule', via: 'fallback' }]);
+
+    // both slots moved on, and a second pass does nothing
+    const next = await env.DB.prepare("SELECT id, next_run_at FROM agents WHERE id IN ('scout', 'checker')").all<any>();
+    for (const r of next.results) expect(r.next_run_at).toBeGreaterThan(S + 31 * 60_000);
+    await dispatchDue(env, S + 32 * 60_000);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a run that began a little before the slot, and runs an agent not scheduled on Manyfold at once', async () => {
+    await connect('scout');
+    await connect('triage');
+    await call('PATCH', '/admin/agents/scout', { user: admin, body: { enabled: true, schedule: 'daily', run_hour: 5, manyfold_scheduled: true } });
+    await call('PATCH', '/admin/agents/triage', { user: admin, body: { enabled: true, schedule: 'daily', run_hour: 5 } });
+    const S = 1_800_000_000_000;
+    await env.DB.prepare("UPDATE agents SET next_run_at = ? WHERE id IN ('scout', 'triage')").bind(S).run();
+    await env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, via) VALUES ('early', 'scout', 'schedule', 'done', ?, 'manyfold')").bind(S - 5 * 60_000).run();
+    const spy = fakeManyfold();
+    await dispatchDue(env, S + 1_000);
+    const started = (await env.DB.prepare("SELECT agent_id, via FROM agent_runs WHERE id != 'early'").all<any>()).results;
+    expect(started).toEqual([{ agent_id: 'triage', via: null }]); // Spotted-scheduled: at the slot, no wait
+    await dispatchDue(env, S + 31 * 60_000);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM agent_runs WHERE agent_id = 'scout'").first<{ n: number }>())!.n).toBe(1); // the early run counted
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {

@@ -18,6 +18,7 @@ const hh = (h: number) => `${String(h).padStart(2, '0')}:00`;
 function scheduleText(a: Agent): string {
   if (!a.enabled) return 'Off. It does not run until you switch it on.';
   if (a.schedule === 'manual') return 'Runs only when you press Run now.';
+  if (a.manyfold_scheduled) return a.next_run_at ? `Next slot ${stamp.format(a.next_run_at)}. A Manyfold automation starts it; Spotted starts it 30 minutes late if it did not.` : 'Next slot is being scheduled.';
   return a.next_run_at ? `Next run ${stamp.format(a.next_run_at)}.` : 'Next run is being scheduled.';
 }
 
@@ -180,6 +181,9 @@ function AgentCard({ a }: { a: Agent }) {
             <button key={s} className="chip" aria-pressed={a.schedule === s} disabled={save.isPending} onClick={() => save.mutate({ schedule: s })}>{label}</button>
           ))}</div>
           <span className="hint">{scheduleText(a)}</span>
+          <button className="switch" role="switch" aria-checked={a.manyfold_scheduled} disabled={save.isPending} onClick={() => save.mutate({ manyfold_scheduled: !a.manyfold_scheduled })}>
+            <span className="track" /><span>Started by a Manyfold automation</span>
+          </button>
         </div>
         <div className="row" style={{ gap: 18, alignItems: 'flex-start' }}>
           {a.schedule === 'daily' || a.schedule === 'weekly' || a.schedule === 'every_6h' ? (
@@ -396,7 +400,7 @@ function Runs({ runs, unit }: { runs: AgentRun[]; unit: string }) {
           <div className="row" style={{ gap: 8 }}>
             {r.status === 'running' ? <span className="tag t-ai"><span className="spin" />Working</span> : r.status === 'done' ? <span className="tag t-eng"><Icon name="i-check" />Done</span> : <span className="tag t-err"><Icon name="i-x" />Failed</span>}
             <span className="small">{stamp.format(r.started_at)}</span>
-            <span className="small muted">{r.trigger === 'manual' ? 'Run by you' : 'Scheduled'} · {r.items} {r.items === 1 ? unit.replace(/s$/, '') : unit}</span>
+            <span className="small muted">{r.trigger === 'manual' ? 'Run by you' : r.via === 'fallback' ? 'Started by Spotted (Manyfold did not)' : r.via === 'manyfold' ? 'Scheduled on Manyfold' : 'Scheduled'} · {r.items} {r.items === 1 ? unit.replace(/s$/, '') : unit}</span>
           </div>
           {r.error ? <p className="small" style={{ color: 'var(--err)' }}>{r.error}</p> : null}
           {r.summary ? <p className="small summary">{r.summary}</p> : null}

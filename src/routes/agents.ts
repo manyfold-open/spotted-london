@@ -28,12 +28,12 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { publ
   const info = AGENT_INFO[a.role];
   return {
     id: a.id, role: a.role, name: a.name, job: info.job, unit: info.unit,
-    enabled: !!a.enabled, schedule: a.schedule, run_hour: a.run_hour, instructions: a.instructions, max_items: a.max_items,
+    enabled: !!a.enabled, manyfold_scheduled: !!a.manyfold_scheduled, schedule: a.schedule, run_hour: a.run_hour, instructions: a.instructions, max_items: a.max_items,
     rpc_url: a.rpc_url, token_hint: a.token_hint, key_hint: a.key_hint,
     connected: !!(a.rpc_url && a.token_sealed), next_run_at: a.enabled ? a.next_run_at : null,
     open_notes: openNotes,
     published: published ?? { published: 0, undone: 0, hidden_after: 0 },
-    runs: runs.map(r => ({ id: r.id, trigger: r.trigger, status: r.status, summary: r.summary, error: r.error, items: r.items, started_at: r.started_at, finished_at: r.finished_at })),
+    runs: runs.map(r => ({ id: r.id, via: r.via, trigger: r.trigger, status: r.status, summary: r.summary, error: r.error, items: r.items, started_at: r.started_at, finished_at: r.finished_at })),
   };
 }
 
@@ -155,21 +155,25 @@ agentsAdmin.patch('/:id', async c => {
     if (typeof b.enabled !== 'boolean') throw bad('enabled_invalid', 'Enabled must be true or false.');
     next.enabled = b.enabled ? 1 : 0;
   }
+  if (b.manyfold_scheduled !== undefined) {
+    if (typeof b.manyfold_scheduled !== 'boolean') throw bad('manyfold_scheduled_invalid', 'manyfold_scheduled must be true or false.');
+    next.manyfold_scheduled = b.manyfold_scheduled ? 1 : 0;
+  }
   if (next.enabled && !a.enabled) {
     const stop = await blocker(db, next, now);
     if (stop && stop.code !== 'agent_busy') throw stop;
   }
-  for (const k of ['name', 'schedule', 'run_hour', 'max_items', 'instructions', 'rpc_url', 'enabled'] as const) {
+  for (const k of ['name', 'manyfold_scheduled', 'schedule', 'run_hour', 'max_items', 'instructions', 'rpc_url', 'enabled'] as const) {
     if (next[k] !== a[k]) changed[k] = next[k];
   }
   // A new schedule counts from now. Turning an agent off clears its next run.
-  const timing = next.enabled !== a.enabled || next.schedule !== a.schedule || next.run_hour !== a.run_hour;
+  const timing = next.enabled !== a.enabled || next.schedule !== a.schedule || next.run_hour !== a.run_hour || next.manyfold_scheduled !== a.manyfold_scheduled;
   if (timing) next.next_run_at = next.enabled ? nextRunAt(next, now) : null;
 
   await db.prepare(
-    `UPDATE agents SET name = ?, enabled = ?, schedule = ?, run_hour = ?, instructions = ?, max_items = ?, rpc_url = ?, token_sealed = ?, token_hint = ?,
+    `UPDATE agents SET name = ?, manyfold_scheduled = ?, enabled = ?, schedule = ?, run_hour = ?, instructions = ?, max_items = ?, rpc_url = ?, token_sealed = ?, token_hint = ?,
        next_run_at = ?, updated_at = ? WHERE id = ?`,
-  ).bind(next.name, next.enabled, next.schedule, next.run_hour, next.instructions, next.max_items, next.rpc_url, next.token_sealed, next.token_hint, next.next_run_at, now, a.id).run();
+  ).bind(next.name, next.manyfold_scheduled, next.enabled, next.schedule, next.run_hour, next.instructions, next.max_items, next.rpc_url, next.token_sealed, next.token_hint, next.next_run_at, now, a.id).run();
   if (Object.keys(changed).length) await audit(db, admin.id, 'agent.update', 'agent', a.id, changed, now);
   return c.json(await one(db, a.id, now));
 });
