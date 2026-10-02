@@ -64,11 +64,14 @@ export const nextDue = (everyDays: number, now: number) => now + everyDays * DAY
 export async function sourceStats(db: D1Database, ids: string[]): Promise<Map<string, SourceStats>> {
   const out = new Map<string, SourceStats>();
   if (!ids.length) return out;
-  const { results } = await db.prepare(
+  // D1 allows 100 bound parameters per query and the sources page asks for every source, so go in chunks.
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 90) chunks.push(ids.slice(i, i + 90));
+  const batches = await db.batch<{ source_id: string; status: string; final_verdict: string | null; merged_into: string | null }>(chunks.map(chunk => db.prepare(
     `SELECT s.source_id, p.status, p.final_verdict, p.merged_into FROM scout_seen s JOIN popups p ON p.id = s.popup_id
-     WHERE s.outcome = 'sent' AND s.source_id IN (${ids.map(() => '?').join(',')})`,
-  ).bind(...ids).all<{ source_id: string; status: string; final_verdict: string | null; merged_into: string | null }>();
-  for (const r of results) {
+     WHERE s.outcome = 'sent' AND s.source_id IN (${chunk.map(() => '?').join(',')})`,
+  ).bind(...chunk)));
+  for (const r of batches.flatMap(b => b.results)) {
     const s = out.get(r.source_id) ?? { drafts: 0, published: 0, rejected: 0, waiting: 0 };
     s.drafts++;
     if (r.final_verdict === 'real' || (PUBLIC_STATUSES as string[]).includes(r.status)) s.published++;
