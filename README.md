@@ -83,7 +83,7 @@ src/
   index.ts          Hono app, error format, cron entry
   middleware.ts     session, CSRF guard, admin checks, Turnstile, IP hashing
   pages.ts          sign-in confirm page, SEO tags for /p/:slug
-  cron.ts           end expired pop-ups, recompute hot, settle karma, reminders, start agent runs
+  cron.ts           end expired pop-ups, settle karma, hourly hot refresh, reminders, start agent runs
   mcp.ts            MCP server at /mcp: public search, plus agent tools with a key
   lib/scoring.ts    vote weight, Wilson confidence, status rules, trust, hot (SPEC 4)
   lib/extract.ts    paste-a-link autofill parsing (SPEC 3.8)
