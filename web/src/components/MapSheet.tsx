@@ -5,8 +5,10 @@ import { pickSnap, type Snap } from '../lib/map-home';
  * The list that sits on the map. On a phone it is a bottom sheet with three stops (peek, half, full) that you
  * drag by its header; on a desktop it is a floating panel on the left, and `snap` only says whether it is wide.
  */
-export function MapSheet({ phone, snap, onSnap, onVisible, header, children }: {
+export function MapSheet({ phone, snap, onSnap, onVisible, header, children, collapsed }: {
   phone: boolean; snap: Snap; onSnap: (s: Snap) => void; onVisible: (px: number) => void; header: ReactNode; children: ReactNode;
+  /** Desktop only: the panel is tucked away to the left and the map has the whole screen. */
+  collapsed?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
@@ -15,28 +17,33 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children }: {
   const drag = useRef<{ y: number; base: number; t: number; dy: number } | null>(null);
   const offs: Record<Snap, number> = { full: 0, half: size.half, peek: size.peek };
 
-  // Work out the three stops from the real sizes, so the peek stop shows exactly the header and one row of cards.
+  // Work out the three stops from the real sizes, so the peek stop shows exactly the header and one row of
+  // cards, however tall those cards turn out. Runs after every render because cards arrive later.
+  const measure = () => {
+    const el = box.current, hd = head.current;
+    if (!phone || !el || !hd) return;
+    const h = el.offsetHeight, below = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+    const card = el.querySelector<HTMLElement>('.mp-minis .mini');
+    const peekVisible = hd.offsetHeight + 4 + (card?.offsetHeight ?? 78) + 10 + 20 + below;
+    const halfVisible = Math.round(window.innerHeight * 0.5);
+    const next = { h, peek: Math.max(0, h - peekVisible), half: Math.max(0, h - halfVisible) };
+    setSize(s => (s.h === next.h && s.peek === next.peek && s.half === next.half ? s : next));
+  };
+  useLayoutEffect(measure);
   useLayoutEffect(() => {
     const el = box.current, hd = head.current;
     if (!phone || !el || !hd) return;
-    const measure = () => {
-      const h = el.offsetHeight, below = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-      const peekVisible = hd.offsetHeight + 4 + 78 + 14 + below;
-      const halfVisible = Math.round(window.innerHeight * 0.5);
-      setSize({ h, peek: Math.max(0, h - peekVisible), half: Math.max(0, h - halfVisible) });
-    };
-    measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el); ro.observe(hd);
     return () => ro.disconnect();
-  }, [phone]);
+  }, [phone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tell the page how much of the sheet shows, so the buttons and the map's padding can sit above it.
   useLayoutEffect(() => { if (phone && dragY === null) onVisible(size.h - offs[snap]); }, [phone, snap, size, dragY]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!phone) {
     return (
-      <section className="mp-panel" data-snap={snap} aria-label="Pop-ups">
+      <section className={`mp-panel ${collapsed ? 'collapsed' : ''}`} data-snap={snap} aria-label="Pop-ups" inert={collapsed}>
         <div className="mp-shead" ref={head}>{header}</div>
         <div className="mp-sbody">{children}</div>
       </section>

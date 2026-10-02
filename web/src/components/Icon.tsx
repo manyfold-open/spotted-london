@@ -39,9 +39,10 @@ const SYMBOLS = `
 <symbol id="c-other" viewBox="0 0 153 148"><path d="M72 11 56 50l-21 3c-23 1-27 2-27 7 0 3 4 7 23 22l12 11-5 20c-7 23-7 27-1 27 3 0 4 0 23-13l17-11 17 10 19 13q11 4 9-9l-6-21c-4-14-4-17-3-18l13-11c16-13 20-18 20-20 0-5-3-6-18-7l-22-2h-8l-6-18C84 12 82 9 77 8q-2-1-5 3m13 17 7 20c3 8 2 7 25 9 22 1 24 1 24 3l-17 15-17 16 10 37q2 7 0 7l-18-11c-21-13-21-13-24-12l-19 12-18 11q-2 2 4-21l6-22q-1-3-17-15C13 62 11 61 13 60l23-3q23-1 23-3l8-19c7-19 9-23 11-22z"/></symbol>
 
 <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18v2.4H3zm0 4.8h18v2.4H3zM3 15.6h18V18H3z"/></symbol>
+<symbol id="i-left" viewBox="0 0 24 24"><path d="M14.600 4.600 16 6l-6 6 6 6-1.400 1.400L7.200 12z"/></symbol>
 `;
 
-export type IconName = 'i-menu' | 'i-search' | 'i-list' | 'i-map' | 'i-plus' | 'i-bookmark' | 'i-shield' | 'i-check' | 'i-checkc' | 'i-x' | 'i-pin' | 'i-clock' | 'i-up' | 'i-down' | 'i-flag' | 'i-user' | 'i-inbox' | 'i-mail' | 'i-bell' | 'i-ext' | 'i-locate' | 'i-route' | 'i-pound' | 'i-bolt' | 'i-image' | 'i-sparkle' | 'i-link' | 'i-info' | 'c-food' | 'c-fashion' | 'c-sample' | 'c-art' | 'c-market' | 'c-beauty' | 'c-tech' | 'c-other';
+export type IconName = 'i-left' | 'i-menu' | 'i-search' | 'i-list' | 'i-map' | 'i-plus' | 'i-bookmark' | 'i-shield' | 'i-check' | 'i-checkc' | 'i-x' | 'i-pin' | 'i-clock' | 'i-up' | 'i-down' | 'i-flag' | 'i-user' | 'i-inbox' | 'i-mail' | 'i-bell' | 'i-ext' | 'i-locate' | 'i-route' | 'i-pound' | 'i-bolt' | 'i-image' | 'i-sparkle' | 'i-link' | 'i-info' | 'c-food' | 'c-fashion' | 'c-sample' | 'c-art' | 'c-market' | 'c-beauty' | 'c-tech' | 'c-other';
 
 export function IconSprite() {
   return <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${SYMBOLS}</defs>` }} />;
