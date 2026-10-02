@@ -129,7 +129,12 @@ agentsAdmin.patch('/:id', async c => {
   const changed: Record<string, unknown> = {};
 
   if (b.schedule !== undefined) next.schedule = oneOf(b, 'schedule', SCHEDULES, { required: true })!;
-  if (b.name !== undefined) next.name = text(b, 'name', { required: true, max: 40 })!;
+  if (b.name !== undefined) {
+    next.name = text(b, 'name', { required: true, max: 40 })!;
+    if (next.name !== a.name && await db.prepare('SELECT 1 FROM agents WHERE lower(name) = lower(?) AND id != ?').bind(next.name, a.id).first()) {
+      throw new ApiError(409, 'agent_name_taken', 'Another agent already has this name. Pick a different one.');
+    }
+  }
   if (b.run_hour !== undefined) next.run_hour = Math.round(num(b, 'run_hour', { required: true, min: 0, max: 23 })!);
   if (b.max_items !== undefined) next.max_items = Math.round(num(b, 'max_items', { required: true, min: 1, max: 50 })!);
   if (b.instructions !== undefined) next.instructions = text(b, 'instructions', { max: 2000 });
@@ -223,8 +228,11 @@ agentsAdmin.post('/:id/connect/poll', async c => {
   const got = r.agents[0];
   if (!got) return c.json({ status: 'denied' });
   const rpcUrl = checkRpcUrl(got.rpcUrl, c.env.ENVIRONMENT === 'development');
-  await db.prepare('UPDATE agents SET rpc_url = ?, token_sealed = ?, token_hint = ?, updated_at = ? WHERE id = ?')
-    .bind(rpcUrl, await seal(c.env.AGENTS_KEY, got.token), hint(got.token), now, a.id).run();
+  // An agent still called "Scout 2" or similar takes the name it has in Manyfold, unless another agent has it.
+  const takesName = /^(Scout|Triage|Checker)( \d+)?$/.test(a.name) && got.name && got.name !== a.name
+    && !(await db.prepare('SELECT 1 FROM agents WHERE lower(name) = lower(?) AND id != ?').bind(got.name, a.id).first());
+  await db.prepare('UPDATE agents SET rpc_url = ?, token_sealed = ?, token_hint = ?, name = ?, updated_at = ? WHERE id = ?')
+    .bind(rpcUrl, await seal(c.env.AGENTS_KEY, got.token), hint(got.token), takesName ? got.name.slice(0, 40) : a.name, now, a.id).run();
   await audit(db, admin.id, 'agent.connected', 'agent', a.id, { manyfold_agent: got.agentId, name: got.name, expires_at: got.expiresAt, ignored: r.agents.length - 1 }, now);
   return c.json({ status: 'approved', manyfold_agent: got.name, ignored: r.agents.length - 1, token_expires_at: got.expiresAt ? Date.parse(got.expiresAt) : null, agent: await one(db, a.id, now) });
 });

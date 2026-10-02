@@ -589,6 +589,14 @@ describe('agent runs', () => {
     expect(await status(three)).toBe('pending');
   });
 
+  it('renames an agent, and refuses a name another agent has', async () => {
+    const id2 = (await call('POST', '/admin/agents', { user: admin, body: { role: 'scout' } })).json.id as string;
+    const renamed = await call('PATCH', `/admin/agents/${id2}`, { user: admin, body: { name: 'Codex Scout' } });
+    expect(renamed.json.name).toBe('Codex Scout');
+    expect((await call('PATCH', `/admin/agents/scout`, { user: admin, body: { name: 'codex scout' } })).json.error.code).toBe('agent_name_taken');
+    expect((await call('PATCH', `/admin/agents/${id2}`, { user: admin, body: { name: 'Codex Scout' } })).status).toBe(200);
+  });
+
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
