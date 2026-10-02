@@ -7,7 +7,7 @@
 ## 1. 概述
 
 ### 1.1 問題
-倫敦 pop-up（food / fashion / art / market / sample sale）資訊散落在 IG、TikTok、Time Out、Eventbrite 與口耳相傳之間：
+倫敦 pop-up（Food & Drink、Supper Clubs & Residencies、Markets & Fairs、Exhibitions、Art Pop-ups、Events & Festivals、Fashion、Sample Sale、Beauty、Tech、Other）資訊散落在 IG、TikTok、Time Out、Eventbrite 與口耳相傳之間：
 - 找不到「**今天 / 這週末 / 我附近**」有什麼
 - 文章式內容很快過期，不知道活動還在不在、是不是真的
 - 免費、非售票的 pop-up 幾乎沒有平台收錄
@@ -54,7 +54,7 @@
 - **列表頁**：預設顯示「進行中 + 未來 7 天」，依 `hot` 排序
 - **篩選**：
   - 時間：Today / This weekend / This week / 自選日期
-  - 類別：Food & Drink、Fashion、Sample Sale、Art & Culture、Market、Beauty、Tech、Other
+  - 類別：Food & Drink、Supper Clubs & Residencies、Markets & Fairs、Exhibitions、Art Pop-ups、Events & Festivals、Fashion、Sample Sale、Beauty、Tech、Other
   - 區域：Borough / 區塊（Soho、Shoreditch、Covent Garden…）
   - 驗證狀態：只看 verified
   - 免費 / 付費
