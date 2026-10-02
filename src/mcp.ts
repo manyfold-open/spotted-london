@@ -412,7 +412,7 @@ const TOOLS: Record<string, Tool> = {
       source_url: S('Public link where the details are published: the organiser page, ticket page or article. Or the Instagram or Threads post, when no organiser page exists.'),
       evidence: S(`A passage copied word for word from the page or post, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Spotted looks for it there and refuses the draft if it is not found.`),
       evidence_url: S('The page or post the evidence comes from. Defaults to source_url.'),
-      confidence: S('high: dates and place confirmed by the organiser. check: something is unclear.', { enum: ['high', 'check'] }),
+      confidence: S('high: dates and place confirmed by the organiser or venue page, or by two independent pages that agree; missing hours or price does not matter. check: dates or place come from one page or search snippets only, or pages disagree.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
       source_id: S('Id from list_sources of the source that led you here, if any.'),
