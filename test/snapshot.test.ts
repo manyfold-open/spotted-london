@@ -19,7 +19,7 @@ async function call(method: string, path: string, o: { user?: string; body?: unk
 const json = (r: { text: string }) => JSON.parse(r.text);
 
 const BOROUGHS = ['Soho', 'Hackney', 'Camden', 'Peckham', null];
-const CATS = ['food', 'fashion', 'art', 'market', 'tech'];
+const CATS = ['food', 'fashion', 'art', 'market', 'tech', 'dining', 'exhibition', 'event'];
 const TITLES = ['Matcha Lab', '100% Vintage_Sale', 'CAFE Takeover', 'Night Market', 'Riso Print Day', 'Kilo sale', 'Pottery seconds', 'Sneaker drop'];
 const STATUSES = ['community', 'community', 'verified_community', 'verified_admin', 'pending', 'hidden', 'removed', 'ended'];
 
@@ -51,7 +51,7 @@ await seed();
 describe('old SQL list and new browser filter agree', () => {
   const params: Record<string, string>[] = [];
   for (const when of ['today', 'weekend', 'week', 'all'])
-    for (const category of ['', 'food', 'art,tech'])
+    for (const category of ['', 'food', 'art,tech', 'dining,exhibition'])
       for (const verified of ['', '1'])
         for (const free of ['', '1']) params.push({ when, category, verified, free });
   params.push(
