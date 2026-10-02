@@ -82,19 +82,21 @@ Rejected: a second "format" field next to the theme. It would let readers cross-
 
 ## Agent-facing text
 
-Scout and Triage read their category list from the skill in Zack's Manyfold skill library (`skl_agqpimhpz5y2rcx6wcz7d7v67q`, shared by Scout, Triage and Checker), and `submit_popup` rejects a category outside the enum. After deploy, the skill needs a new version with the new categories and the tie-break rules. Publishing it changes what live agents do, so it waits for Zack's go and happens after the migration is live, never before. Until then agents keep sending the old eight keys, which the new table still accepts.
+Scout and Triage read their category list from the skill in Zack's Manyfold skill library (`skl_agqpimhpz5y2rcx6wcz7d7v67q`, shared by Scout, Triage and Checker), and `submit_popup` rejects a category outside the enum. After deploy, the skill needs a new version with the new categories and the tie-break rules. Publishing it changes what live agents do, so it waits for Zack's go and happens right after the deploy, never before it (see Order of rollout). Until then agents keep sending the old eight keys, which the new table still accepts.
 
 ## Order of rollout
 
 Production deploys run on Cloudflare Workers Builds: a push to `main` deploys, other branches only get preview versions, and the build token has no D1 access. So the migration goes first, by hand, and the merge is the deploy. Migration number `0013` is taken by the Manyfold-scheduling work (already applied to production), so this one is `0014`.
 
 1. Work on branch `category-split` in its own git worktree. Local rehearsal on the newest backup.
-2. Fresh backup. Apply `0014` to remote D1 (`env -u` the two Cloudflare vars, as in the project notes). Old code keeps working because the new table accepts a superset, and branch previews share production D1, so this must come before the PR.
-3. Open the PR, saying it adds a migration that is already applied. Zack merges, and the merge deploys the Worker and web build.
-4. Run the reclassification after Zack has read the unsure-rows table. Fresh backup first.
-5. Publish the new skill version to the Manyfold library.
+2. Gate A: fresh backup, then a pre-apply check that production still has the 38 columns and four indexes the migration expects (anything added outside this repo would be dropped silently, so it is a stop), and the local rehearsal repeated on that fresh backup. Then apply `0014` to remote D1 (`env -u` the two Cloudflare vars, as in the project notes). Old code keeps working because the new table accepts a superset, and branch previews share production D1, so this must come before the PR.
+3. Gate B: open the PR, saying it adds a migration that is already applied and that the override entries are proposals pending Zack's confirmation. Zack merges, and the merge deploys the Worker and web build.
+4. Gate C: publish the new skill version to the Manyfold library immediately after the deploy finishes, and note the publish time as unix ms `T`. Rows created between the merge and `T` are reviewed by hand (list them with a SELECT on `created_at`).
+5. Gate D: run the reclassification with `node scripts/recategorize.mjs --created-before T`, after Zack has read the unsure-rows table. Fresh backup first.
 
-Steps 2, 3, 4 and 5 write to production or to live agents, or publish outward, so each waits for an explicit go.
+Why this order: the skill must not be published before the deploy, because the old Worker rejects the new keys. Reclassification assumes every `food` or `art` row still has the old meaning, so the cutoff `T` keeps it away from rows that agents filed under the new meaning after the skill went live.
+
+Gates A, B, C and D write to production or to live agents, or publish outward, so each waits for an explicit go from Zack.
 
 ## Tests
 

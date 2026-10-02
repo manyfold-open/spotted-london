@@ -1321,27 +1321,48 @@ Report to Zack in Traditional Chinese: the counts-identical result, the final pe
 
 Every gate below writes to production or to live agents. For each: say exactly what will happen, wait for an explicit yes in chat, do it, verify, report. A yes for one gate is not a yes for the next. Always `env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID` before wrangler.
 
+The order is A (migration), B (PR and merge, the merge deploys), C (publish the new skill version immediately after the deploy finishes, and note the publish time as unix ms `T`), D (reclassify with `--created-before T`). Why: the skill must not be published before the deploy, because the old Worker rejects the new category keys. Reclassification assumes every `food` or `art` row still has the old meaning, so it must never touch rows that agents filed under the new meaning after the skill went live, and the `T` cutoff guarantees that.
+
 **Gate A: apply migration 0014 to remote D1**
 
-- [ ] **Step 1: Fresh backup and a before count**
+- [ ] **Step 1: Fresh backup, pre-apply checks, rehearsal on that backup, and a before count**
 
 ```bash
 F=backups/spotted-db-$(date +%Y%m%d-%H%M%S).sql
 env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 export spotted-db --remote --output "$F"
+```
+
+Then check that production still has the shape the migration was written against. The migration rebuilds `popups` from its own `CREATE TABLE`, so anything added outside this repo would be dropped silently:
+
+```bash
+env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spotted-db --remote --json --command "PRAGMA table_info(popups)"
+env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spotted-db --remote --json --command "SELECT type, name FROM sqlite_master WHERE tbl_name = 'popups'"
+```
+
+Expected: `PRAGMA table_info` shows exactly the 38 columns of the `CREATE TABLE popups` in `migrations/0014_categories.sql`, in the same order (`id, slug, title, host, description, category, price_type, price_text, address, borough, lat, lng, geohash, start_at, end_at, hours_text, source_url, status, final_verdict, merged_into, created_by, exist_pos, exist_neg, voter_count, checkin_count, confidence, quality_pos, quality_neg, hot, report_weight, created_at, updated_at, is_example, evidence, evidence_url, evidence_check, lease_agent, lease_until`). `sqlite_master` shows only the table, the four indexes `idx_popups_list`, `idx_popups_geo`, `idx_popups_box`, `idx_popups_user`, and the two automatic indexes (`sqlite_autoindex_popups_1` for the primary key and `sqlite_autoindex_popups_2` for the unique slug), with no triggers. Anything else, such as an extra column or a trigger added outside this repo, is a STOP: the migration would drop it silently. Report it to Zack and do not continue.
+
+The Task 8 rehearsal used an older backup, so repeat it on this fresh one before applying: load the fresh backup into local D1 (as in Task 8 Step 1), run `npm run db:migrate`, run `node scripts/table-counts.mjs --local` before and after the migration and diff the two, and run `npx wrangler d1 execute spotted-db --local --command "PRAGMA foreign_key_check"` (expect an empty result). Any difference or violation is a STOP.
+
+Finally take the production count that the apply will be compared with:
+
+```bash
 node scripts/table-counts.mjs | tee .wrangler/prod-before.txt
+date +%s000   # note the time of this before count
 ```
 
 - [ ] **Step 2: Apply (after the yes)**
+
+Consider pausing agent dispatch for these few minutes, so nothing inserts between the two count commands.
 
 ```bash
 env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 migrations apply spotted-db --remote
 ```
 
-Expected: it lists `0014_categories.sql` and asks to confirm, then reports it applied. Old code keeps working because the new table accepts a superset of the old values. The site's traffic is small, but if a Scout run is writing drafts at that moment a row could be missed: check the counts below.
+Expected: it lists `0014_categories.sql` and asks to confirm, then reports it applied. Old code keeps working because the new table accepts a superset of the old values. The migration runs as one transaction and D1 serialises writes, so no row is lost if a Scout run is writing at that moment. A count difference between the before and after counts can only come from a real insert between the two count commands: explain any difference by listing rows with `created_at` greater than the time of the before count (`SELECT id, title, created_at FROM popups WHERE created_at > <before count time> ORDER BY created_at`).
 
 - [ ] **Step 3: Verify**
 
-Run `node scripts/table-counts.mjs > .wrangler/prod-after.txt`, then `diff .wrangler/prod-before.txt .wrangler/prod-after.txt` (expect no difference) and `env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spotted-db --remote --command "PRAGMA foreign_key_check"` (expect an empty result). Open the live site and confirm the list still loads. If a count differs, tell Zack straight away and do not continue.
+Run `node scripts/table-counts.mjs > .wrangler/prod-after.txt`, then `diff .wrangler/prod-before.txt .wrangler/prod-after.txt` (expect no difference, or only rows explained by the `created_at` check in Step 2) and `env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spotted-db --remote --command "PRAGMA foreign_key_check"` (expect an empty result). Open the live site and confirm the list still loads. If a count differs without an explanation, tell Zack straight away and do not continue.
 
 **Gate B: open the PR, Zack merges, the merge deploys**
 
@@ -1354,7 +1375,7 @@ git push -u origin category-split
 gh pr create --title "Split the overloaded categories: eleven instead of eight" --body-file .wrangler/pr-body.md
 ```
 
-Write `.wrangler/pr-body.md` first. It must say, in plain English: what changed (the eleven categories and why, with the 74 `art` and 76 `food` figures), that it **adds migration `0014_categories.sql`, which has already been applied to production** (rebuilds `popups` to widen a `CHECK`, row counts compared before and after), that the existing rows are reclassified separately after the merge from a reviewed script, that the Manyfold skill text changes in a separate step, and the screenshots from Task 8. End the body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not enable auto-merge. Zack merges.
+Write `.wrangler/pr-body.md` first. It must say, in plain English: what changed (the eleven categories and why, with the 74 `art` and 76 `food` figures), that it **adds migration `0014_categories.sql`, which has already been applied to production** (rebuilds `popups` to widen a `CHECK`, row counts compared before and after), that the existing rows are reclassified separately after the merge from a reviewed script, that the Manyfold skill text changes in a separate step, that the 64 entries in `scripts/recategorize-overrides.json` are proposals pending Zack's confirmation, and the screenshots from Task 8. End the body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not enable auto-merge. Zack merges.
 
 - [ ] **Step 5: Verify after Zack merges**
 
@@ -1364,19 +1385,27 @@ Workers Builds deploys `main`. Once the deploy has finished (check the Cloudflar
 curl -s "https://spotted-london.zack11712.workers.dev/api/v1/popups?when=all&category=dining,exhibition"
 ```
 
-Expected: JSON with an `items` array (empty until Gate C) and not a `category_invalid` error. The live Explore page shows eleven chips.
+Expected: JSON with an `items` array (empty until agents file under the new keys or Gate D reclassifies) and not a `category_invalid` error. The live Explore page shows eleven chips.
 
-**Gate C: reclassify the existing rows**
+**Gate C: publish the skill version to the Manyfold library, straight after the deploy**
 
-- [ ] **Step 6: Show the plan on production data**
+- [ ] **Step 6: Publish (after the yes) and note the time T**
+
+Do this immediately after the deploy in Step 5 has finished, never before it. `skills/spotted-london/SKILL.md` now holds the new categories and rules, and agents that install the skill from GitHub get it once the PR is merged. The copy in the Manyfold library is the skill `skl_agqpimhpz5y2rcx6wcz7d7v67q` in Zack's Manyfold library, shared by Scout, Triage and Checker, last published as v1.2.0 and now needing v1.3.0. Use the `manyfold:manyfold-cli-usage` skill and `mf help --agent` for the exact publish command, profile and flags (the notes say to use `mf --profile default` only). Before publishing, run `git diff main -- skills/spotted-london/SKILL.md` and make sure nothing else changed in the file that Zack has not seen. Run `date +%s000` right as the publish command finishes and write the value down as `T` (unix ms). After publishing, read the skill back from the library and confirm the new category text is there.
+
+Rows created between the merge and `T` were filed under the old skill, so the reclassification will include them. Review them by hand anyway, because agents that install the skill from GitHub may have used the new meaning from the merge on: list them with `SELECT id, title, category, created_at FROM popups WHERE created_at >= <merge time> AND created_at < <T> ORDER BY created_at` (production, `--remote`) and compare each with what the proposal says in Gate D.
+
+**Gate D: reclassify the existing rows, only those created before T**
+
+- [ ] **Step 7: Show the plan on production data**
 
 ```bash
-node scripts/recategorize.mjs
+node scripts/recategorize.mjs --created-before T
 ```
 
-Reads production only. Show Zack the Moves counts and any "Not sure" rows. If production has rows that were not in the local rehearsal (new drafts since the backup), settle them in `scripts/recategorize-overrides.json` and run again until he is happy. Commit any override change.
+Replace `T` with the value from Step 6. Reads production only, and only rows with `created_at` below `T`, so rows agents filed under the new meaning are never touched. Show Zack the Moves counts and any "Not sure" rows. If production has rows that were not in the local rehearsal (new drafts since the backup), settle them in `scripts/recategorize-overrides.json` and run again until he is happy. Commit any override change.
 
-- [ ] **Step 7: Apply (after the yes)**
+- [ ] **Step 8: Apply (after the yes)**
 
 ```bash
 F=backups/spotted-db-$(date +%Y%m%d-%H%M%S).sql
@@ -1385,22 +1414,16 @@ env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spo
 env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npx wrangler d1 execute spotted-db --remote --command "SELECT category, COUNT(*) n FROM popups GROUP BY category ORDER BY n DESC"
 ```
 
-Expected: the per-category counts match the Moves the script printed, and the total equals the `popups` count in `.wrangler/prod-after.txt`. The public list follows within ten minutes (the snapshot cron). After ten minutes, load the live site and check that each chip shows a believable set.
-
-**Gate D: publish the skill version to the Manyfold library**
-
-- [ ] **Step 8: Publish (after the yes)**
-
-`skills/spotted-london/SKILL.md` now holds the new categories and rules, and agents that install the skill from GitHub get it once the PR is merged. The copy in the Manyfold library is the skill `skl_agqpimhpz5y2rcx6wcz7d7v67q` in Zack's Manyfold library, shared by Scout, Triage and Checker, last published as v1.2.0 and now needing v1.3.0. Use the `manyfold:manyfold-cli-usage` skill and `mf help --agent` for the exact publish command, profile and flags (the notes say to use `mf --profile default` only). Before publishing, run `git diff main -- skills/spotted-london/SKILL.md` and make sure nothing else changed in the file that Zack has not seen. After publishing, read the skill back from the library and confirm the new category text is there.
+Expected: the per-category counts match the Moves the script printed, and the total equals the `popups` count in `.wrangler/prod-after.txt` plus any rows inserted since. The public list follows within ten minutes (the snapshot cron). After ten minutes, load the live site and check that each chip shows a believable set.
 
 - [ ] **Step 9: Wrap up**
 
-Tell Zack in Traditional Chinese: what is live, the final per-category counts, the backups taken, and that agents will start using the eleven categories on their next run. Offer to remove the worktree (`git worktree remove ../spotted-london-categories`) and the merged branch once he is happy, and do not do it unasked.
+Tell Zack in Traditional Chinese: what is live, the final per-category counts, the backups taken, the value of `T`, and that agents will start using the eleven categories on their next run. Offer to remove the worktree (`git worktree remove ../spotted-london-categories`) and the merged branch once he is happy, and do not do it unasked.
 
 ---
 
 ## Self-Review Notes
 
-Spec coverage (Task 0 only prepares the worktree): taxonomy and tie-break rules (Tasks 3, 4, 6); data model migration and rehearsal (Tasks 1, 8); reclassification with review table and overrides (Tasks 7, 8, 9C); shared list and each code change (Tasks 2 to 5); agent-facing text and gated skill publish (Tasks 4, 6, 9D); rollout order (Task 9, gates A to D); tests including the drift test (Tasks 1, 2, 5). One deliberate addition to the spec: `scripts/recategorize-overrides.json`, the place where Zack's answers to the unsure rows are recorded so a rerun reproduces them.
+Spec coverage (Task 0 only prepares the worktree): taxonomy and tie-break rules (Tasks 3, 4, 6); data model migration and rehearsal (Tasks 1, 8); reclassification with review table and overrides (Tasks 7, 8, 9D); shared list and each code change (Tasks 2 to 5); agent-facing text and gated skill publish (Tasks 4, 6, 9C); rollout order (Task 9, gates A to D); tests including the drift test (Tasks 1, 2, 5). One deliberate addition to the spec: `scripts/recategorize-overrides.json`, the place where Zack's answers to the unsure rows are recorded so a rerun reproduces them.
 
 Known limits: the new icons are hand-drawn strokes and may need a second pass after Task 5 Step 7 and Task 8 Step 5. `guessCategory` is a fallback that always flags `check`. The reclassifier never reads `status`, so Scout drafts that are still pending are moved with the rest.
