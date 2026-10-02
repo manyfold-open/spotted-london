@@ -188,7 +188,10 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 .pat-food { background-color: var(--you-bg); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
 .pat-fashion { background-color: var(--sim-bg); background-image: repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
 .pat-sample { background-color: var(--accent-soft); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
-.pat-art { background-color: var(--ai-bg); background-image: repeating-linear-gradient(90deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
+.pat-dining { background-color: var(--you-bg); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px), repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
+.pat-exhibition { background-color: var(--ai-bg); background-image: repeating-linear-gradient(90deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
+.pat-art { background-color: var(--ai-bg); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
+.pat-event { background-color: var(--sim-bg); background-image: repeating-conic-gradient(rgba(29,27,24,.07) 0 25%, transparent 0 50%); background-size: 22px 22px }
 .pat-market { background-color: var(--eng-bg); background-image: repeating-linear-gradient(0deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
 .pat-beauty { background-color: var(--err-bg); background-image: radial-gradient(rgba(29,27,24,.1) 2px, transparent 2.2px); background-size: 16px 16px }
 .pat-tech { background-color: var(--soft); background-image: linear-gradient(rgba(29,27,24,.07) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(29,27,24,.07) 1.5px, transparent 1.5px); background-size: 14px 14px }

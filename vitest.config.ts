@@ -21,6 +21,7 @@ export default defineConfig(async () => {
         },
       }),
     ],
-    test: { setupFiles: ['./test/setup.ts'] },
+    // css.include lets a test read web/src/styles.css as text (`?raw`). Vitest blanks CSS files by default.
+    test: { setupFiles: ['./test/setup.ts'], css: { include: [/styles\.css/] } },
   };
 });

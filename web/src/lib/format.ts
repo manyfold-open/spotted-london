@@ -4,7 +4,7 @@ import { CATEGORIES, CATEGORY_LABELS, type Category } from '../../../src/shared/
 
 export const CATS: Record<Category, string> = CATEGORY_LABELS;
 export const CAT_LIST: Category[] = [...CATEGORIES];
-export const catIcon = (c: Category) => `c-${c}` as IconName;
+export const catIcon = (c: Category): IconName => `c-${c}`;
 
 const TZ = 'Europe/London';
 const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
