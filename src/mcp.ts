@@ -20,7 +20,9 @@ import { DAY, hot, PUBLIC_STATUSES } from './lib/scoring';
 import { londonDateString, parseLondonDate } from './lib/time';
 import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
+import { publishMode, publishReady } from './db/publish';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
+import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
 
 export const mcp = new Hono<AppEnv>();
 
@@ -133,6 +135,47 @@ const LINKS_SCHEMA = {
   items: obj({ url: S('Public web address.'), kind: S('What the page is. Social posts are recognised from the address.', { enum: [...LINK_KINDS] }) }, ['url']),
 };
 
+/** How long a Scout keeps a source, and a Triage or Checker agent keeps a pop-up, before another agent may take it. */
+const SOURCE_LEASE = 90 * 60_000, POPUP_LEASE = 60 * 60_000;
+
+/**
+ * Hands pop-ups to this agent: it keeps the ones it already holds, and takes free ones (never
+ * leased, or the lease ran out) up to `limit`. `where` uses ?1 for now, ?2 for the agent's role
+ * and ?3 for `cutoff`. One UPDATE, so two agents asking at once can never get the same pop-up.
+ */
+async function leasePopups(x: Ctx, limit: number, where: string, order: string, cutoff: number): Promise<PopupRow[]> {
+  const db = x.c.env.DB;
+  const me = x.agent!.id;
+  const eligible = `FROM popups p WHERE ${where}`;
+  const held = await db.prepare(`SELECT COUNT(*) AS n ${eligible} AND p.lease_agent = ?4 AND p.lease_until > ?1`).bind(x.now, x.agent!.role, cutoff, me).first<{ n: number }>();
+  const room = limit - (held?.n ?? 0);
+  if (room > 0) {
+    await db.prepare(
+      `UPDATE popups SET lease_agent = ?4, lease_until = ?5 WHERE id IN (
+         SELECT p.id ${eligible} AND (p.lease_agent IS NULL OR p.lease_until <= ?1) ORDER BY ${order} LIMIT ?6)`,
+    ).bind(x.now, x.agent!.role, cutoff, me, x.now + POPUP_LEASE, room).run();
+  }
+  const { results } = await db.prepare(`SELECT p.* ${eligible} AND p.lease_agent = ?4 AND p.lease_until > ?1 ORDER BY ${order} LIMIT ?6`)
+    .bind(x.now, x.agent!.role, cutoff, me, 0, limit).all<PopupRow>();
+  return results;
+}
+
+async function userRows(db: D1Database, ids: string[]): Promise<Map<string, { display_name: string | null; karma: number; created_at: number }>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  const { results } = await db.prepare(`SELECT id, display_name, karma, created_at FROM users WHERE id IN (${unique.map(() => '?').join(',')})`).bind(...unique).all<{ id: string; display_name: string | null; karma: number; created_at: number }>();
+  return new Map(results.map(u => [u.id, u]));
+}
+
+/** Social platforms need a login to read, so a quote from one is checked only against posts Spotted fetched itself. */
+const SOCIAL_HOSTS = /(^|\.)(instagram\.com|instagr\.am|threads\.net|threads\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com)$/;
+
+async function verifyEvidence(db: D1Database, quote: string, url: string): Promise<EvidenceCheck> {
+  const post = await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>();
+  if (!post && SOCIAL_HOSTS.test(new URL(url).hostname)) return 'unchecked';
+  return checkEvidence(quote, url, post);
+}
+
 const TOOLS: Record<string, Tool> = {
   search_popups: {
     description: 'Search pop-ups in London listed on Spotted London: food, fashion, samples, art, markets, beauty and tech. Returns up to 20, soonest and most popular first, each with a link.',
@@ -195,19 +238,32 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_sources: {
-    description: 'Sources due a check, least recently checked first: listing sites, venue pages, brand sites, social accounts and web searches the admin set up. Each comes with its track record (drafts sent, published, rejected). Start every run here.',
-    inputSchema: obj({ limit: N('1 to 40. Defaults to 15.') }),
+    description: 'Lease sources that are due a check, least recently checked first: listing sites, venue pages, brand sites, social accounts and web searches the admin set up. Each comes with its track record (drafts sent, published, rejected). A source is leased to you for 90 minutes so no other Scout reads it; call mark_source_checked when you are done with one. Calling this again returns the sources you still hold. Start every run here.',
+    inputSchema: obj({ limit: N('1 to 40. Defaults to 15.'), kind: S('Only this kind of source.', { enum: [...SOURCE_KINDS] }) }),
     async run(a, x) {
       const db = x.c.env.DB;
       const limit = Math.min(40, Math.max(1, numArg(a, 'limit') ?? 15));
+      const kind = str(a, 'kind', 10);
+      if (kind && !(SOURCE_KINDS as readonly string[]).includes(kind)) throw new ToolError(`kind must be one of: ${SOURCE_KINDS.join(', ')}.`);
+      const me = x.agent!.id;
+      // Instagram and Threads sources are fetched for Scout, so they only show while they have posts to read.
+      const due = `status = 'active' AND (due_at IS NULL OR due_at <= ?1)
+        AND (kind != 'social' OR NOT (target LIKE '%instagram.com/%' OR target LIKE '%threads.net/%' OR target LIKE '%threads.com/%')
+          OR EXISTS (SELECT 1 FROM social_posts p WHERE p.source_id = scout_sources.id AND p.handled_at IS NULL AND p.fetched_at > ?2))
+        AND (?3 IS NULL OR kind = ?3)`;
+      const held = await db.prepare(`SELECT COUNT(*) AS n FROM scout_sources WHERE leased_to = ?4 AND lease_until > ?1 AND ${due}`).bind(x.now, x.now - POST_OFFER, kind, me).first<{ n: number }>();
+      const room = limit - (held?.n ?? 0);
+      if (room > 0) {
+        // One statement, so two Scouts asking at once can never get the same source.
+        await db.prepare(
+          `UPDATE scout_sources SET leased_to = ?4, lease_until = ?5 WHERE id IN (
+             SELECT id FROM scout_sources WHERE ${due} AND (leased_to IS NULL OR lease_until <= ?1)
+             ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?6)`,
+        ).bind(x.now, x.now - POST_OFFER, kind, me, x.now + SOURCE_LEASE, room).run();
+      }
       const [{ results }, later] = await Promise.all([
-        // Instagram and Threads sources are fetched for Scout, so they only show while they have posts to read.
-        db.prepare(
-          `SELECT * FROM scout_sources WHERE status = 'active' AND (due_at IS NULL OR due_at <= ?)
-             AND (kind != 'social' OR NOT (target LIKE '%instagram.com/%' OR target LIKE '%threads.net/%' OR target LIKE '%threads.com/%')
-               OR EXISTS (SELECT 1 FROM social_posts p WHERE p.source_id = scout_sources.id AND p.handled_at IS NULL AND p.fetched_at > ?))
-             ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?`,
-        ).bind(x.now, x.now - POST_OFFER, limit).all<SourceRow>(),
+        db.prepare(`SELECT * FROM scout_sources WHERE leased_to = ?4 AND lease_until > ?1 AND ${due} ORDER BY due_at IS NOT NULL, due_at, created_at LIMIT ?6`)
+          .bind(x.now, x.now - POST_OFFER, kind, me, 0, limit).all<SourceRow>(),
         db.prepare("SELECT COUNT(*) AS n FROM scout_sources WHERE status = 'active' AND due_at > ?").bind(x.now).first<{ n: number }>(),
       ]);
       const stats = await sourceStats(db, results.map(r => r.id));
@@ -215,6 +271,7 @@ const TOOLS: Record<string, Tool> = {
       return {
         count: results.length,
         not_due_yet: later?.n ?? 0,
+        lease_minutes: SOURCE_LEASE / 60_000,
         sources: results.map(r => ({
           id: r.id, kind: r.kind, label: r.label,
           ...(r.kind === 'search' ? { search: r.target } : { url: r.target }),
@@ -255,7 +312,7 @@ const TOOLS: Record<string, Tool> = {
       const src = await db.prepare("SELECT * FROM scout_sources WHERE id = ? AND status = 'active'").bind(str(a, 'source_id', 40, true)).first<SourceRow>();
       if (!src) throw new ToolError('Unknown source_id, or the source is switched off. Use an id from list_sources.');
       const due = nextDue(src.every_days, x.now);
-      await db.prepare('UPDATE scout_sources SET last_checked_at = ?, due_at = ?, updated_at = ? WHERE id = ?').bind(x.now, due, x.now, src.id).run();
+      await db.prepare('UPDATE scout_sources SET last_checked_at = ?, due_at = ?, updated_at = ?, leased_to = NULL, lease_until = NULL WHERE id = ?').bind(x.now, due, x.now, src.id).run();
       return { saved: true, next_check: londonDateString(due) };
     },
   },
@@ -351,12 +408,14 @@ const TOOLS: Record<string, Tool> = {
       hours_text: S('Opening hours, like "Fri 5-10pm, Sat-Sun 12-8pm".'),
       price_type: S('Entry price.', { enum: ['free', 'paid', 'unknown'] }),
       price_text: S('Price details, like "Free entry" or "£12 tickets".'),
-      source_url: S('Public link where the details are published: the organiser page, ticket page or article.'),
+      source_url: S('Public link where the details are published: the organiser page, ticket page or article. Or the Instagram or Threads post, when no organiser page exists.'),
+      evidence: S(`A passage copied word for word from the page or post, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Spotted looks for it there and refuses the draft if it is not found.`),
+      evidence_url: S('The page or post the evidence comes from. Defaults to source_url.'),
       confidence: S('high: dates and place confirmed by the organiser. check: something is unclear.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
       source_id: S('Id from list_sources of the source that led you here, if any.'),
-    }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url']),
+    }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url', 'evidence']),
     async run(a, x) {
       const run = await requireRun(x, a);
       const db = x.c.env.DB;
@@ -371,16 +430,28 @@ const TOOLS: Record<string, Tool> = {
       } catch (e) {
         throw new ToolError(e instanceof ApiError ? e.message : String(e));
       }
+      const evidence = str(a, 'evidence', EVIDENCE_MAX + 1, true)!;
+      if (evidence.length < EVIDENCE_MIN || evidence.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${evidence.length}.`);
       const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number });
       if (dupes.length) {
         await markSeen(x, run, seenUrl, 'duplicate', { sourceId, popupId: dupes[0].id });
         await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
         return { sent: false, reason: 'Already on Spotted. Skip it.', duplicates: dupes.map(p => brief(toPublic(p), x.origin)) };
       }
+      const evidenceUrl = normalizeUrl(str(a, 'evidence_url', 500) ?? source);
+      if (!evidenceUrl) throw new ToolError('evidence_url must be a public web address.');
+      let evidenceCheck: EvidenceCheck;
+      try {
+        evidenceCheck = await verifyEvidence(db, evidence, evidenceUrl);
+      } catch (e) {
+        if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${evidenceUrl})`);
+        throw e;
+      }
       await useItem(x, run);
       const id = newId();
       const row = {
         id, slug: slugify(input.title!), ...input, geohash: geohash(input.lat!, input.lng!), status: 'pending',
+        evidence, evidence_url: evidenceUrl, evidence_check: evidenceCheck,
         created_by: x.agent!.user_id, quality_pos: 0, quality_neg: 0, created_at: x.now, updated_at: x.now,
         hot: hot({ status: 'pending', qualityPos: 0, qualityNeg: 0, startAt: input.start_at!, endAt: input.end_at! }, x.now),
       };
@@ -389,7 +460,8 @@ const TOOLS: Record<string, Tool> = {
       await db.batch([
         db.prepare(`INSERT INTO popups (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map(k => (row as Record<string, unknown>)[k] ?? null)),
         db.prepare('INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(newId(), x.agent!.id, run.id, id, a.confidence === 'high' ? 'looks_real' : 'needs_check', note ?? 'Found by the scout agent.', input.source_url, x.now),
+          .bind(newId(), x.agent!.id, run.id, id, a.confidence === 'high' ? 'looks_real' : 'needs_check',
+            `${note ?? 'Found by the scout agent.'} Quote${evidenceCheck === 'found' ? ' (seen on the page)' : ' (page could not be read, not checked)'}: "${evidence}"`, evidenceUrl, x.now),
         ...links.map(l => db.prepare('INSERT OR IGNORE INTO popup_links (popup_id, url, kind, added_by, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, l.url, l.kind, x.agent!.user_id, x.now)),
         // Only the main page carries the source, so each draft counts once in its track record.
         ...[seenUrl, ...links.map(l => l.url)].map((url, i) => db.prepare("INSERT INTO scout_seen (id, url, outcome, source_id, popup_id, run_id, seen_at) VALUES (?, ?, 'sent', ?, ?, ?, ?)")
@@ -400,47 +472,49 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_review_queue: {
-    description: 'Posts waiting for review that you have not left a note on yet, oldest first.',
+    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      const { results } = await x.c.env.DB.prepare(
-        `SELECT p.*, u.display_name AS poster_name, u.karma AS poster_karma, u.created_at AS poster_created_at FROM popups p JOIN users u ON u.id = p.created_by
-         WHERE p.status = 'pending' AND p.end_at > ? AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ?)
-         ORDER BY p.created_at LIMIT ?`,
-      ).bind(x.now, x.agent!.id, limit).all<PopupRow & { poster_name: string | null; poster_karma: number; poster_created_at: number }>();
+      const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
+        AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))`, 'p.created_at', x.now);
+      const posters = await userRows(x.c.env.DB, results.map(p => p.created_by));
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
         count: results.length,
-        posts: results.map(p => ({
-          ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links: links.get(p.id) ?? [],
-          poster: { name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((x.now - p.poster_created_at) / DAY), is_agent: p.created_by.startsWith('agent_') },
-        })),
+        lease_minutes: POPUP_LEASE / 60_000,
+        posts: results.map(p => {
+          const u = posters.get(p.created_by);
+          return {
+            ...brief(toPublic(p), x.origin), description: p.description, source_url: p.source_url, links: links.get(p.id) ?? [],
+            poster: { name: u?.display_name ?? null, karma: u?.karma ?? 0, account_age_days: Math.floor((x.now - (u?.created_at ?? x.now)) / DAY), is_agent: p.created_by.startsWith('agent_') },
+          };
+        }),
       };
     },
   },
   list_live_popups: {
-    description: 'Published pop-ups that are on now or coming up and have a source link, starting with the ones checked least recently. Skips any you checked in the last 3 days.',
+    description: 'Lease published pop-ups that are on now or coming up and have a source link, starting with the ones that start soonest. Skips any a Checker agent checked in the last 3 days. A pop-up is leased to you for 60 minutes so no other Checker takes it. Calling this again returns the ones you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      const { results } = await x.c.env.DB.prepare(
-        `SELECT p.* FROM popups p WHERE p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at > ? AND p.source_url IS NOT NULL AND p.is_example = 0
-           AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id = ? AND n.created_at > ?)
-         ORDER BY p.start_at LIMIT ?`,
-      ).bind(x.now, x.agent!.id, x.now - 3 * DAY, limit).all<PopupRow>();
+      const results = await leasePopups(x, limit, `p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at > ?1 AND p.source_url IS NOT NULL AND p.is_example = 0
+        AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2) AND n.created_at > ?3)`, 'p.start_at', x.now - 3 * DAY);
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
-      return { count: results.length, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };
+      return { count: results.length, lease_minutes: POPUP_LEASE / 60_000, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };
     },
   },
   add_note: {
-    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine.',
+    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine. To mark a waiting post ready to publish, use verdict looks_real with evidence (a quote you copied word for word from the page, found by Spotted), dates_match true and place_match true. The answer says whether it is ready and, if not, why.',
     inputSchema: obj({
       run_id: RUN_ID,
       popup_id: S('Pop-up id.'),
       verdict: S('Your finding.', { enum: [...VERDICTS] }),
       note: S('One to three sentences: what you checked and what you found. Say exactly what changed, if anything.'),
-      evidence_url: S('Link that shows it.'),
+      evidence_url: S('Link that shows it. Defaults to the pop-up source link when you give evidence.'),
+      evidence: S(`A passage you copied word for word from evidence_url, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Open the page yourself; do not reuse the Scout's quote.`),
+      dates_match: { type: 'boolean', description: 'The dates on the page are the dates on the post.' },
+      place_match: { type: 'boolean', description: 'The place on the page is the place on the post.' },
       duplicate_of: S('For verdict duplicate: id of the pop-up it repeats.'),
     }, ['run_id', 'popup_id', 'verdict', 'note']),
     async run(a, x) {
@@ -449,20 +523,60 @@ const TOOLS: Record<string, Tool> = {
       const verdict = str(a, 'verdict', 20, true)!;
       if (!(VERDICTS as readonly string[]).includes(verdict)) throw new ToolError(`verdict must be one of: ${VERDICTS.join(', ')}.`);
       const popupId = str(a, 'popup_id', 40, true)!;
-      const p = await db.prepare('SELECT id, status FROM popups WHERE id = ?').bind(popupId).first<{ id: string; status: string }>();
+      const p = await db.prepare('SELECT id, status, title, description, created_by, source_url, evidence, evidence_check FROM popups WHERE id = ?').bind(popupId)
+        .first<{ id: string; status: string; title: string; description: string | null; created_by: string; source_url: string | null; evidence: string | null; evidence_check: string | null }>();
       if (!p) throw new ToolError('No pop-up with that id.');
       const dup = str(a, 'duplicate_of', 40);
       if (verdict === 'duplicate' && !dup) throw new ToolError('Give duplicate_of for verdict duplicate.');
       if (dup && !(await db.prepare('SELECT 1 FROM popups WHERE id = ?').bind(dup).first())) throw new ToolError('duplicate_of is not a pop-up id.');
-      const evidence = str(a, 'evidence_url', 500);
-      if (evidence && !safeUrl(evidence)) throw new ToolError('evidence_url must be a public web address.');
+      const evidenceUrlArg = str(a, 'evidence_url', 500);
+      if (evidenceUrlArg && !safeUrl(evidenceUrlArg)) throw new ToolError('evidence_url must be a public web address.');
+      const note = str(a, 'note', 600, true)!;
+
+      // The agent's own quote, looked up the same way as a Scout's.
+      const quote = str(a, 'evidence', EVIDENCE_MAX + 1);
+      let evidenceUrl = evidenceUrlArg ? safeUrl(evidenceUrlArg)!.toString() : null;
+      let evidenceCheck: EvidenceCheck | null = null;
+      if (quote) {
+        if (quote.length < EVIDENCE_MIN || quote.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${quote.length}.`);
+        const where = normalizeUrl(evidenceUrl ?? p.source_url ?? '');
+        if (!where) throw new ToolError('Give evidence_url: the page the quote comes from.');
+        try { evidenceCheck = await verifyEvidence(db, quote, where); } catch (e) {
+          if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${where})`);
+          throw e;
+        }
+        evidenceUrl = where;
+      }
+
+      // Ready to publish only when every condition holds. The reasons come back so the agent can fix them.
+      const why: string[] = [];
+      let ready = false;
+      if (verdict === 'looks_real' && (quote || a.dates_match !== undefined || a.place_match !== undefined)) {
+        if (p.status !== 'pending') why.push('only posts waiting for review can be published');
+        if (!quote) why.push('give evidence');
+        else if (evidenceCheck !== 'found') why.push('Spotted could not read that page to find your quote, so a person has to look');
+        if (a.dates_match !== true) why.push('dates_match must be true');
+        if (a.place_match !== true) why.push('place_match must be true');
+        if (p.created_by === x.agent!.user_id) why.push('you cannot publish your own post');
+        if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) why.push('the post contains text aimed at AI agents, so a person has to look');
+        if (p.created_by.startsWith('agent_')) {
+          if (p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
+          const scout = await db.prepare("SELECT verdict FROM agent_notes WHERE popup_id = ? AND agent_id IN (SELECT id FROM agents WHERE user_id = ?) ORDER BY created_at LIMIT 1").bind(p.id, p.created_by).first<{ verdict: string }>();
+          if (scout?.verdict !== 'looks_real') why.push('the Scout was not sure (confidence check)');
+        }
+        ready = why.length === 0;
+      }
+
       const existing = await db.prepare('SELECT id FROM agent_notes WHERE run_id = ? AND popup_id = ?').bind(run.id, p.id).first();
       if (!existing) await useItem(x, run);
       await db.prepare(
-        `INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, duplicate_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, duplicate_of = excluded.duplicate_of`,
-      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, str(a, 'note', 600, true), evidence ? safeUrl(evidence)!.toString() : null, dup, x.now).run();
-      return { saved: true };
+        `INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, evidence, publish_ready, duplicate_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, evidence = excluded.evidence,
+           publish_ready = excluded.publish_ready, duplicate_of = excluded.duplicate_of`,
+      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, note, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
+      // In auto mode the server publishes at once; the same conditions are checked again against every open note.
+      const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
+      return { saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}) };
     },
   },
   finish_run: {
@@ -478,7 +592,7 @@ const TOOLS: Record<string, Tool> = {
 };
 
 const PUBLIC_TOOLS = ['search_popups', 'get_popup'];
-const toolsFor = (agent: AgentRow | null) => [...PUBLIC_TOOLS, ...(agent ? AGENT_INFO[agent.id].tools : [])];
+const toolsFor = (agent: AgentRow | null) => [...PUBLIC_TOOLS, ...(agent ? AGENT_INFO[agent.role].tools : [])];
 
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 const reply = (id: Rpc['id'], result: unknown) => ({ jsonrpc: '2.0', id: id ?? null, result });
@@ -495,7 +609,7 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'spotted-london', title: 'Spotted London', version: '1.0.0' },
         instructions: x.agent
-          ? `You are signed in as the ${AGENT_INFO[x.agent.id].name} agent. Follow the spotted-london skill.`
+          ? `You are signed in as the ${AGENT_INFO[x.agent.role].name} agent. Follow the spotted-london skill.`
           : 'Spotted London lists pop-ups in London that the community verifies. Search, then share the url of each pop-up so people can see details, votes and the map.',
       });
     }
@@ -506,7 +620,7 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
       const name = String(msg.params?.name ?? '');
       if (!TOOLS[name]) return fail(msg.id, -32602, `Unknown tool: ${name}.`);
       if (!toolsFor(x.agent).includes(name)) {
-        return reply(msg.id, { isError: true, content: [{ type: 'text', text: x.agent ? `The ${AGENT_INFO[x.agent.id].name} agent cannot use ${name}.` : `${name} needs an agent key.` }] });
+        return reply(msg.id, { isError: true, content: [{ type: 'text', text: x.agent ? `The ${AGENT_INFO[x.agent.role].name} agent cannot use ${name}.` : `${name} needs an agent key.` }] });
       }
       const args = (msg.params?.arguments ?? {}) as Args;
       try {

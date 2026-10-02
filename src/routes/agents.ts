@@ -7,8 +7,9 @@ import { randomToken } from '../lib/auth';
 import { seal, unseal } from '../lib/seal';
 import { checkRpcUrl, probe } from '../lib/a2a';
 import { connectPoll, connectStart } from '../lib/manyfold';
-import { AGENT_INFO, AGENT_IDS, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
+import { AGENT_INFO, AGENT_ROLES, AGENTS_PER_ROLE_MAX, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
+import { publishMode, publishStats, setPublishMode, undoAgent } from '../db/publish';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
@@ -22,14 +23,15 @@ export const SKILL_URL = 'https://github.com/tldr0810/spotted-london/tree/main/s
 
 const hint = (s: string) => `…${s.slice(-4)}`;
 
-function view(a: AgentRow, runs: RunRow[], openNotes: number) {
-  const info = AGENT_INFO[a.id];
+function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { published: number; undone: number; hidden_after: number }) {
+  const info = AGENT_INFO[a.role];
   return {
-    id: a.id, name: info.name, job: info.job, unit: info.unit,
+    id: a.id, role: a.role, name: a.name, job: info.job, unit: info.unit,
     enabled: !!a.enabled, schedule: a.schedule, run_hour: a.run_hour, instructions: a.instructions, max_items: a.max_items,
     rpc_url: a.rpc_url, token_hint: a.token_hint, key_hint: a.key_hint,
     connected: !!(a.rpc_url && a.token_sealed), next_run_at: a.enabled ? a.next_run_at : null,
     open_notes: openNotes,
+    published: published ?? { published: 0, undone: 0, hidden_after: 0 },
     runs: runs.map(r => ({ id: r.id, trigger: r.trigger, status: r.status, summary: r.summary, error: r.error, items: r.items, started_at: r.started_at, finished_at: r.finished_at })),
   };
 }
@@ -37,19 +39,84 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number) {
 agentsAdmin.get('/', async c => {
   requireAdmin(c);
   const db = c.env.DB;
-  const [{ results: agents }, { results: runs }, { results: notes }] = await Promise.all([
+  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats] = await Promise.all([
     db.prepare('SELECT * FROM agents').all<AgentRow>(),
     db.prepare('SELECT * FROM agent_runs WHERE started_at > ? ORDER BY started_at DESC LIMIT 100').bind(c.get('now') - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT agent_id, COUNT(*) AS n FROM agent_notes WHERE resolved_at IS NULL AND verdict != 'looks_real' GROUP BY agent_id").all<{ agent_id: string; n: number }>(),
+    publishMode(db),
+    publishStats(db),
   ]);
   const origin = c.env.APP_URL ? new URL(c.env.APP_URL).origin : new URL(c.req.url).origin;
   return c.json({
     mcp_url: `${origin}/mcp`,
     skill_url: SKILL_URL,
     agents_key_set: (c.env.AGENTS_KEY ?? '').length >= 32,
-    agents: AGENT_IDS.map(id => agents.find(a => a.id === id)).filter((a): a is AgentRow => !!a).map(a =>
-      view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0)),
+    auto_publish: mode,
+    roles: AGENT_ROLES.map(role => ({ role, name: AGENT_INFO[role].name })),
+    agents: [...agents].sort((x, y) => AGENT_ROLES.indexOf(x.role) - AGENT_ROLES.indexOf(y.role) || x.created_at - y.created_at || x.id.localeCompare(y.id)).map(a =>
+      view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0, stats.get(a.id))),
   });
+});
+
+/** Whether agents' verified posts wait for the admin's click ('suggest') or go live at once ('auto'). */
+agentsAdmin.put('/settings', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  const mode = oneOf(b, 'auto_publish', ['suggest', 'auto'] as const, { required: true })!;
+  const before = await publishMode(c.env.DB);
+  await setPublishMode(c.env.DB, mode, now);
+  if (before !== mode) await audit(c.env.DB, admin.id, 'agents.auto_publish', 'settings', 'auto_publish', { from: before, to: mode }, now);
+  return c.json({ auto_publish: mode });
+});
+
+/** Puts back in the review queue what this agent's work made public in the last `hours` hours. */
+agentsAdmin.post('/:id/undo', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const a = await loadAgent(db, c.req.param('id'));
+  const b = await jsonBody(c.req);
+  const hours = num(b, 'hours', { required: true, min: 1, max: 24 * 90 })!;
+  const result = await undoAgent(db, a, now - hours * 3_600_000, admin.id, now);
+  await audit(db, admin.id, 'agent.undo', 'agent', a.id, { hours, reverted: result.reverted, skipped: result.skipped.length }, now);
+  return c.json(result);
+});
+
+/** Adds another agent of a role. It starts off, unconnected and without a key, like the first ones did. */
+agentsAdmin.post('/', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const b = await jsonBody(c.req);
+  const role = oneOf(b, 'role', AGENT_ROLES, { required: true })!;
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM agents WHERE role = ?').bind(role).first<{ n: number }>();
+  if ((count?.n ?? 0) >= AGENTS_PER_ROLE_MAX) throw new ApiError(409, 'too_many_agents', `There are already ${AGENTS_PER_ROLE_MAX} ${AGENT_INFO[role].name} agents. Delete one you do not use first.`);
+  const name = text(b, 'name', { max: 40 }) ?? `${AGENT_INFO[role].name} ${(count?.n ?? 0) + 1}`;
+  if (await db.prepare('SELECT 1 FROM agents WHERE lower(name) = lower(?)').bind(name).first()) throw new ApiError(409, 'agent_name_taken', 'Another agent already has this name. Pick a different one.');
+  const id = `${role}-${newId().slice(0, 6)}`;
+  const userId = `agent_${id.replace('-', '_')}`;
+  const defaults = { scout: ['daily', 7, 20], triage: ['every_6h', 8, 30], checker: ['daily', 9, 30] }[role] as [string, number, number];
+  await db.batch([
+    db.prepare("INSERT INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES (?, ?, ?, 'user', 0, 0, ?)").bind(userId, `${id}@agents.spotted.invalid`, name, now),
+    db.prepare('INSERT INTO agents (id, role, name, user_id, schedule, run_hour, max_items, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(id, role, name, userId, defaults[0], defaults[1], defaults[2], now, now),
+  ]);
+  await audit(db, admin.id, 'agent.create', 'agent', id, { role, name }, now);
+  return c.json(await one(db, id, now), 201);
+});
+
+/** Only an agent that never ran and never left a note can be deleted. Otherwise switch it off. */
+agentsAdmin.delete('/:id', async c => {
+  const admin = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const a = await loadAgent(db, c.req.param('id'));
+  if (['scout', 'triage', 'checker'].includes(a.id)) throw new ApiError(409, 'agent_protected', 'The first agent of each role cannot be deleted. Switch it off instead.');
+  const used = await db.prepare('SELECT (SELECT COUNT(*) FROM agent_runs WHERE agent_id = ?1) + (SELECT COUNT(*) FROM agent_notes WHERE agent_id = ?1) + (SELECT COUNT(*) FROM popups WHERE created_by = ?2) AS n').bind(a.id, a.user_id).first<{ n: number }>();
+  if (used?.n) throw new ApiError(409, 'agent_has_history', 'This agent has runs, notes or drafts on record, so it stays. Switch it off instead.');
+  await db.batch([db.prepare('DELETE FROM agents WHERE id = ?').bind(a.id), db.prepare('DELETE FROM users WHERE id = ?').bind(a.user_id)]);
+  await audit(db, admin.id, 'agent.delete', 'agent', a.id, { name: a.name }, now);
+  return c.json({ ok: true });
 });
 
 agentsAdmin.patch('/:id', async c => {
@@ -62,6 +129,7 @@ agentsAdmin.patch('/:id', async c => {
   const changed: Record<string, unknown> = {};
 
   if (b.schedule !== undefined) next.schedule = oneOf(b, 'schedule', SCHEDULES, { required: true })!;
+  if (b.name !== undefined) next.name = text(b, 'name', { required: true, max: 40 })!;
   if (b.run_hour !== undefined) next.run_hour = Math.round(num(b, 'run_hour', { required: true, min: 0, max: 23 })!);
   if (b.max_items !== undefined) next.max_items = Math.round(num(b, 'max_items', { required: true, min: 1, max: 50 })!);
   if (b.instructions !== undefined) next.instructions = text(b, 'instructions', { max: 2000 });
@@ -84,7 +152,7 @@ agentsAdmin.patch('/:id', async c => {
     const stop = await blocker(db, next, now);
     if (stop && stop.code !== 'agent_busy') throw stop;
   }
-  for (const k of ['schedule', 'run_hour', 'max_items', 'instructions', 'rpc_url', 'enabled'] as const) {
+  for (const k of ['name', 'schedule', 'run_hour', 'max_items', 'instructions', 'rpc_url', 'enabled'] as const) {
     if (next[k] !== a[k]) changed[k] = next[k];
   }
   // A new schedule counts from now. Turning an agent off clears its next run.
@@ -92,9 +160,9 @@ agentsAdmin.patch('/:id', async c => {
   if (timing) next.next_run_at = next.enabled ? nextRunAt(next, now) : null;
 
   await db.prepare(
-    `UPDATE agents SET enabled = ?, schedule = ?, run_hour = ?, instructions = ?, max_items = ?, rpc_url = ?, token_sealed = ?, token_hint = ?,
+    `UPDATE agents SET name = ?, enabled = ?, schedule = ?, run_hour = ?, instructions = ?, max_items = ?, rpc_url = ?, token_sealed = ?, token_hint = ?,
        next_run_at = ?, updated_at = ? WHERE id = ?`,
-  ).bind(next.enabled, next.schedule, next.run_hour, next.instructions, next.max_items, next.rpc_url, next.token_sealed, next.token_hint, next.next_run_at, now, a.id).run();
+  ).bind(next.name, next.enabled, next.schedule, next.run_hour, next.instructions, next.max_items, next.rpc_url, next.token_sealed, next.token_hint, next.next_run_at, now, a.id).run();
   if (Object.keys(changed).length) await audit(db, admin.id, 'agent.update', 'agent', a.id, changed, now);
   return c.json(await one(db, a.id, now));
 });
@@ -134,7 +202,7 @@ agentsAdmin.post('/:id/connect', async c => {
   // Fail before Manyfold hands out anything we could not store.
   await seal(c.env.AGENTS_KEY, 'check');
   const app = c.env.APP_URL ? new URL(c.env.APP_URL) : null;
-  const start = await connectStart(c.env.MANYFOLD_API_URL, `Spotted London (${AGENT_INFO[a.id].name})`, app?.protocol === 'https:' ? app.origin : null);
+  const start = await connectStart(c.env.MANYFOLD_API_URL, `Spotted London (${a.name})`, app?.protocol === 'https:' ? app.origin : null);
   await c.env.CACHE.put(connectKey(a.id), await seal(c.env.AGENTS_KEY, start.deviceCode), { expirationTtl: CONNECT_TTL });
   return c.json({ auth_url: start.authUrl, user_code: start.userCode, expires_at: Date.parse(start.expiresAt) || c.get('now') + CONNECT_TTL * 1000 }, 201);
 });
@@ -195,7 +263,7 @@ async function one(db: D1Database, id: string, now: number) {
     db.prepare('SELECT * FROM agent_runs WHERE agent_id = ? AND started_at > ? ORDER BY started_at DESC LIMIT 8').bind(id, now - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT COUNT(*) AS n FROM agent_notes WHERE agent_id = ? AND resolved_at IS NULL AND verdict != 'looks_real'").bind(id).first<{ n: number }>(),
   ]);
-  return view(a, runs, notes?.n ?? 0);
+  return view(a, runs, notes?.n ?? 0, (await publishStats(db)).get(id));
 }
 
 /* ---------- Scout's sources ---------- */

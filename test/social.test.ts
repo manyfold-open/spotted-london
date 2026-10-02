@@ -466,7 +466,7 @@ describe('Scout and social posts', () => {
     const res = await tool('submit_draft', {
       run_id: runId, title: 'Jacquemus Coal Drops Pop-up', category: 'fashion', start_date: '2026-10-03', end_date: '2026-10-05',
       lat: 51.5358, lng: -0.1253, address: 'Coal Drops Yard, N1C 4AB', area: "King's Cross", source_url: 'https://jacquemus.test/popup',
-      confidence: 'check', note_for_admin: 'Found on Instagram, brand page confirms.', source_id: id,
+      evidence: 'Pop-up opening Friday', evidence_url: 'https://www.instagram.com/p/BBB/', confidence: 'check', note_for_admin: 'Found on Instagram, brand page confirms.', source_id: id,
       links: [{ url: 'https://www.instagram.com/p/BBB/', kind: 'instagram' }],
     }, key);
     expect(res.structuredContent.sent).toBe(true);

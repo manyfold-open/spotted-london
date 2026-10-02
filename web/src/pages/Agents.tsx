@@ -35,18 +35,94 @@ export default function AgentsPage() {
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Agents</h1>
-      <p className="intro">Three AI agents on Manyfold help run Spotted. They can only send drafts and leave notes. Everything they send waits in the <Link to="/admin">review queue</Link> for you.</p>
+      <p className="intro">AI agents on Manyfold help run Spotted. You can add as many Scouts, Triage and Checker agents as you like, each with its own schedule and instructions. They send drafts and leave notes, and everything they send waits in the <Link to="/admin">review queue</Link> for you.</p>
       {q.data && !q.data.agents_key_set ? (
         <div className="notice err" style={{ marginTop: 18 }}><Icon name="i-info" /><span>The <code>AGENTS_KEY</code> secret is not set, so agent tokens cannot be saved. Run <code>npx wrangler secret put AGENTS_KEY</code> with 32 or more random characters, then reload this page.</span></div>
       ) : null}
       {q.isPending ? <Skeleton list /> : q.data ? (
         <>
+          <PublishMode mode={q.data.auto_publish} />
           <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} />)}</div>
+          <AddAgent roles={q.data.roles} />
           <ScoutSources />
           <Setup view={q.data} />
         </>
       ) : <div className="empty" style={{ marginTop: 22 }}><p>{q.error?.message ?? 'Could not load the agents.'}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>}
     </>
+  );
+}
+
+function AddAgent({ roles }: { roles: AgentsView['roles'] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const add = useMutation({
+    mutationFn: (role: string) => api<Agent>('/admin/agents', { method: 'POST', json: { role } }),
+    onSuccess: a => { qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: [...v.agents, a] }); toast(`${a.name} added. Connect it to Manyfold and give it a key before it can run.`, 'i-sparkle'); },
+    onError,
+  });
+  return (
+    <div className="row" style={{ marginTop: 16, flexWrap: 'wrap' }}>
+      <span className="muted">Add another</span>
+      {roles.map(r => <button key={r.role} className="btn sm" disabled={add.isPending} onClick={() => add.mutate(r.role)}><Icon name="i-plus" />{r.name}</button>)}
+    </div>
+  );
+}
+
+function PublishMode({ mode }: { mode: AgentsView['auto_publish'] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const save = useMutation({
+    mutationFn: (next: AgentsView['auto_publish']) => api<{ auto_publish: AgentsView['auto_publish'] }>('/admin/agents/settings', { method: 'PUT', json: { auto_publish: next } }),
+    onSuccess: r => { qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, auto_publish: r.auto_publish }); toast(r.auto_publish === 'auto' ? 'Posts a second agent verified now go live at once.' : 'Verified posts now wait for your Publish click.', 'i-sparkle'); },
+    onError,
+  });
+  return (
+    <section className="panel" style={{ marginTop: 22 }} aria-labelledby="pm-h">
+      <div className="row"><h2 id="pm-h">Publishing</h2><span className="spacer" />
+        <button className="switch" role="switch" aria-checked={mode === 'auto'} disabled={save.isPending} onClick={() => save.mutate(mode === 'auto' ? 'suggest' : 'auto')}>
+          <span className="track" /><span>{mode === 'auto' ? 'Automatic' : 'I click Publish'}</span>
+        </button>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        {mode === 'auto'
+          ? 'A post goes live as a community post as soon as a Triage agent has checked it against its source with its own quote and the Scout was sure. Use Undo on an agent card to take back what it published.'
+          : 'A post a Triage agent checked against its source waits in the review queue with a Publish button. Switch to automatic once the posts you publish rarely need changing.'}
+      </p>
+    </section>
+  );
+}
+
+function Undo({ a }: { a: Agent }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const [hours, setHours] = useState<number | null>(null);
+  const undo = useMutation({
+    mutationFn: (h: number) => api<{ reverted: number; skipped: { id: string; title: string; reason: string }[] }>(`/admin/agents/${a.id}/undo`, { method: 'POST', json: { hours: h } }),
+    onSuccess: r => {
+      setHours(null);
+      toast(`${r.reverted} back in the review queue${r.skipped.length ? `, ${r.skipped.length} left alone (${r.skipped.map(s => s.reason).filter((x, i, all) => all.indexOf(x) === i).join('; ')})` : ''}.`, 'i-check');
+      qc.invalidateQueries({ queryKey: ['agents'] }); qc.invalidateQueries({ queryKey: ['queue'] }); qc.invalidateQueries({ queryKey: ['popups'] });
+    },
+    onError,
+  });
+  const p = a.published;
+  return (
+    <div className="field" style={{ marginTop: 16 }}>
+      <span className="lbl">Published by this agent</span>
+      <span className="hint">{p.published} published{p.hidden_after ? `, ${p.hidden_after} hidden or removed since` : ''}{p.undone ? `, ${p.undone} taken back` : ''}.</span>
+      <div className="chips">{[[1, 'Last hour'], [24, 'Last 24 hours'], [168, 'Last 7 days']].map(([h, label]) => (
+        <button key={h} className="chip" aria-pressed={hours === h} onClick={() => setHours(hours === h ? null : (h as number))}>{label}</button>
+      ))}</div>
+      {hours ? (
+        <div className="row">
+          <button className="btn sm danger" disabled={undo.isPending} onClick={() => undo.mutate(hours)}>Take back what it published</button>
+          <span className="hint">They return to the review queue. Posts people already voted on stay.</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -112,12 +188,14 @@ function AgentCard({ a }: { a: Agent }) {
       <form className="field" style={{ marginTop: 16 }} noValidate onSubmit={e => { e.preventDefault(); save.mutate({ instructions: notes }, { onSuccess: () => { setNotes(null); toast('Instructions saved'); } }); }}>
         <label className="lbl" htmlFor={`ins-${a.id}`}>Instructions</label>
         <textarea id={`ins-${a.id}`} className="input" maxLength={2000} value={notes ?? a.instructions ?? ''} onChange={e => setNotes(e.target.value)}
-          placeholder={a.id === 'scout' ? 'For example: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.id === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
+          placeholder={a.role === 'scout' ? 'For example: Only check the venue sources, or: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.role === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
         <span className="hint">Added to every run. Write it like a note to a helper.</span>
         {notes !== null && notes !== (a.instructions ?? '') ? (
           <div className="row"><button className="btn sm primary" disabled={save.isPending}>Save instructions</button><button type="button" className="btn sm subtle" onClick={() => setNotes(null)}>Cancel</button></div>
         ) : null}
       </form>
+
+      {a.role !== 'checker' ? <Undo a={a} /> : null}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn sm primary" disabled={run.isPending || !!running || !a.connected || !a.key_hint} onClick={() => run.mutate()}>

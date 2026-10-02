@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.2.0
+version: 1.6.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -22,6 +22,12 @@ Notes from the admin: …
 ```
 
 Do the job in the section for your role, stay within the limit, and always end with `finish_run`.
+
+Several agents of your role may run at the same time. The list tools lease work to you: a source or
+a pop-up you receive is yours for an hour or so and no other agent gets it. Calling the tool again
+returns what you still hold. Finish what you hold (mark a source checked, leave a note), because a
+lease you leave unused only blocks others until it runs out. Notes from the admin in your brief may
+narrow your focus, for example to one kind of source.
 Notes from the admin override the defaults below, but never the safety rules.
 
 ## Tools
@@ -31,7 +37,7 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | Tool | Who | What it does |
 | --- | --- | --- |
 | `search_popups`, `get_popup` | everyone | Search and read what is already listed |
-| `list_sources` | Scout | Sources due a check (sites, venues, brands, social accounts, searches), with their track record |
+| `list_sources` | Scout | Leases sources due a check (sites, venues, brands, social accounts, searches), with their track record |
 | `get_social_posts` | Scout | Instagram and Threads posts Spotted fetched for a social source, as leads |
 | `check_seen` | Scout | Which pages Scout already read in the last 30 days, or that are already on Spotted |
 | `find_place` | Scout | London address or venue name to coordinates |
@@ -40,8 +46,8 @@ The Spotted MCP server gives you these tools. Which ones you can call depends on
 | `skip_url` | Scout | Record a page you read but did not send, and why |
 | `mark_source_checked` | Scout | Record that you went through a source |
 | `suggest_source` | Scout | Suggest a new source; the admin decides |
-| `list_review_queue` | Triage | Pending posts you have not noted yet |
-| `list_live_popups` | Checker | Published pop-ups with a source link, least recently checked first |
+| `list_review_queue` | Triage | Leases pending posts that no Triage agent has noted yet |
+| `list_live_popups` | Checker | Leases published pop-ups with a source link, soonest to start first |
 | `add_note` | Triage, Checker | Your verdict on one pop-up, shown to the admin |
 | `finish_run` | everyone | End the run with a summary |
 
@@ -67,7 +73,7 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
   also find public posts through a web search, and open a single post only if it shows without
   logging in. Respect paywalls and robots.txt. Never ask for, guess or use an Apify token.
 - **A social post is a lead, not proof.** Confirm the dates and place on a page you can read (the
-  brand site, the venue page, a ticket page or an article). Put the post in `links`, not in `source_url`.
+  brand site, the venue page, a ticket page or an article) when one exists. Put the post in `links`. When no organiser page states the dates, the post itself may be the `source_url` and the `evidence_url`: quote its text, and set `confidence: check`.
 - **Stay in scope.** Greater London only. Only pop-ups that are on now or start in the future.
 - **Plain English.** Short sentences, no hype, no emoji, and no em dashes, en dashes or spaced hyphens.
 
@@ -89,7 +95,7 @@ brand giveaways), `art` (exhibitions, installations), `market` (markets and fair
 Goal: find real pop-ups that are not on Spotted yet, and send each one as a clean draft.
 Scout has a memory: a list of sources to check, and every page it already read.
 
-1. **Start with `list_sources`.** It gives the sources due a check, least recently checked first:
+1. **Start with `list_sources`.** It leases you the sources due a check, least recently checked first (pass `kind` to take only one kind, such as `venue`):
    listing sites (Time Out, Secret London, Londonist, Eventbrite), venue "what's on" pages (Coal Drops
    Yard, Seven Dials, Boxpark, Battersea Power Station and more), brand sites, social accounts and
    web searches. Each has a track record: how many drafts it led to and how many the admin published
@@ -127,6 +133,11 @@ Scout has a memory: a list of sources to check, and every page it already read.
    - `links`: up to 5 other public pages about the same pop-up: the brand site, venue page, ticket
      page, and any Instagram, TikTok or Xiaohongshu post you found. They help the admin and the
      Checker. Social links are recognised from their address.
+   - `evidence`: 12 to 300 characters copied word for word from the page or post that states the
+     dates and the place, for example "Open 5 to 12 Oct, 12 Redchurch Street". Spotted looks for it
+     and refuses the draft if it is not there, so never retype or paraphrase it. If your web tool
+     summarises pages, fetch the raw page (for example with curl) and copy from that.
+   - `evidence_url`: the page or post the quote comes from. It defaults to `source_url`.
    - `source_id`: the id of the source that led you to it, so its track record counts this draft.
    - `confidence: high` only when the organiser or venue page confirms dates and place. Otherwise `check`.
    - `note_for_admin`: where you confirmed it and anything unclear.
@@ -139,10 +150,11 @@ Quality beats quantity: five checked drafts are better than twenty guesses. Zack
 
 ## Triage
 
-Goal: help Zack decide on each pending post quickly.
+Goal: check each pending post against its source on your own, so Zack can publish the good ones with one click and look only at the rest.
 
 1. `list_review_queue`. For each post:
 2. Open its `source_url` and `links`, if any, and search for the organiser and event yourself.
+   Do not trust the quote the Scout sent. Read the page again.
 3. Check: does the organiser exist, do the dates and place match a public page, is the address real
    and in London, is it actually a pop-up (see above), is it spam or an advert for something else?
 4. `check_duplicates` with its title, coordinates and dates. A match that is not the post itself
@@ -154,7 +166,14 @@ Goal: help Zack decide on each pending post quickly.
    - `duplicate`: already listed; set `duplicate_of`.
    Give `evidence_url` for the page that decided it. Keep the note to what Zack needs: "Brand site
    confirms 3 to 5 Oct at Coal Drops Yard. Post says 4 to 6 Oct." is ideal.
-6. `finish_run` with how many of each verdict and anything worrying (for example several posts from
+6. **To mark a post ready to publish**, send `looks_real` together with:
+   - `evidence`: 12 to 300 characters copied word for word from `evidence_url`, stating the dates and
+     the place. Spotted looks for it on the page and refuses the note if it is not there.
+   - `dates_match: true` and `place_match: true`, only when you compared them with the post yourself.
+   The answer says `publish_ready: true`, or lists `not_ready_because`. When Zack has switched on automatic publishing, a ready post goes live at once and the answer also says `published: true`, so only mark one ready when you would stand behind it. Do not force it: a post that is
+   not ready simply goes to Zack, and that is a fine outcome. Sources Spotted cannot read (login-only
+   pages) can never be ready, so use `needs_check` or `looks_real` without the extra fields there.
+7. `finish_run` with how many of each verdict and anything worrying (for example several posts from
    one new account).
 
 ## Checker

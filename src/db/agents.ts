@@ -9,13 +9,17 @@ import { HOUR } from '../lib/scoring';
 import { londonParts, nextLondonSlot } from '../lib/time';
 import { ApiError, newId, sha256 } from '../lib/util';
 
-export type AgentId = 'scout' | 'triage' | 'checker';
+/** What an agent does. Each role can have many agents; the first of each is named after its role. */
+export type AgentRole = 'scout' | 'triage' | 'checker';
 export type Schedule = 'hourly' | 'every_6h' | 'daily' | 'weekly' | 'manual';
-export const AGENT_IDS: AgentId[] = ['scout', 'triage', 'checker'];
+export const AGENT_ROLES: AgentRole[] = ['scout', 'triage', 'checker'];
+export const AGENTS_PER_ROLE_MAX = 20;
 export const SCHEDULES: Schedule[] = ['hourly', 'every_6h', 'daily', 'weekly', 'manual'];
 
 export interface AgentRow {
-  id: AgentId;
+  id: string;
+  role: AgentRole;
+  name: string;
   user_id: string;
   enabled: number;
   schedule: Schedule;
@@ -29,11 +33,12 @@ export interface AgentRow {
   key_hint: string | null;
   next_run_at: number | null;
   updated_at: number;
+  created_at: number;
 }
 
 export interface RunRow {
   id: string;
-  agent_id: AgentId;
+  agent_id: string;
   trigger: 'schedule' | 'manual';
   status: 'running' | 'done' | 'failed';
   task_id: string | null;
@@ -48,7 +53,7 @@ export interface RunRow {
 /** A run that has not finished after this long is marked failed. */
 export const RUN_TIMEOUT = 3 * HOUR;
 
-export const AGENT_INFO: Record<AgentId, { name: string; job: string; unit: string; tools: string[] }> = {
+export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: string; tools: string[] }> = {
   scout: {
     name: 'Scout',
     job: 'Finds new London pop-ups on the web and sends them in as drafts. Every draft waits in the review queue for you.',
@@ -57,7 +62,7 @@ export const AGENT_INFO: Record<AgentId, { name: string; job: string; unit: stri
   },
   triage: {
     name: 'Triage',
-    job: 'Reads each post waiting for review, checks its source, and leaves you a note: looks real, needs a check, likely fake or duplicate.',
+    job: 'Checks each post waiting for review against its source on its own, and leaves you a note: looks real, needs a check, likely fake or duplicate. A post it confirmed with its own quote is marked ready to publish.',
     unit: 'notes',
     tools: ['list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
   },
@@ -93,11 +98,11 @@ export function nextRunAt(a: Pick<AgentRow, 'schedule' | 'run_hour'>, from: numb
 
 /** The message that starts a run. The skill installed on the agent explains each step. */
 export function brief(a: AgentRow, runId: string, appUrl: string, now: number): string {
-  const info = AGENT_INFO[a.id];
+  const info = AGENT_INFO[a.role];
   const p = londonParts(now);
   const today = new Date(Date.UTC(p.y, p.m - 1, p.d)).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   return [
-    `Spotted London: ${info.name} run ${runId}.`,
+    `Spotted London: ${info.name} run ${runId}${a.name !== info.name ? ` (${a.name})` : ''}.`,
     `Today in London is ${today}, ${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}.`,
     `Use the spotted-london skill, section "${info.name}". Use the Spotted tools from the MCP server named "spotted" (${new URL('/mcp', appUrl)}), which already carries your key.`,
     `Your job: ${info.job}`,

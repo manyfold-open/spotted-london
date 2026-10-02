@@ -6,11 +6,10 @@ import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { KARMA, type Status } from '../lib/scoring';
 import { onStatusChange, recompute, toPublic } from '../db/popups';
 import { awardKarma } from '../db/karma';
+import { FLAGGING_VERDICTS, isReady, publishReady } from '../db/publish';
 
 export const admin = new Hono<AppEnv>();
 
-/** Agent findings that put a published pop-up back in front of the admin. */
-const FLAGGING_VERDICTS = ['needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'];
 
 /**
  * Pending posts, community-hidden posts, and public posts with open reports or a problem
@@ -35,7 +34,8 @@ admin.get('/queue', async c => {
     items: results.map(p => toPublic(p, {
       poster: { id: p.created_by, name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((now - p.poster_created_at) / 86_400_000) },
       open_reports: p.open_reports,
-      agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, ...n }) => n),
+      agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, publish_ready, ...n }) => ({ ...n, publish_ready: !!publish_ready })),
+      ready_to_publish: p.status === 'pending' && isReady(notes.filter(n => n.popup_id === p.id)),
       flags: [
         p.created_by.startsWith('agent_') && 'by_agent',
         !p.source_url && 'no_source_link',
@@ -45,6 +45,25 @@ admin.get('/queue', async c => {
       ].filter(Boolean),
     })),
   });
+});
+
+/**
+ * Publishes the posts agents marked ready, as 'community' so votes and reports still apply, and writes an
+ * audit row for each naming the agents behind it. The conditions are checked again here.
+ */
+admin.post('/queue/publish-ready', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const db = c.env.DB;
+  const b = await jsonBody(c.req);
+  const only = Array.isArray(b.ids) ? b.ids.filter((id): id is string => typeof id === 'string').slice(0, 100) : null;
+  const { results } = await db.prepare("SELECT id FROM popups WHERE status = 'pending' AND end_at > ? ORDER BY created_at LIMIT 200").bind(now).all<{ id: string }>();
+  let published = 0;
+  for (const p of results) {
+    if (only && !only.includes(p.id)) continue;
+    if (await publishReady(db, p.id, a.id, 'batch', now)) published += 1;
+  }
+  return c.json({ published });
 });
 
 const ACTIONS = ['approve', 'reject', 'hide', 'restore', 'merge'] as const;
@@ -92,13 +111,14 @@ admin.post('/popups/:id/decision', async c => {
   return c.json(toPublic(after!));
 });
 
-type NoteRow = { id: string; popup_id: string; agent_id: string; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number };
+type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; evidence: string | null; publish_ready: number; duplicate_of: string | null; created_at: number };
 
 async function openNotes(db: D1Database, ids: string[]): Promise<NoteRow[]> {
   if (!ids.length) return [];
   const { results } = await db.prepare(
-    `SELECT id, popup_id, agent_id, verdict, note, evidence_url, duplicate_of, created_at FROM agent_notes
-     WHERE resolved_at IS NULL AND popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`,
+    `SELECT n.id, n.popup_id, n.agent_id, a.name AS agent_name, n.verdict, n.note, n.evidence_url, n.evidence, n.publish_ready, n.duplicate_of, n.created_at
+     FROM agent_notes n LEFT JOIN agents a ON a.id = n.agent_id
+     WHERE n.resolved_at IS NULL AND n.popup_id IN (${ids.map(() => '?').join(',')}) ORDER BY n.created_at DESC`,
   ).bind(...ids).all<NoteRow>();
   return results;
 }
