@@ -653,6 +653,20 @@ describe('agent runs', () => {
     });
   });
 
+  it('takes a quote that is not in the part of a very large page we read as unchecked, not refused', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const big = `<html><body>${'<p>filler text for a large page</p>'.repeat(30_000)}<p>Open 7 and 8 November at Coal Drops Yard</p></body></html>`;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(big, { headers: { 'content-type': 'text/html' } }));
+    const sent = await tool('submit_draft', draft(runId, { title: 'Big Page Sale', lat: 51.47, lng: -0.2, evidence: 'Open 7 and 8 November at Coal Drops Yard', evidence_url: 'https://big.test/p', source_url: 'https://big.test/p' }), key);
+    expect(sent.structuredContent.sent).toBe(true);
+    expect((await env.DB.prepare('SELECT evidence_check FROM popups WHERE id = ?').bind(sent.structuredContent.id).first<any>()).evidence_check).toBe('unchecked');
+    // a short page that lacks the quote is still refused
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Closed</p>', { headers: { 'content-type': 'text/html' } }));
+    const refused = await tool('submit_draft', draft(runId, { title: 'Short Page Sale', lat: 51.46, lng: -0.21, evidence: 'Open 7 and 8 November at Coal Drops Yard', evidence_url: 'https://short.test/p', source_url: 'https://short.test/p' }), key);
+    expect(refused.isError).toBe(true);
+  });
+
   it('accepts a pop-up that started weeks ago and is still running, with its real start date', async () => {
     const key = await connect('scout');
     const runId = await startRun('scout');

@@ -84,14 +84,17 @@ export async function checkEvidence(
   const decoder = new TextDecoder();
   let html = '';
   let size = 0;
+  let finished = false;
   while (size < MAX_HTML) {
     const { done, value } = await reader.read();
-    if (done || !value) break;
+    if (done || !value) { finished = true; break; }
     html += decoder.decode(value, { stream: true });
     size += value.length;
   }
   await reader.cancel().catch(() => {});
   if (quoteInHtml(html, quote)) return 'found';
+  // A page bigger than we read (some site builders put the text far down) may have the quote past the cut.
+  if (!finished) return 'unchecked';
   throw new EvidenceError('The page loaded but the quote is not on it. Copy a sentence from the page word for word. If your tool summarises pages, fetch the raw page.');
 }
 
