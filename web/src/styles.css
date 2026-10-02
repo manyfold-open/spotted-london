@@ -11,7 +11,7 @@
   --eng: #155e3a; --eng-bg: #d8efe0;
   --watch: #6b5200; --watch-bg: #fff3c4;
   --err: #a8200d; --err-bg: #fde8e6;
-  --note: #fff6cf; --glass: rgba(244, 239, 230, .9); --scrim: rgba(29, 27, 24, .38);
+  --here: #2f6bff; --note: #fff6cf; --glass: rgba(244, 239, 230, .9); --scrim: rgba(29, 27, 24, .38);
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --sans: "Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -58,33 +58,13 @@ p { margin: 0 }
 svg.i { width: 18px; height: 18px; flex: none; fill: currentColor }
 
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; min-height: 100dvh }
-.side { position: sticky; top: 0; height: 100vh; background: var(--paper2); border-right: 1.5px solid var(--ink); padding: 20px 14px; display: flex; flex-direction: column; gap: 18px }
-.brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; text-decoration: none; color: var(--ink) }
-.brand:hover { color: var(--ink) }
+.shell { min-height: 100vh; min-height: 100dvh }
 .logo { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--ink); background: var(--accent); display: grid; place-items: center; box-shadow: var(--shadow-sm); color: var(--card); flex: none }
-.brand b { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -.4px }
-.brandtxt { display: flex; flex-direction: column; min-width: 0 }
-.brandtxt b { line-height: 1.1 }
-.brandtxt small { font-size: 11.5px; line-height: 1.3; color: var(--ink3); margin-top: 2px }
 .logo svg { width: 72%; height: 72%; fill: var(--card) }
-.sidenav { display: flex; flex-direction: column; gap: 6px }
-.nav { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1.5px solid transparent; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--ink) }
-@media (hover: hover) { .nav:hover { background: var(--card); border-color: var(--ink); color: var(--ink) } }
-.nav.active { background: var(--ink); color: var(--card); border-color: var(--ink); box-shadow: 3px 3px 0 var(--accent) }
-.nav .ct { margin-left: auto; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--soft); color: var(--ink2) }
-.nav .ct.hot { background: var(--accent); color: var(--card) }
-.nav.active .ct { background: var(--card); color: var(--ink) }
-.sidefoot { margin-top: auto; font-size: 12px; color: var(--ink3); padding: 0 6px }
-.main { min-width: 0 }
-.topbar { position: sticky; top: 0; z-index: 5; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 32px; background: var(--glass); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-bottom: 1.5px solid var(--ink); transition: translate var(--dur-3) var(--ease-out) }
 /* thin progress line under the top bar while a list loads */
 .busy { position: absolute; left: 0; right: 0; bottom: -1.5px; height: 3px; overflow: hidden; pointer-events: none; animation: appear var(--dur-2) 150ms backwards }
 .busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; background: var(--accent); border-radius: 999px; animation: busy 1.1s var(--ease-out) infinite }
 @keyframes busy { from { translate: -100% 0 } to { translate: 260% 0 } }
-.mbrand { display: none; align-items: center; gap: 8px; text-decoration: none; color: var(--ink) }
-.mbrand .logo { width: 32px; height: 32px }
-.mbrand b { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -.4px }
 .search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--card) }
 .search input { border: 0; outline: 0; background: none; font: inherit; flex: 1; min-width: 0; color: var(--ink) }
 .search:focus-within { outline: 3px solid var(--accent); outline-offset: 2px }
@@ -96,7 +76,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: currentColor }
 .avatar { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--ink); background: var(--you-bg); display: grid; place-items: center; font-weight: 700; font-family: var(--display); flex: none; color: var(--ink); text-decoration: none; text-transform: uppercase }
 .kpill { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 4px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--card); font-weight: 700; font-size: 13px; text-decoration: none; color: var(--ink) }
 .kpill .avatar { width: 28px; height: 28px; border-width: 1.5px; font-size: 11px }
-.page { padding: 32px 32px 96px; max-width: 1180px }
+.page { padding: 32px 32px 96px; max-width: 1180px; margin: 0 auto }
 .intro { font-size: 15px; color: var(--ink2); max-width: 66ch; margin-top: 8px }
 
 /* ---------- buttons, tags, chips ---------- */
@@ -340,10 +320,6 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pos { color: var(--eng) } .neg { color: var(--err) }
 
 /* ---------- map ---------- */
-.mapwrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; margin-top: 22px; align-items: start }
-.mapbox { background: var(--card); border: 1.5px solid var(--ink); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; position: relative; height: 620px }
-.mapbox .ml { position: absolute; inset: 0 }
-.maplist { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow: auto; padding: 2px 6px 6px 2px }
 .mini { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--card); cursor: pointer; text-align: left; width: 100%; text-decoration: none; color: var(--ink); transition: translate var(--dur-1), box-shadow var(--dur-1), scale var(--dur-2) var(--ease-out), border-color var(--dur-2) }
 @media (hover: hover) { .mini:hover { box-shadow: var(--shadow-sm); translate: -1px -1px; color: var(--ink) } }
 .mini:active { scale: .98 }
@@ -363,7 +339,6 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pinm { transition: scale var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) }
 .pinm.in { animation: pindrop .45s var(--ease-spring) backwards }
 @keyframes pindrop { from { translate: 0 -14px; opacity: 0; scale: .6 } }
-.legend { position: absolute; left: 12px; top: 12px; right: 56px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 2 }
 /* MapLibre controls in the Sketchbook style */
 .maplibregl-ctrl.maplibregl-ctrl-group { background: var(--card); border: 1.5px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden }
 .maplibregl-ctrl-group button { width: 34px; height: 34px }
@@ -448,7 +423,6 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .crash .logo { width: 44px; height: 44px }
 
 /* ---------- tab bar + toasts ---------- */
-.tabbar { display: none }
 .toasts { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 40; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: calc(100% - 32px); max-width: 460px }
 .toast { background: var(--ink); color: var(--card); border-radius: 12px; padding: 11px 16px; box-shadow: 3px 3px 0 var(--accent); font-weight: 600; font-size: 13.5px; animation: tin .22s ease-out; display: flex; gap: 8px; align-items: center }
 .toast.err { background: var(--err); box-shadow: 3px 3px 0 var(--ink) }
@@ -461,33 +435,22 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 /* Pages cross-fade; the selected tab or nav item slides to its new place. */
 ::view-transition-old(root) { animation: fadeout var(--dur-1) var(--ease-in) both }
 ::view-transition-new(root) { animation: fade var(--dur-2) var(--ease-out) both }
-.tab.active .ti { view-transition-name: tab-pill }
-.nav.active { view-transition-name: nav-pill }
-::view-transition-group(tab-pill), ::view-transition-group(nav-pill) { animation-duration: var(--dur-3); animation-timing-function: var(--ease-spring) }
-::view-transition-group(tab-pill), ::view-transition-group(nav-pill), ::view-transition-group(cover) { z-index: 2 }
+::view-transition-group(cover) { z-index: 2 }
 /* A card's cover grows into the sheet's header while the sheet slides in under it. */
 ::view-transition-group(cover) { animation-duration: .38s; animation-timing-function: var(--ease-out); overflow: clip; border-radius: 12px }
 ::view-transition-old(cover), ::view-transition-new(cover) { height: 100%; object-fit: cover }
 ::view-transition-new(sheet) { animation: vt-sheet .38s var(--ease-out) both }
 .vt-src > .tag, .vt-src > .save { visibility: hidden }
 @keyframes vt-sheet { from { translate: 48px 0; opacity: 0 } }
-@supports (view-transition-name: none) { .tab.active .ti { animation: none } }
 
 @media (max-width: 1180px) {
-  .mapwrap { grid-template-columns: minmax(0, 1fr) 280px }
   .form { grid-template-columns: minmax(0, 1fr) 260px }
 }
 
 /* ---------- phone ---------- */
 @media (max-width: 899px) {
   .d-only { display: none !important }
-  .shell { grid-template-columns: minmax(0, 1fr) }
-  .side { display: none }
-  .mbrand { display: flex }
-  .topbar { flex-wrap: wrap; padding: 10px 16px; gap: 10px; padding-top: calc(10px + env(safe-area-inset-top, 0px)) }
-  .search { order: 3; flex-basis: 100%; max-width: none }
-  .topbar.tucked { translate: 0 calc(-100% - 2px) }
-  .page { padding: 18px 16px 120px }
+  .page { padding: 18px 16px 56px }
   h1 { font-size: 28px; letter-spacing: -.5px }
   .filters { margin-top: 14px; gap: 8px }
   .filters .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scroll-padding: 0 16px;
@@ -505,11 +468,6 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .grid .cattag { display: none }
   .grid .cfoot { padding: 4px 8px 8px 12px; border-top: 0; gap: 6px }
   .carousel .thumb { height: 112px }
-  .mapwrap { grid-template-columns: minmax(0, 1fr); margin-top: 14px; gap: 10px }
-  .mapbox { height: 58vh; height: 58svh; min-height: 320px; box-shadow: var(--shadow-sm) }
-  .maplist { flex-direction: row; overflow-x: auto; max-height: none; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 4px 16px 10px; gap: 10px }
-  .maplist .mini { flex: 0 0 80%; scroll-snap-align: center }
-  .legend .tag { font-size: 11px; padding: 1px 8px }
   .drawer { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 92%; border-left: 0; border-top: 1.5px solid var(--ink); border-radius: 24px 24px 0 0; animation: up var(--dur-3) var(--ease-out); transition: translate var(--dur-3) var(--ease-out) }
   @keyframes up { from { translate: 0 100% } }
   .drawer.out { animation: down var(--dur-2) var(--ease-in) forwards }
@@ -540,20 +498,6 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .srcctl { justify-content: space-between }
   .srcbar .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none }
   .srcbar .chips .chip { flex: none }
-  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1.5px solid var(--ink); padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)) }
-  .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; color: var(--ink2); padding: 2px 0; text-decoration: none; -webkit-touch-callout: none }
-  .tab .ti { position: relative; width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; transition: scale var(--dur-1) }
-  .tab:active .ti, .tab.add:active .plus { scale: .88 }
-  .tab.active .ti { animation: tabpop var(--dur-3) var(--ease-spring) }
-  @keyframes tabpop { from { scale: .6 } }
-  .tab .ti svg.i { width: 22px; height: 22px }
-  .tab.active { color: var(--ink) }
-  .tab.active .ti { background: var(--ink); color: var(--card); box-shadow: 2px 2px 0 var(--accent) }
-  .tab .badge { position: absolute; top: -4px; right: 4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--card); border: 1.5px solid var(--ink); font-size: 10px; display: grid; place-items: center; line-height: 1 }
-  .tab.add .plus { width: 50px; height: 50px; margin-top: -22px; border-radius: 50%; background: var(--accent); color: var(--card); border: 2px solid var(--ink); display: grid; place-items: center; box-shadow: 3px 3px 0 var(--ink); transition: scale var(--dur-1), background-color var(--dur-2) }
-  .tab.add .plus svg { width: 24px; height: 24px }
-  .tab.add.active .plus { background: var(--ink); box-shadow: 3px 3px 0 var(--accent) }
-  .toasts { bottom: calc(92px + env(safe-area-inset-bottom, 0px)) }
   .auth { margin: 16px auto }
   .popscrim { background: var(--scrim); animation: fade .2s }
   .calpop, .two .field:last-child .calpop { position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 92vh; overflow-y: auto; border-width: 1.5px 0 0; border-radius: 24px 24px 0 0; box-shadow: none; padding: 26px 16px calc(16px + env(safe-area-inset-bottom, 0px)); animation: up .26s cubic-bezier(.2, .8, .2, 1) }
@@ -581,4 +525,154 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   ::view-transition-group(*) { animation-duration: 0s !important }
   ::view-transition-old(*) { animation: fadeout var(--dur-2) both !important }
   ::view-transition-new(*) { animation: fade var(--dur-2) both !important }
+}
+
+
+/* ---------- top bar and menu ---------- */
+.mp-bar { position: sticky; top: 0; z-index: 5; min-height: 60px; display: flex; align-items: center; gap: 10px; padding: 0 32px; background: var(--glass); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-bottom: 1.5px solid var(--ink); transition: translate var(--dur-3) var(--ease-out) }
+.mp-bar.tucked { translate: 0 calc(-100% - 2px) }
+.mp-bar .search { flex: 1; min-width: 0; max-width: 460px }
+.mp-bar .me { margin-left: auto }
+.mp-menubtn, .mp-x { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--card); display: grid; place-items: center; padding: 0; flex: none; cursor: pointer; transition: translate var(--dur-1), box-shadow var(--dur-1), scale var(--dur-1) }
+@media (hover: hover) { .mp-menubtn:hover, .mp-x:hover { translate: -1px -1px; box-shadow: 2px 2px 0 var(--ink) } }
+.mp-menubtn:active, .mp-x:active { scale: .92 }
+.mp-menubtn svg.i { width: 20px; height: 20px }
+.mp-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); flex: none }
+.mp-brand:hover { color: var(--ink) }
+.mp-brand .logo { width: 32px; height: 32px }
+.mp-brand b { font-family: var(--display); font-size: 20px; font-weight: 800; letter-spacing: -.4px }
+.mp-bar .busy { left: 0; right: 0 }
+
+.mp-scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 22; animation: fade var(--dur-2) }
+.mp-scrim.out { animation: fadeout var(--dur-2) forwards; pointer-events: none }
+.mp-menu { position: fixed; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); z-index: 23; background: var(--paper2); border-right: 1.5px solid var(--ink); padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; overflow-y: auto; animation: mpmenu var(--dur-3) var(--ease-out); box-shadow: 6px 0 0 rgba(29, 27, 24, .12) }
+.mp-menu.out { animation: mpmenuout var(--dur-2) var(--ease-in) forwards; pointer-events: none }
+@keyframes mpmenu { from { translate: -102% 0 } }
+@keyframes mpmenuout { to { translate: -102% 0 } }
+.mp-menuhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px }
+.mp-brandrow { display: flex; align-items: center; gap: 10px; min-width: 0 }
+.brandtxt { display: flex; flex-direction: column; min-width: 0 }
+.brandtxt b { font-family: var(--display); font-size: 20px; font-weight: 800; letter-spacing: -.4px; line-height: 1.1 }
+.brandtxt small { font-size: 11.5px; line-height: 1.3; color: var(--ink3); margin-top: 2px }
+.mp-menu nav { display: flex; flex-direction: column; gap: 6px }
+.mp-nav { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1.5px solid transparent; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--ink); animation: rise .36s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 32ms + 80ms) }
+@media (hover: hover) { .mp-nav:hover { background: var(--card); border-color: var(--ink); color: var(--ink) } }
+.mp-nav.active { background: var(--ink); color: var(--card); border-color: var(--ink); box-shadow: 3px 3px 0 var(--accent) }
+.mp-nav .ct { margin-left: auto; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--soft); color: var(--ink2) }
+.mp-nav .ct.hot { background: var(--accent); color: var(--card) }
+.mp-nav.active .ct { background: var(--card); color: var(--ink) }
+.mp-navh { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink3); padding: 10px 12px 2px }
+.mp-key { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; margin-top: auto }
+.mp-key .mp-navh { flex-basis: 100%; padding: 0 0 2px }
+.mp-foot { font-size: 12px; color: var(--ink3); padding: 0 12px }
+
+@media (max-width: 899px) {
+  .mp-bar { padding: 8px 12px; gap: 8px; padding-top: calc(8px + env(safe-area-inset-top, 0px)) }
+  .mp-brand { display: none }
+  .mp-bar .search { max-width: none }
+}
+
+
+/* ---------- map home ---------- */
+.mp-main { position: relative; height: 100vh; height: 100dvh; overflow: hidden }
+.mp-home { position: absolute; inset: 0; background: #ece8df }
+.mp-map { position: absolute; inset: 0 }
+.mp-map .ml { position: absolute; inset: 0; animation: fade var(--dur-3) }
+.mp-mapfill { position: absolute; inset: 0; background: #ece8df radial-gradient(var(--dot) 1.1px, transparent 1.2px) 0 0 / 22px 22px }
+/* MapLibre's corners stay clear of our chrome */
+.mp-map .maplibregl-ctrl-bottom-left { bottom: var(--mp-sheet, 0px); transition: bottom .45s var(--ease-out) }
+.mp-home[data-snap="full"] .maplibregl-ctrl-bottom-left { display: none }
+
+/* the bar floats over the map as a pill */
+.mp-bar.floating { position: absolute; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 10px); z-index: 6; min-height: 0; height: 56px; padding: 6px; gap: 8px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--card); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: var(--shadow-sm) }
+.mp-bar.floating .search { border: 0; background: var(--paper2); height: 40px }
+.mp-bar.floating .busy { left: 24px; right: 24px }
+.mp-bar .mp-mode { margin-left: auto }
+.mp-bar .mp-mode ~ .me { margin-left: 0 }
+
+/* chips float under the bar, with room for their shadows */
+.mp-chips { position: absolute; z-index: 5; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 10px + 56px + 10px) }
+.mp-chips .chips { flex-wrap: nowrap; overflow-x: auto; padding: 4px 14px 10px; scroll-padding: 0 14px }
+.mp-chips .chip { box-shadow: 2px 2px 0 var(--ink) }
+.mp-chips .chip[aria-pressed="true"] { box-shadow: 2px 2px 0 var(--accent) }
+.mp-sep { width: 1.5px; align-self: stretch; margin: 6px 2px; background: var(--ink); opacity: .25; flex: none }
+
+/* Map | List */
+.mp-mode { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--card); padding: 3px; flex: none }
+.mp-mode button { position: relative; z-index: 1; border: 0; background: none; height: 30px; padding: 0 14px; border-radius: 999px; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: var(--ink); transition: color var(--dur-2) }
+.mp-mode button[aria-pressed="true"] { color: var(--card) }
+.mp-mode svg.i { width: 15px; height: 15px }
+.mp-mode .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 999px; background: var(--ink); box-shadow: 2px 2px 0 var(--accent); transition: transform var(--dur-3) var(--ease-spring) }
+.mp-mode[data-view="list"] .thumb { transform: translateX(100%) }
+
+/* the list on the map: a bottom sheet on phones, a panel on desktops */
+.mp-sheet { position: absolute; left: 0; right: 0; bottom: 0; top: var(--mp-chips, 130px); z-index: 6; display: flex; flex-direction: column; background: var(--paper); border: 1.5px solid var(--ink); border-bottom: 0; border-radius: 24px 24px 0 0; box-shadow: 0 -3px 0 rgba(29, 27, 24, .08); padding-bottom: env(safe-area-inset-bottom, 0px); transition: transform .45s var(--ease-out); will-change: transform; animation: mpsheet var(--dur-3) var(--ease-out) backwards }
+.mp-sheet.drag { transition: none }
+@keyframes mpsheet { from { translate: 0 40% ; opacity: 0 } }
+.mp-shead { padding: 8px 14px 10px; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; flex: none }
+.mp-grab { width: 42px; height: 5px; border-radius: 999px; background: var(--ink); opacity: .8; margin: 0 auto 10px }
+.mp-hrow { display: flex; align-items: center; gap: 12px }
+.mp-count { min-width: 0 }
+.mp-count b { display: block; font-family: var(--display); font-size: 16px; line-height: 1.2 }
+.mp-count small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink2) }
+.mp-sbody { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 14px 0; overscroll-behavior: contain }
+.mp-home[data-snap="peek"] .mp-sbody { overflow-y: hidden }
+.mp-minis { display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 10px }
+.mp-home[data-snap="peek"] .mp-minis { flex-direction: row; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -14px; padding: 4px 14px 10px; scroll-padding: 0 14px }
+.mp-home[data-snap="peek"] .mp-minis .mini { flex: 0 0 80%; scroll-snap-align: center }
+.mini .mp-mt { min-width: 0; flex: 1 }
+.mini .mp-mt b { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
+.mini .mp-dist { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--here); color: #fff; white-space: nowrap; flex: none; animation: pop var(--dur-3) var(--ease-spring) backwards }
+@keyframes pop { from { scale: .3; opacity: 0 } }
+
+/* locate and add */
+.mp-fabs { position: absolute; z-index: 6; right: 12px; bottom: calc(var(--mp-sheet, 0px) + 14px); display: flex; flex-direction: column; gap: 10px; transition: bottom .45s var(--ease-out), opacity var(--dur-2), scale var(--dur-2) }
+.mp-home[data-view="list"] .mp-fabs { opacity: 0; scale: .6; pointer-events: none }
+.mp-fab { position: relative; width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm); display: grid; place-items: center; padding: 0; cursor: pointer; text-decoration: none; transition: background-color var(--dur-2), color var(--dur-2), scale var(--dur-1) }
+.mp-fab:hover { color: var(--ink) }
+.mp-fab:active { scale: .9 }
+.mp-fab svg.i { width: 22px; height: 22px }
+.mp-fab.add { background: var(--ink); color: var(--card); box-shadow: 3px 3px 0 var(--accent) }
+.mp-fab.add:hover { color: var(--card) }
+.mp-home[data-loc="on"] .mp-fab.loc { background: var(--here); color: #fff }
+.mp-home[data-away="true"] .mp-fab.loc { background: var(--accent); animation: mpnudge 1.4s var(--ease-spring) infinite }
+@keyframes mpnudge { 50% { scale: 1.12 } }
+.mp-tip { position: absolute; right: 58px; white-space: nowrap; background: var(--ink); color: var(--card); font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; opacity: 0; translate: 8px 0; pointer-events: none; transition: opacity var(--dur-2), translate var(--dur-3) var(--ease-out) }
+.mp-home[data-away="true"] .mp-tip { opacity: 1; translate: 0 0 }
+
+/* the "share your location" card */
+.mp-prompt { position: absolute; z-index: 7; left: 16px; right: 16px; top: calc(var(--mp-chips, 130px) + 8px); background: var(--card); border: 1.5px solid var(--ink); border-radius: 18px; box-shadow: var(--shadow); padding: 16px; animation: mpprompt var(--dur-3) var(--ease-spring) backwards }
+@keyframes mpprompt { from { translate: 0 -16px; scale: .96; opacity: 0 } }
+.mp-prompt h2 { font-size: 18px; display: flex; gap: 8px; align-items: center }
+.mp-prompt p { margin: 6px 0 12px; font-size: 13px; color: var(--ink2) }
+.mp-prompt .fine { margin: 10px 0 0; font-size: 11.5px; color: var(--ink3); display: flex; gap: 6px; align-items: center }
+.mp-prompt .fine svg.i { width: 14px; height: 14px }
+
+/* you */
+.mp-you { width: 18px; height: 18px; border-radius: 50%; background: var(--here); border: 3px solid #fff; box-shadow: 0 0 0 1.5px var(--ink); animation: pop var(--dur-3) var(--ease-spring) backwards }
+.mp-you i { position: absolute; inset: -22px; border-radius: 50%; background: rgba(47, 107, 255, .16); border: 1.5px solid rgba(47, 107, 255, .5); animation: mppulse 2.2s ease-out infinite }
+@keyframes mppulse { from { scale: .35; opacity: 1 } to { scale: 1; opacity: 0 } }
+
+@media (max-width: 899px) {
+  /* a half-open sheet leaves no room for the card */
+  .mp-home[data-snap="half"] .mp-prompt { display: none }
+  /* while you type in the search box the keyboard needs the space */
+  .mp-home:has(.search input:focus) :is(.mp-sheet, .mp-fabs, .mp-prompt) { opacity: 0; pointer-events: none }
+  /* toasts stay left of the buttons and above the sheet */
+  .shell[data-home="true"] .toasts { left: 12px; translate: none; width: calc(100% - 84px); align-items: flex-start; bottom: calc(var(--mp-sheet, 0px) + 14px) }
+}
+
+@media (min-width: 900px) {
+  .mp-bar.floating { top: 12px; left: 12px; right: 12px; padding: 6px 10px 6px 6px }
+  .mp-bar.floating .search { max-width: 420px }
+  .mp-map .maplibregl-ctrl-top-right { top: 80px }
+  .mp-fabs { bottom: 44px }
+  .mp-prompt { left: auto; right: 16px; top: 84px; width: 330px }
+  .mp-panel { position: absolute; z-index: 5; left: 12px; top: 80px; bottom: 12px; width: 372px; display: flex; flex-direction: column; overflow: hidden; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 18px; box-shadow: var(--shadow); transition: width .5s var(--ease-out); animation: rise .4s var(--ease-out) backwards }
+  .mp-home[data-view="list"] .mp-panel { width: calc(100% - 24px) }
+  .mp-panel .mp-shead { cursor: default; padding: 12px 14px 8px }
+  .mp-panel .filters { margin: 0 0 10px; gap: 8px }
+  .mp-panel .filters .chips { flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px }
+  .mp-panel .mp-sbody { padding: 6px 14px 14px }
+  .mp-home[data-view="list"] .mp-panel .grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) }
 }

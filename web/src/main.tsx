@@ -1,28 +1,26 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { IconSprite } from './components/Icon';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './lib/hooks';
-import { Explore } from './pages/Explore';
+import HomePage from './pages/HomePage';
 import { Submit } from './pages/Submit';
 import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
-const MapPage = lazy(() => import('./pages/MapPage'));
 const AgentsPage = lazy(() => import('./pages/Agents'));
 
 // iOS Safari only shows :active press states when the page listens for touches.
 document.addEventListener('touchstart', () => {}, { passive: true });
 
-const MapFallback = () => (
-  <div aria-busy="true" aria-label="Loading the map">
-    <div className="sk skl" style={{ width: 140 }} /><div className="sk" style={{ height: 36, width: 220, marginTop: 10 }} />
-    <div className="sk" style={{ height: 'min(620px, 58svh)', marginTop: 22, borderRadius: 16 }} />
-  </div>
-);
+// The old map page now lives on the home page. Old links keep their filters.
+function MapRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/', search }} replace />;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
@@ -33,9 +31,9 @@ const router = createBrowserRouter([
     element: <ToastProvider><Shell /></ToastProvider>,
     errorElement: <CrashPage />,
     children: [
-      { path: '/', element: <Explore /> },
-      { path: '/p/:slug', element: <Explore /> }, // shared links open the sheet over Explore
-      { path: '/map', element: <Suspense fallback={<MapFallback />}><MapPage /></Suspense> },
+      { path: '/', element: <HomePage /> },
+      { path: '/p/:slug', element: <HomePage /> }, // shared links open the sheet over the map
+      { path: '/map', element: <MapRedirect /> },
       { path: '/add', element: <Submit /> },
       { path: '/saved', element: <Saved /> },
       { path: '/me', element: <MePage /> },
