@@ -41,6 +41,7 @@ export default function HomePage() {
   const [snap, setSnap] = useState<Snap>(view === 'list' ? 'full' : 'peek');
   const [hl, setHl] = useState<string | null>(null);
   const [away, setAway] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true); // desktop: the list panel can be tucked away
   const [visible, setVisible] = useState(0);
   const [top, setTop] = useState(130);
   const map = useRef<PopupMapHandle>(null);
@@ -50,7 +51,7 @@ export default function HomePage() {
   // The URL is the source of truth for Map or List; the sheet stops follow it.
   useEffect(() => { setSnap(s => (view === 'list' ? 'full' : s === 'full' ? 'peek' : s)); }, [view]);
   const goSnap = useCallback((s: Snap) => { setSnap(s); f.set({ view: s === 'full' ? 'list' : null }); }, [f]);
-  const goView = useCallback((v: View) => { setSnap(v === 'list' ? 'full' : 'peek'); f.set({ view: v === 'list' ? 'list' : null }); }, [f]);
+  const goView = useCallback((v: View) => { setSnap(v === 'list' ? 'full' : 'peek'); if (v === 'list') setPanelOpen(true); f.set({ view: v === 'list' ? 'list' : null }); }, [f]);
 
   // Buttons and toasts sit above the sheet: tell the stylesheet how much of it shows.
   useLayoutEffect(() => {
@@ -71,8 +72,8 @@ export default function HomePage() {
   }, [phone]);
   const padding = useMemo(() => {
     if (view === 'list') return { top: 0, right: 0, bottom: 0, left: 0 };
-    return phone ? { top, right: 0, bottom: visible, left: 0 } : { top: 76, right: 12, bottom: 12, left: 396 };
-  }, [phone, view, top, visible]);
+    return phone ? { top, right: 0, bottom: visible, left: 0 } : { top: 76, right: 12, bottom: 12, left: panelOpen ? 396 : 12 };
+  }, [phone, view, top, visible, panelOpen]);
 
   // Say what came of sharing your location, once the list has caught up.
   const told = useRef(false);
@@ -139,7 +140,10 @@ export default function HomePage() {
   ) : (
     <>
       <Filters near={nearOn} locating={near.state === 'asking'} onNear={onNear} />
-      <div className="mp-hrow"><span className="mp-count"><b>{count}</b><small>{sub}</small></span><span className="spacer" /><VerifiedSwitch /></div>
+      <div className="mp-hrow">
+        <span className="mp-count"><b>{count}</b><small>{sub}</small></span><span className="spacer" /><VerifiedSwitch />
+        {view === 'map' ? <button type="button" className="mp-collapse" aria-label="Hide the list" title="Hide the list" onClick={() => setPanelOpen(false)}><Icon name="i-left" /></button> : null}
+      </div>
     </>
   );
 
@@ -203,7 +207,10 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <MapSheet phone={phone} snap={snap} onSnap={goSnap} onVisible={setVisible} header={header}>{body}</MapSheet>
+      <MapSheet phone={phone} snap={snap} onSnap={goSnap} onVisible={setVisible} header={header} collapsed={!panelOpen && view === 'map'}>{body}</MapSheet>
+      {!phone && view === 'map' && !panelOpen ? (
+        <button type="button" className="btn mp-reopen" onClick={() => setPanelOpen(true)}><Icon name="i-list" />Show list<span className="mp-reopen-n">{q.isPending ? '' : items.length}</span></button>
+      ) : null}
 
       <div className="mp-fabs">
         <button type="button" className="mp-fab loc" aria-label={near.pos ? 'Back to my location' : 'Show my location'} onClick={onLocate}>
