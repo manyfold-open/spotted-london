@@ -75,6 +75,8 @@ Expected: branch `category-split`, tests all passing (14 files, about 270 tests,
 **Interfaces:**
 - Produces: a `popups` table whose `category` accepts the eleven keys above. Tasks 2 to 7 rely on it. Columns, indexes and foreign keys are unchanged.
 
+> Superseded: The SQL shown below was replaced by commit f50d0d9 (park table instead of rename) after the rehearsal found it failed with child rows; the committed `migrations/0014_categories.sql` is the source of truth.
+
 This SQL was already run once in the test pool and passed: all eleven keys inserted, `rave` rejected, `PRAGMA foreign_key_check` empty, four indexes present, whole suite green. D1 refuses `pragma_foreign_key_list` in queries, so the test below reads `sqlite_master` instead. Do not put semicolons inside SQL comments: the migration reader splits on them.
 
 - [ ] **Step 1: Write the failing test**

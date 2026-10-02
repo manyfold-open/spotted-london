@@ -48,13 +48,13 @@ These go into the agent skill and into `guessCategory` so Scout, Triage and the 
 
 `popups.category` has a `CHECK` list of eight values. SQLite cannot change a `CHECK` in place, so migration `0014_categories.sql` rebuilds the table.
 
-- Nine tables reference `popups(id)`, and `popups` references itself through `merged_into`. The rebuild order is create `popups_new`, copy every row, drop `popups`, rename `popups_new` to `popups`. Never rename the old table first: SQLite would rewrite the children's references to the old name.
+- Nine tables reference `popups(id)`, and `popups` references itself through `merged_into`. The rebuild order is park the rows in a table `popups_park`, drop `popups`, create it again under the same name, insert the rows back from the park table, and drop the park table. Never rename: a rename leaves the deferred foreign-key violations raised by the drop uncleared and the commit fails once any child row exists.
 - The migration starts with `PRAGMA defer_foreign_keys = on`, so the drop does not fail on the children and the constraint is checked once, at the end.
-- `popups_new` carries every column of the live table, including the ones added later (`is_example`, `evidence`, `evidence_url`, `evidence_check`, `lease_agent`, `lease_until`), the same four indexes and the new eleven-value `CHECK`.
+- `popups` is recreated with every column of the live table, including the ones added later (`is_example`, `evidence`, `evidence_url`, `evidence_check`, `lease_agent`, `lease_until`), the same four indexes and the new eleven-value `CHECK`.
 - Existing rows keep their current key. All eight old keys stay valid, so old links and API clients that send `art` or `food` keep working. Only what `art` means changes, and reclassification (next section) fixes the rows.
 - `is_example` stays. The column and the "Example" label are harmless and removing them is a separate cleanup.
 
-Rehearsal before production, as a step of the plan: load the newest file in `backups/` into a local D1, run the migration, and check that every table's row count is unchanged and `PRAGMA foreign_key_check` returns nothing.
+Rehearsal before production, as a step of the plan: load the newest file in `backups/` into a local D1, run the migration, and check that every table's row count is unchanged and `PRAGMA foreign_key_check` returns nothing. The rehearsal caught that the first version (using rename) failed on data with child rows, which is why the migration test re-runs it with child rows present.
 
 ## Reclassifying existing rows
 
