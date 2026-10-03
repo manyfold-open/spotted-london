@@ -67,6 +67,19 @@ describe('creating pop-ups', () => {
     expect((await api('POST', '/popups', { user: u, body: popupBody({ source_url: 'http://localhost/x' }) })).json.error.code).toBe('source_url_invalid');
   });
 
+  it('lets a pop-up run for up to 180 days and says so when it is longer', async () => {
+    const boss = await user({ role: 'admin' });
+    // a big exhibition: 3 Oct 2026 to 31 Jan 2027 is 120 days
+    const long = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Renoir and Love', category: 'exhibition', lat: 51.5089, lng: -0.1283, start_at: NOW, end_at: NOW + 120 * DAY }) });
+    expect(long.status).toBe(201);
+    const exact = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Half year installation', category: 'art', lat: 51.52, lng: -0.09, start_at: NOW, end_at: NOW + 180 * DAY }) });
+    expect(exact.status).toBe(201);
+    const tooLong = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Longer than half a year', category: 'art', lat: 51.53, lng: -0.1, start_at: NOW, end_at: NOW + 181 * DAY }) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.json.error.code).toBe('too_long');
+    expect(tooLong.json.error.message).toContain('180 days');
+  });
+
   it('accepts every category and names them all when one is wrong', async () => {
     const boss = await user({ role: 'admin' });
     for (const [i, category] of CATEGORIES.entries()) {

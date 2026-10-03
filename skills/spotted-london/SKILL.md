@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.10.0
+version: 1.11.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -86,7 +86,7 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
 The test is whether the thing itself is time-limited. A permanent venue is fine when what it
 offers is only on for a set time.
 
-Yes: a physical, temporary thing open to the public, running at most 90 days. Brand pop-up shops,
+Yes: a physical, temporary thing open to the public, running at most 180 days. Brand pop-up shops,
 sample sales, food pop-ups and residencies, temporary markets, art or brand installations,
 launch events open to walk-ins, tastings. Also, at a permanent venue: a museum or gallery late,
 a one-night guest chef dinner, wine dinner or anniversary meal, a limited-run menu with an end

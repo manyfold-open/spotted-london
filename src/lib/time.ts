@@ -83,4 +83,5 @@ export function windowFor(when: When, now: number): { from: number; to: number }
   }
 }
 
-export const MAX_DURATION = 90 * DAY;
+/** The longest a pop-up may run. Zack raised it from 90 to 180 days on 2026-10-03 so a big exhibition (Renoir and Love, 120 days) fits. */
+export const MAX_DURATION = 180 * DAY;

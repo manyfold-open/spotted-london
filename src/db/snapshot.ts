@@ -10,7 +10,7 @@ import { toPublic } from './popups';
 
 /** D1 allows about 2 MB in a row. Past this the snapshot is not stored and readers get a fresh build. */
 export const MAX_SNAPSHOT_BYTES = 1_500_000;
-/** Pop-ups may be added up to this far ahead (MAX_DURATION), so nothing public starts later than this. */
+/** The list holds pop-ups that start within this long from now. How long one may run (MAX_DURATION) is a separate limit. */
 const HORIZON = 90 * DAY;
 
 /**
