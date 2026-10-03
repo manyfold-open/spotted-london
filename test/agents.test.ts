@@ -1105,3 +1105,15 @@ describe('agent helpers', () => {
     await expect(unseal('another-key-that-is-also-32-characters!', a)).rejects.toThrow(/AGENTS_KEY changed/);
   });
 });
+
+describe('query plans', () => {
+  // These lookups run once per pop-up inside the agents' task leases. Without an index each one scans the whole table,
+  // and on 3 Oct 2026 that used most of D1's daily 5 million rows read.
+  const plan = async (sql: string) => (await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).all<{ detail: string }>()).results.map(r => r.detail).join(' | ');
+
+  it('finds notes by pop-up and seen pages by run through an index', async () => {
+    expect(await plan("SELECT 1 FROM agent_notes n WHERE n.popup_id = 'x'")).toMatch(/USING (COVERING )?INDEX idx_agent_notes_popup/);
+    expect(await plan("SELECT 1 FROM agent_notes n WHERE n.popup_id = 'x' AND n.agent_id IN (SELECT id FROM agents WHERE role = 'triage')")).not.toMatch(/SCAN n\b/);
+    expect(await plan("SELECT COUNT(*) FROM scout_seen WHERE run_id = 'x'")).toMatch(/USING (COVERING )?INDEX idx_scout_seen_run/);
+  });
+});
