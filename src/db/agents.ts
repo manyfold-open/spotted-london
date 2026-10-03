@@ -152,11 +152,15 @@ export async function startRun(env: Bindings, a: AgentRow, trigger: RunRow['trig
 
 /** Records how a finished Manyfold task ended. A summary sent with finish_run is kept. */
 async function settle(db: D1Database, runId: string, info: TaskInfo, now: number) {
-  // A finished turn only counts as done when the agent reported back with finish_run.
-  // Without it the agent usually could not use Spotted (a wrong key, a missing MCP server).
-  const reported = await db.prepare("SELECT status FROM agent_runs WHERE id = ?").bind(runId).first<{ status: string }>();
-  const ok = info.state === 'completed' && reported?.status !== 'running';
-  const error = ok ? null
+  // A finished turn counts as done when the agent reported back with finish_run. Without it, the agent either
+  // could not use Spotted (a wrong key, a missing MCP server: no work was recorded, so the run failed) or it
+  // did the work and forgot to close the run (items were recorded: the run is done, with a warning).
+  const reported = await db.prepare("SELECT status, items FROM agent_runs WHERE id = ?").bind(runId).first<{ status: string; items: number }>();
+  const closed = info.state === 'completed' && reported?.status !== 'running';
+  const unclosed = info.state === 'completed' && reported?.status === 'running' && (reported.items ?? 0) > 0;
+  const ok = closed || unclosed;
+  const error = closed ? null
+    : unclosed ? 'The agent did not call finish_run, so the summary below is its last message. What it sent to Spotted was saved.'
     : info.state === 'completed' ? 'The agent finished without reporting back to Spotted, so it probably could not use its Spotted tools. Read its message below.'
     : info.state === 'input-required' ? 'The agent stopped to ask a question. Answer it in Manyfold, or add the answer to its instructions here.'
     : `The agent run ended as "${info.state}".`;

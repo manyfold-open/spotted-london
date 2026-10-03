@@ -1062,6 +1062,15 @@ describe('agent cron', () => {
     expect(silent).toMatchObject({ status: 'failed', summary: 'I could not use the Spotted tools.' });
     expect(silent!.error).toMatch(/without reporting back/);
 
+    // finished without finish_run, but it did work through Spotted: the run is done, with a warning
+    const worked = await startRun('scout');
+    await env.DB.prepare('UPDATE agent_runs SET items = 4 WHERE id = ?').bind(worked).run();
+    fakeManyfold('completed', 'Here are my 12 candidates.');
+    await checkRuns(env, NOW + 15 * 60_000);
+    const unclosed = await env.DB.prepare('SELECT status, summary, error FROM agent_runs WHERE id = ?').bind(worked).first<{ status: string; summary: string; error: string }>();
+    expect(unclosed).toMatchObject({ status: 'done', summary: 'Here are my 12 candidates.' });
+    expect(unclosed!.error).toMatch(/did not call finish_run/);
+
     const key = await call('POST', '/admin/agents/scout/key', { user: admin });
     const second = await startRun('scout');
     await tool('finish_run', { run_id: second, summary: 'Sent 3 drafts.' }, key.json.key);

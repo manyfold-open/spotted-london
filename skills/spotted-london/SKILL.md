@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.9.0
+version: 1.10.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker). Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you can only write drafts and notes, never publish or remove.
 ---
 
@@ -79,6 +79,7 @@ A result with `"isError": true` explains what was wrong; fix the input and try a
   brand site, the venue page, a ticket page or an article) when one exists. Put the post in `links`. When no organiser page states the dates, the post itself may be the `source_url` and the `evidence_url`: quote its text, and set `confidence: check`.
 - **Stay in scope.** Greater London only. Only pop-ups that are on now or start in the future.
 - **Plain English.** Short sentences, no hype, no emoji, and no em dashes, en dashes or spaced hyphens.
+- **Do the work through the Spotted tools, yourself.** Send every candidate with `submit_draft` (or a verdict with `add_note`) before you write your last message. A list of candidates in your reply is lost: nobody reads it and nothing reaches the admin queue. Do not hand pages or searches to helper or sub agents: they cannot reach the Spotted tools, and a run that waits for them tends to end with a report instead of drafts. Search and read pages in your own turn.
 
 ## What counts as a pop-up
 
@@ -246,3 +247,5 @@ Goal: catch published pop-ups that were cancelled, moved or rescheduled.
 One short paragraph, under 150 words: what you looked at, what you sent or flagged, and anything
 Zack should know (a source that was down, a trend, a question). Call it once, as your last step,
 even when you found nothing: "Checked Time Out and four venue pages. Nothing new this week."
+Never end your turn without it. If you are running out of time or room, stop leasing and searching,
+send what you already have, and call `finish_run` with what you did not get to.
