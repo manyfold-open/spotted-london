@@ -109,6 +109,8 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 
 ## Gotchas
 
+- D1 free tier: 5,000,000 rows read and 100,000 rows written a day, reset at 00:00 UTC. On 2026-10-03 we reached 92% before the reset (unindexed `agent_notes` lookups in the agent leases, now `idx_agent_notes_popup`). Rules that keep us under: every lookup inside a loop or a lease needs an index (`EXPLAIN QUERY PLAN`, see test/agents.test.ts "query plans"); server code does not scan `popups` per call when the snapshot can answer (the MCP `search_popups` reads `snapshotItems()`, about 1 row per call); an agent publishing does not rebuild the snapshot, the 10 minute cron does. Check usage with `npx wrangler d1 info spotted-db --json` and `npx wrangler d1 insights spotted-db --sort-by reads`. Steady state after the fixes was about 90,000 reads an hour. The snapshot row is capped at 1.5 MB (about 2,000 live pop-ups at 745 bytes each).
+
 - npm 10 crashes resolving vitest peers: `.npmrc` sets `legacy-peer-deps=true` (root and web/).
 - `compatibility_date` is 2026-08-20 because `@cloudflare/vitest-pool-workers` bundles an older workerd. Raise it only together with that package.
 - MapLibre v6 must get its worker via `setWorkerUrl` from `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (see `web/src/components/maps.tsx`), or the map stays blank.

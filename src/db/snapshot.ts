@@ -48,6 +48,25 @@ export async function buildPopupSnapshot(db: D1Database, now: number, maxBytes =
   return { written: true, count: items.length, bytes, json, version };
 }
 
+export type SnapshotItem = Awaited<ReturnType<typeof loadSnapshotItems>>[number];
+
+let memo: { version: string; items: SnapshotItem[] } | null = null;
+
+/**
+ * The public list as objects, for server code that would otherwise scan the popups table (the MCP search tool).
+ * It costs one small row read per call; the stored JSON is read and parsed (about 1 ms for 350 KB) only when the
+ * snapshot changed since this isolate last looked. Up to 10 minutes behind the database, like the Explore page.
+ */
+export async function snapshotItems(db: D1Database, now: number): Promise<SnapshotItem[]> {
+  const head = await db.prepare("SELECT version FROM snapshots WHERE key = 'popups'").first<{ version: string }>();
+  if (head && memo?.version === head.version) return memo.items;
+  // Nothing stored yet, or it was too big to store: build one now.
+  const row = head ? await db.prepare("SELECT version, json FROM snapshots WHERE key = 'popups'").first<{ version: string; json: string }>() : null;
+  const built = row ?? await buildPopupSnapshot(db, now);
+  memo = { version: built.version, items: (JSON.parse(built.json) as { items: SnapshotItem[] }).items };
+  return memo.items;
+}
+
 const isPublic = (s: Status) => PUBLIC_STATUSES.includes(s);
 
 /** True when a status change moves a pop-up into or out of the public list. */
