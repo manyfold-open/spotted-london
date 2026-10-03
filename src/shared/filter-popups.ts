@@ -17,12 +17,13 @@ export interface ListItem {
 
 /**
  * Same inputs as GET /popups: when, category, verified, free, borough, q, near + radius_km + sort,
- * bbox, limit, cursor. Returns the page, the cursor for the next one and the time window used.
+ * bbox, limit (1 to 50, or 'all'), cursor. Returns the page, the cursor for the next one and the time window used.
  */
 export function filterPopups<T extends ListItem>(all: T[], q: Record<string, string | undefined>, now: number) {
   const when = (['today', 'weekend', 'week', 'all'].includes(q.when ?? '') ? q.when : 'week') as When;
   const { from, to } = windowFor(when, now);
-  const limit = Math.min(50, Math.max(1, Number(q.limit) || 20));
+  // limit 'all' returns every match in one go; the map home draws them all, and the list comes from a snapshot already in memory
+  const limit = q.limit === 'all' ? Infinity : Math.min(50, Math.max(1, Number(q.limit) || 20));
   const offset = q.cursor ? parseInt(q.cursor, 36) || 0 : 0;
 
   const statuses = q.verified === '1' ? VERIFIED : PUBLIC;
