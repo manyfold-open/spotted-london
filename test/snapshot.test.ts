@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 import { runCron } from '../src/cron';
 import { listPopups } from '../src/routes/popups';
-import { buildPopupSnapshot, entersOrLeavesPublic, loadSnapshotItems } from '../src/db/snapshot';
+import { buildPopupSnapshot, entersOrLeavesPublic, loadSnapshotItems, snapshotItems } from '../src/db/snapshot';
 import { filterPopups } from '../src/shared/filter-popups';
 import { hot } from '../src/lib/scoring';
 
@@ -189,6 +189,45 @@ describe('GET /popups/snapshot', () => {
     const r = await call('GET', '/popups/snapshot');
     expect(r.status).toBe(200);
     expect(json(r).items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('snapshotItems (what the MCP search reads instead of scanning the table)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('gives the stored list as objects and reads only the small version row when nothing changed', async () => {
+    await buildPopupSnapshot(env.DB, NOW);
+    const first = await snapshotItems(env.DB, NOW);
+    expect(first.map(p => p.id)).toEqual((await loadSnapshotItems(env.DB, NOW)).map(p => p.id));
+
+    const sql: string[] = [];
+    const real = env.DB.prepare.bind(env.DB);
+    vi.spyOn(env.DB, 'prepare').mockImplementation(q => { sql.push(q); return real(q); });
+    const again = await snapshotItems(env.DB, NOW);
+    expect(again).toBe(first); // the same parsed list, not a new parse
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toMatch(/SELECT version FROM snapshots/);
+    expect(sql[0]).not.toMatch(/json/);
+  });
+
+  it('reads the new list once the stored snapshot changes, and builds one when none is stored', async () => {
+    await buildPopupSnapshot(env.DB, NOW);
+    const before = await snapshotItems(env.DB, NOW);
+    await env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role, karma, verified_posts, email_verified, created_at) VALUES ('sn_user', 'sn_user@test.dev', 'Poster', 'user', 58, 3, 1, ?)").bind(NOW - 60 * DAY).run();
+    await env.DB.prepare(
+      `INSERT INTO popups (id, slug, title, category, lat, lng, start_at, end_at, status, created_by, quality_pos, quality_neg, created_at, updated_at, hot, geohash)
+       VALUES ('sn_fresh', 'sn-fresh', 'Snapshot Items Fresh', 'market', 51.5, -0.12, ?, ?, 'community', 'sn_user', 1, 0, ?, ?, 1, 'gcpvj0f')`,
+    ).bind(NOW + HOUR, NOW + 2 * DAY, NOW, NOW).run();
+    expect((await snapshotItems(env.DB, NOW)).map(p => p.id)).not.toContain('sn_fresh'); // not rebuilt yet
+    await buildPopupSnapshot(env.DB, NOW);
+    const after = await snapshotItems(env.DB, NOW);
+    expect(after.map(p => p.id)).toContain('sn_fresh');
+    expect(after.length).toBe(before.length + 1);
+
+    await env.DB.prepare("DELETE FROM snapshots WHERE key = 'popups'").run();
+    expect((await snapshotItems(env.DB, NOW)).map(p => p.id)).toContain('sn_fresh');
+    await env.DB.prepare("DELETE FROM popups WHERE id = 'sn_fresh'").run();
+    await buildPopupSnapshot(env.DB, NOW);
   });
 });
 

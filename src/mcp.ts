@@ -11,7 +11,7 @@
 import { Hono, type Context } from 'hono';
 import type { AppEnv, PopupRow } from './types';
 import { AGENT_INFO, agentByKey, brief as runBrief, RUN_TIMEOUT, type AgentRow, type RunRow } from './db/agents';
-import { findDuplicates, listPopups, parsePopupInput } from './routes/popups';
+import { findDuplicates, parsePopupInput } from './routes/popups';
 import { searchPlaces, type WaitUntil } from './routes/geocode';
 import { toPublic } from './db/popups';
 import { CATEGORIES, safeUrl } from './lib/extract';
@@ -21,7 +21,8 @@ import { londonDateString, parseLondonDate } from './lib/time';
 import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_OUTCOMES, SOURCE_KINDS, sourceStats, sourceTarget, type SourceKind, type SourceRow } from './db/scout';
 import { ApiError, newId, slugify } from './lib/util';
 import { publishMode, publishReady } from './db/publish';
-import { rebuildSnapshotSoon } from './db/snapshot';
+import { snapshotItems, type SnapshotItem } from './db/snapshot';
+import { filterPopups } from './shared/filter-popups';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
 
@@ -205,8 +206,14 @@ const TOOLS: Record<string, Tool> = {
       if (lat !== null && lng !== null) { q.near = `${lat},${lng}`; q.sort = 'distance'; const r = numArg(a, 'radius_km'); if (r) q.radius_km = String(r); }
       if (a.free_only === true) q.free = '1';
       if (a.verified_only === true) q.verified = '1';
-      const out = await listPopups(x.c.env.DB, q, x.now);
-      return { count: out.items.length, popups: out.items.map(p => brief(p, x.origin)) };
+      // From the snapshot, not the table: Scouts search once per candidate, and a scan of every live pop-up each time
+      // was over a third of D1's daily reads. filterPopups gives the same answer as listPopups (test/snapshot.test.ts).
+      let out: ReturnType<typeof filterPopups<SnapshotItem>>;
+      try { out = filterPopups(await snapshotItems(x.c.env.DB, x.now), q, x.now); } catch (e) {
+        if (e instanceof ApiError) throw e;
+        throw new ToolError(e instanceof Error ? e.message : 'The search could not run.');
+      }
+      return { count: out.items.length, popups: out.items.map(p => brief(p as unknown as Parameters<typeof brief>[0], x.origin)) };
     },
   },
   get_popup: {
@@ -603,7 +610,7 @@ const TOOLS: Record<string, Tool> = {
       }
       // In auto mode the server publishes at once; the same conditions are checked again against every open note.
       const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
-      if (published) rebuildSnapshotSoon(x.c);
+      // No snapshot rebuild here: agents publish dozens an hour, and the cron rebuilds every 10 minutes anyway.
       return { saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}) };
     },
   },

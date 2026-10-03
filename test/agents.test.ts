@@ -652,10 +652,14 @@ describe('agent runs', () => {
 
     const one = await make('Auto One', 51.60);
     const two = await make('Auto Two', 51.61);
+    // an agent publishing does not rebuild the public snapshot (the ten-minute cron does), because agents publish dozens an hour
+    await env.DB.prepare("INSERT INTO snapshots (key, version, json, built_at) VALUES ('popups', 'sentinel', '{\"items\":[]}', 1) ON CONFLICT (key) DO UPDATE SET built_at = 1").run();
     const r1 = await note(one);
     expect(r1.structuredContent).toMatchObject({ publish_ready: true, published: true });
     expect(await status(one)).toBe('community');
     expect((await note(two)).structuredContent.published).toBe(true);
+    await new Promise(r => setTimeout(r, 100));
+    expect((await env.DB.prepare("SELECT built_at FROM snapshots WHERE key = 'popups'").first<{ built_at: number }>())!.built_at).toBe(1);
     const log = await env.DB.prepare("SELECT admin_id, detail FROM audit_log WHERE action = 'popup.agent_publish' AND target_id = ?").bind(one).first<{ admin_id: string; detail: string }>();
     expect(JSON.parse(log!.detail)).toMatchObject({ agents: ['triage'], via: 'auto' });
 
