@@ -29,7 +29,7 @@ export function usePopups(near?: [number, number] | null) {
   const data = useMemo(() => {
     if (!snap.data) return undefined;
     const params = listParams({ when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) });
-    const page = filterPopups(snap.data.items, params, Date.now());
+    const page = filterPopups(snap.data.items, { ...params, limit: 'all' }, Date.now()); // all of them: the map and the count must not stop at one page of 50
     return { ...page, items: mergeMe(page.items, mine) };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is rebuilt on every render; lat and lng stand in for it
   }, [snap.data, f.when, f.category, f.verified, q, lat, lng, mine, minute]);

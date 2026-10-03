@@ -77,6 +77,26 @@ describe('old SQL list and new browser filter agree', () => {
     expect(fresh.items.map(x => x.distance_m)).toEqual(old.items.map(x => (x as { distance_m?: number }).distance_m));
   });
 
+  it("limit 'all' returns every match in one go, in the same order as paging through them", async () => {
+    const snapshot = await loadSnapshotItems(env.DB, NOW);
+    const everything = filterPopups(snapshot, { when: 'all', limit: 'all' }, NOW);
+    expect(everything.next_cursor).toBeNull();
+    const paged: string[] = [];
+    for (let cursor: string | undefined, i = 0; i < 20; i++) {
+      const page = filterPopups(snapshot, { when: 'all', limit: '5', ...(cursor ? { cursor } : {}) }, NOW);
+      paged.push(...page.items.map(x => x.id));
+      if (!page.next_cursor) break;
+      cursor = page.next_cursor;
+    }
+    expect(everything.items.map(x => x.id)).toEqual(paged);
+    expect(everything.items.length).toBeGreaterThan(5);
+    // a plain limit still stops at 50
+    const many = Array.from({ length: 120 }, (_, i) => ({ ...snapshot[0], id: `x${i}`, hot: i }));
+    expect(filterPopups(many, { when: 'all', limit: '50' }, NOW).items).toHaveLength(50);
+    expect(filterPopups(many, { when: 'all', limit: '999' }, NOW).items).toHaveLength(50);
+    expect(filterPopups(many, { when: 'all', limit: 'all' }, NOW).items).toHaveLength(120);
+  });
+
   it('actually compares something: the filters leave different, non-empty lists', async () => {
     const snapshot = await loadSnapshotItems(env.DB, NOW);
     const sizes = new Set(params.map(p => filterPopups(snapshot, p, NOW).items.length));
