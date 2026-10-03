@@ -508,7 +508,7 @@ describe('agent runs', () => {
     expect((await call('POST', '/admin/queue/publish-ready', { user: admin, body: {} })).json.published).toBe(0);
   });
 
-  it('keeps a post out of the ready list when the Scout was unsure, the page could not be read, or a note flags it', async () => {
+  it('keeps a post out of the ready list when the page could not be read, the Scout quote was not confirmed, or a note flags it', async () => {
     const scoutKey = await connect('scout');
     const scoutRun = await startRun('scout');
     const triageKey = await connect('triage');
@@ -516,12 +516,13 @@ describe('agent runs', () => {
     const ready = { verdict: 'looks_real', note: 'Checked.', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure.test/p', dates_match: true, place_match: true };
     const page = () => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Open on Friday 3 October only</p>', { headers: { 'content-type': 'text/html' } }));
 
-    // the Scout said confidence check
+    // the Scout's own quote could not be confirmed on the page (a login-only page, stored as unchecked)
     page();
-    const unsure = await tool('submit_draft', draft(scoutRun, { title: 'Unsure Pop-up', lat: 51.56, lng: -0.14, confidence: 'check', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure.test/p' }), scoutKey);
-    const r1 = await tool('add_note', { run_id: run, popup_id: unsure.structuredContent.id, ...ready }, triageKey);
+    const unchecked = await tool('submit_draft', draft(scoutRun, { title: 'Unchecked Pop-up', lat: 51.56, lng: -0.14, evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure.test/p' }), scoutKey);
+    await env.DB.prepare("UPDATE popups SET evidence_check = 'unchecked' WHERE id = ?").bind(unchecked.structuredContent.id).run();
+    const r1 = await tool('add_note', { run_id: run, popup_id: unchecked.structuredContent.id, ...ready }, triageKey);
     expect(r1.structuredContent.publish_ready).toBe(false);
-    expect(r1.structuredContent.not_ready_because).toEqual(['the Scout was not sure (confidence check)']);
+    expect(r1.structuredContent.not_ready_because).toEqual(["the Scout's quote was not confirmed on the page"]);
 
     // the Triage agent's page cannot be read
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('no', { status: 403 }));
@@ -538,6 +539,54 @@ describe('agent runs', () => {
 
     // the batch button publishes none of them
     expect((await call('POST', '/admin/queue/publish-ready', { user: admin, body: {} })).json.published).toBe(0);
+  });
+
+  it('lets the Triage quote make a post ready even when the Scout was unsure, and settles the Scout note', async () => {
+    const scoutKey = await connect('scout');
+    const scoutRun = await startRun('scout');
+    const triageKey = await connect('triage');
+    const run = await startRun('triage');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Open on Friday 3 October only</p>', { headers: { 'content-type': 'text/html' } }));
+    const unsure = await tool('submit_draft', draft(scoutRun, { title: 'Unsure But Real', lat: 51.61, lng: -0.19, confidence: 'check', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure2.test/p' }), scoutKey);
+    const id = unsure.structuredContent.id as string;
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM agent_notes WHERE popup_id = ? AND verdict = 'needs_check' AND resolved_at IS NULL").bind(id).first<{ n: number }>()).toEqual({ n: 1 });
+
+    const r = await tool('add_note', { run_id: run, popup_id: id, verdict: 'looks_real', note: 'Checked.', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure2.test/p', dates_match: true, place_match: true }, triageKey);
+    expect(r.structuredContent).toMatchObject({ saved: true, publish_ready: true });
+    expect(r.structuredContent.not_ready_because).toBeUndefined();
+    const open = await env.DB.prepare('SELECT agent_id FROM agent_notes WHERE popup_id = ? AND resolved_at IS NULL').bind(id).all<{ agent_id: string }>();
+    expect(open.results.map(n => n.agent_id)).toEqual(['triage']);
+    expect((await call('GET', '/admin/queue', { user: admin })).json.items.find((p: { id: string }) => p.id === id).ready_to_publish).toBe(true);
+
+    // without its dates and place matching, an unsure Scout post stays with the admin
+    const other = await tool('submit_draft', draft(scoutRun, { title: 'Unsure And Off', lat: 51.62, lng: -0.2, confidence: 'check', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure3.test/p' }), scoutKey);
+    const off = await tool('add_note', { run_id: run, popup_id: other.structuredContent.id, verdict: 'looks_real', note: 'Checked.', evidence: 'Open on Friday 3 October only', evidence_url: 'https://unsure3.test/p', dates_match: false, place_match: true }, triageKey);
+    expect(off.structuredContent.publish_ready).toBe(false);
+    expect(off.structuredContent.not_ready_because).toEqual(['dates_match must be true']);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM agent_notes WHERE popup_id = ? AND verdict = 'needs_check' AND resolved_at IS NULL").bind(other.structuredContent.id).first<{ n: number }>()).toEqual({ n: 1 });
+  });
+
+  it('brings a post back once when the old rule held it back only because the Scout was unsure', async () => {
+    const scoutKey = await connect('scout');
+    const scoutRun = await startRun('scout');
+    const triageKey = await connect('triage');
+    const run = await startRun('triage');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('<p>Open on Friday 3 October only</p>', { headers: { 'content-type': 'text/html' } }));
+    const sent = await tool('submit_draft', draft(scoutRun, { title: 'Held Back Before', lat: 51.63, lng: -0.21, confidence: 'check', evidence: 'Open on Friday 3 October only', evidence_url: 'https://held.test/p' }), scoutKey);
+    const id = sent.structuredContent.id as string;
+    // a Triage note written under the old rule: looks_real, with its quote, but not ready
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at, finished_at) VALUES ('held-run', 'triage', 'schedule', 'done', ?, ?)").bind(NOW - HOUR, NOW - HOUR),
+      env.DB.prepare("INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence, publish_ready, created_at) VALUES ('held-note', 'triage', 'held-run', ?, 'looks_real', 'Looks fine.', 'Open on Friday 3 October only', 0, ?)").bind(id, NOW - HOUR),
+    ]);
+    const ids = async () => (await tool('list_review_queue', { run_id: run }, triageKey)).structuredContent.posts.map((p: { id: string }) => p.id);
+    expect(await ids()).toContain(id);
+
+    const r = await tool('add_note', { run_id: run, popup_id: id, verdict: 'looks_real', note: 'Checked again.', evidence: 'Open on Friday 3 October only', evidence_url: 'https://held.test/p', dates_match: true, place_match: true }, triageKey);
+    expect(r.structuredContent.publish_ready).toBe(true);
+    // a second note exists now, so it does not come back again, even if a later check had failed
+    await env.DB.prepare("UPDATE popups SET lease_agent = NULL, lease_until = NULL WHERE id = ?").bind(id).run();
+    expect(await ids()).not.toContain(id);
   });
 
   it('brings a draft sent before quotes were checked back until Triage quotes the page, and lets that quote alone make it ready', async () => {

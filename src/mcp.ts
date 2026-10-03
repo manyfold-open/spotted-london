@@ -479,16 +479,22 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   list_review_queue: {
-    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. Older Scout drafts that no Triage note has quoted the page for come back once a day for another look. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
+    description: 'Lease posts waiting for review that no Triage agent has left a note on yet, oldest first. Older Scout drafts that no Triage note has quoted the page for come back once a day for another look, and a draft you called looks_real that was held back only because the Scout was unsure comes back once. A post is leased to you for 60 minutes so no other Triage agent takes it. Calling this again returns the posts you still hold.',
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
       // A legacy draft (see isLegacyDraft) comes back once a day until a Triage note on it carries the agent's own quote.
+      // A draft with exactly one Triage note, looks_real but not ready, while the Scout was unsure, comes back once: that note
+      // was written when the Scout's doubt still blocked publishing.
       const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
         AND (NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))
           OR (substr(p.created_by, 1, 6) = 'agent_' AND p.evidence_check IS NULL
             AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)
-              AND (n.created_at >= ?3 OR n.evidence IS NOT NULL OR n.verdict NOT IN ('looks_real', 'needs_check')))))`, 'p.created_at', x.now - DAY);
+              AND (n.created_at >= ?3 OR n.evidence IS NOT NULL OR n.verdict NOT IN ('looks_real', 'needs_check'))))
+          OR (substr(p.created_by, 1, 6) = 'agent_' AND p.evidence_check = 'found'
+            AND (SELECT COUNT(*) FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)) = 1
+            AND EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2) AND n.verdict = 'looks_real' AND n.publish_ready = 0)
+            AND EXISTS (SELECT 1 FROM agent_notes s WHERE s.popup_id = p.id AND s.resolved_at IS NULL AND s.verdict = 'needs_check' AND s.agent_id IN (SELECT id FROM agents WHERE user_id = p.created_by))))`, 'p.created_at', x.now - DAY);
       const posters = await userRows(x.c.env.DB, results.map(p => p.created_by));
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return {
@@ -571,11 +577,9 @@ const TOOLS: Record<string, Tool> = {
         if (a.place_match !== true) why.push('place_match must be true');
         if (p.created_by === x.agent!.user_id) why.push('you cannot publish your own post');
         if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) why.push('the post contains text aimed at AI agents, so a person has to look');
-        if (p.created_by.startsWith('agent_') && !isLegacyDraft(p)) {
-          if (p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
-          const scout = await db.prepare("SELECT verdict FROM agent_notes WHERE popup_id = ? AND agent_id IN (SELECT id FROM agents WHERE user_id = ?) ORDER BY created_at LIMIT 1").bind(p.id, p.created_by).first<{ verdict: string }>();
-          if (scout?.verdict !== 'looks_real') why.push('the Scout was not sure (confidence check)');
-        }
+        // The Scout's own confidence does not decide (Zack, 2026-10-03: volume first): the Triage agent's found quote with
+        // matching dates and place does. The Scout's quote must still have been found on the page.
+        if (p.created_by.startsWith('agent_') && !isLegacyDraft(p) && p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
         ready = why.length === 0;
       }
 
@@ -592,6 +596,10 @@ const TOOLS: Record<string, Tool> = {
           `UPDATE agent_notes SET resolved_at = ?1 WHERE popup_id = ?2 AND run_id != ?3 AND resolved_at IS NULL
              AND (agent_id IN (SELECT id FROM agents WHERE role = 'triage') OR (?4 AND agent_id IN (SELECT id FROM agents WHERE user_id = ?5)))`,
         ).bind(x.now, p.id, run.id, ready ? 1 : 0, p.created_by).run();
+      }
+      // A ready Triage note settles the Scout's own "not sure" note, which would otherwise keep the post out of the ready list.
+      if (ready && x.agent!.role === 'triage' && !isLegacyDraft(p)) {
+        await db.prepare('UPDATE agent_notes SET resolved_at = ? WHERE popup_id = ? AND resolved_at IS NULL AND agent_id IN (SELECT id FROM agents WHERE user_id = ?)').bind(x.now, p.id, p.created_by).run();
       }
       // In auto mode the server publishes at once; the same conditions are checked again against every open note.
       const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
