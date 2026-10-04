@@ -154,6 +154,13 @@ Scout has a memory: a list of sources to check, and every page it already read.
    - When you are done with a source, call `mark_source_checked`, also when it had nothing new.
 3. **Confirm on the organiser's own page** when you can (brand site, venue page, ticket page). Articles
    are often out of date. Use the organiser page as `source_url` when it has the details.
+   **Listing sites that block Spotted's page reader** (ArtRabbit blocks every fetch; on 4 Oct, 4 of 15
+   gallery drafts waited for Zack because of it) are fine for finding a show, but never use one as
+   `source_url` or `evidence_url`: Spotted cannot find your quote there, so the draft is stored as
+   `unchecked` and cannot be published without a person. Open the gallery's own exhibition page and
+   quote that. If the gallery page gives no end date, search for a second site that does and put it in
+   `links`; Triage can then confirm the post with two sites. If the only page you can quote is the
+   blocked listing, skip it with `no_details`.
 4. **Skip** anything that already ended, starts more than 60 days from now, has no clear dates, or
    has no clear place. A pop-up that started earlier and is still running is fine: send its real
    start date, never today's date instead. Record every page you read and did not send with
