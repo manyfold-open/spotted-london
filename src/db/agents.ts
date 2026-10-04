@@ -1,6 +1,6 @@
 // AI agents on Manyfold (SPEC §13.4): what each one does, when it runs, and the run life cycle.
 // Spotted only starts runs and records what comes back. The agents do their work through the
-// MCP endpoint (src/mcp.ts) with their own key, and can only write drafts and notes.
+// MCP endpoint (src/mcp.ts) with their own key, and write drafts and notes. Triage and Checker may also fix small details and remove or end a post with proof (src/db/triage.ts); nothing here approves as an admin, votes or edits a live pop-up by hand.
 
 import type { Bindings } from '../types';
 import { FINISHED, getTask, safeErrorText, startTask, type TaskInfo } from '../lib/a2a';
@@ -71,13 +71,13 @@ export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: st
   },
   triage: {
     name: 'Triage',
-    job: 'Checks each post waiting for review against its source on its own, and leaves you a note: looks real, needs a check, likely fake or duplicate. A post it confirmed with its own quote is marked ready to publish.',
+    job: 'Checks each post waiting for review against its source on its own. It fixes small things itself (a price or postcode the page contradicts, a sentence no page supports) and publishes what it could confirm with its own quote. It removes duplicates and posts that are not pop-ups, with proof. The rest wait for you with a note: needs a check, likely fake.',
     unit: 'notes',
     tools: ['start_run', 'list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
   },
   checker: {
     name: 'Checker',
-    job: 'Rechecks live pop-ups against their source links and flags the ones that were cancelled or changed dates or place.',
+    job: 'Rechecks live pop-ups against their source links. It corrects small details on community pop-ups nobody has voted on, ends cancelled ones, and flags the rest for you.',
     unit: 'notes',
     tools: ['start_run', 'list_live_popups', 'add_note', 'finish_run'],
   },

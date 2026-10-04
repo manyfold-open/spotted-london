@@ -133,7 +133,7 @@ Three AI agents run on [Manyfold](https://manyfold.ai), not on Cloudflare, so th
 | Agent | Job | Writes |
 |---|---|---|
 | Scout | finds new pop-ups on the public web | pending drafts, posted as "Scout agent" |
-| Triage | checks each post in the review queue | a note per post: looks real, needs a check, likely fake, duplicate |
+| Triage | checks each post in the review queue | a note per post (looks real, needs a check, likely fake, duplicate, not a pop-up); fixes small details itself, publishes what it confirmed, removes duplicates and non pop-ups with proof |
 | Checker | rechecks live pop-ups against their source | a flag when one is cancelled or changed |
 
 Nothing an agent writes is published without the admin. Drafts are always `pending`, and notes show in the review queue until the admin decides or dismisses them.
