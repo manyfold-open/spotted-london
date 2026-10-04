@@ -542,6 +542,7 @@ CREATE TABLE audit_log (
 | 圖片處理 | 前端壓縮，不用 Cloudflare Images |
 | AI 自動填表 | Workers AI（2026-09-30 接上）。文字：`@cf/meta/llama-3.3-70b-instruct-fp8-fast`；截圖：`@cf/meta/llama-4-scout-17b-16e-instruct`（吃 base64 圖片、支援 JSON schema）。截圖在前端縮成長邊 1600px 的 JPEG 再上傳（≤ 2 MB），伺服器不存圖。免費額度用完回 503 `ai_quota`，請用戶自己填 |
 | 表單元件 | 全部自製，不用瀏覽器原生 UI：日期選擇器（英式格式、週一開始、手機為底部 sheet）、搜尋清除鈕、Email 驗證訊息、捲軸、地圖縮放鈕 |
+| Review queue 自動消化（2026-10-04） | 目標：人只處理少數真正需要人的案子。Triage 可用 `fixes` 修待審草稿的小細節（刪掉找不到出處的句子、清空價格/時間、把地址/價格/時間/日期改成來源頁寫的值，需附 Spotted 找得到的引用；日期最多移 7 天）；Checker 可修沒人投過票的 community 活動。來源頁打不開時，用 `corroboration`（兩個不同網站、各自的引用都找得到）代替。`duplicate`（Spotted 驗證同地點、日期重疊、標題相似）、`out_of_scope`（新 verdict，要附理由和引用）、`cancelled`（變成 `ended`）在 auto 模式下自動處理。每個 agent 每天最多 40 次，全部寫 audit，可 undo。仍留給人：貼文含針對 agent 的文字、核心資料互相矛盾、`likely_fake`、有人投過票或已被 admin 認證的 |
 | 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
 | 範例資料 | 已於 2026-10-02 用 `seed/clear-examples.sql` 從線上清除（9 個虛構活動、165 個假帳號）。`is_example` 欄位與 Example 標示保留，之後要用範例資料可重新載入 `seed/examples.sql` |
 | 設計系統 | "Sketchbook"（紙張 + 墨線 + 硬陰影 + 單一橘色 accent） |

@@ -25,11 +25,13 @@ import { snapshotItems, type SnapshotItem } from './db/snapshot';
 import { filterPopups } from './shared/filter-popups';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
+import { differentSites, FixError, OUT_OF_SCOPE_REASONS, parseFixes } from './lib/triage';
+import { applyFixes, autoRemove, overDailyCap, type AutoKind } from './db/triage';
 
 export const mcp = new Hono<AppEnv>();
 
 const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const VERDICTS = ['looks_real', 'needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'] as const;
+const VERDICTS = ['looks_real', 'needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled', 'out_of_scope'] as const;
 
 type Args = Record<string, unknown>;
 interface Ctx { c: Context<AppEnv>; agent: AgentRow | null; now: number; origin: string }
@@ -182,6 +184,64 @@ async function verifyEvidence(db: D1Database, quote: string, url: string): Promi
   const post = await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>();
   if (!post && SOCIAL_HOSTS.test(new URL(url).hostname)) return 'unchecked';
   return checkEvidence(quote, url, post);
+}
+
+/** A popups row with the evidence columns the Scout and Triage fill in. */
+type NotedPopup = PopupRow & { evidence: string | null; evidence_check: string | null };
+
+/**
+ * The pages an agent says confirm a post whose own page cannot be read. Each quote must be on its page (a page that loads
+ * without it refuses the note, one that cannot be read counts for nothing). Counts only when two pages from different sites remain.
+ */
+async function corroboration(db: D1Database, raw: unknown): Promise<{ url: string; quote: string }[]> {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 3) throw new ToolError('corroboration is a list of up to 3 items, each with url and quote.');
+  const found: { url: string; quote: string }[] = [];
+  for (const item of raw as Record<string, unknown>[]) {
+    const quote = str(item as Args, 'quote', EVIDENCE_MAX + 1, true)!, url = normalizeUrl(str(item as Args, 'url', 500, true)!);
+    if (!url) throw new ToolError('corroboration url must be a public web address.');
+    if (quote.length < EVIDENCE_MIN || quote.length > EVIDENCE_MAX) throw new ToolError(`corroboration quote must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word.`);
+    try {
+      if (await verifyEvidence(db, quote, url) === 'found') found.push({ url, quote });
+    } catch (e) {
+      if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${url})`);
+      throw e;
+    }
+  }
+  return differentSites(found.map(f => f.url)) ? found : [];
+}
+
+/**
+ * What Spotted does when a note says a post is a duplicate, out of scope or cancelled. Only in automatic mode, only for a post
+ * that is waiting or a community pop-up nobody has voted on, only with proof, and not past the agent's daily limit.
+ * Otherwise the note goes to the review queue as before; `why` says what was missing.
+ */
+async function autoAction(
+  db: D1Database, p: NotedPopup, verdict: string,
+  o: { quote: string | null; dup: string | null; scope: string | null; text: (string | null)[]; agent: AgentRow; now: number },
+): Promise<{ done?: 'removed' | 'ended'; why?: string }> {
+  const kind: AutoKind | null = verdict === 'duplicate' ? 'duplicate' : verdict === 'out_of_scope' ? 'out_of_scope' : verdict === 'cancelled' ? 'cancelled' : null;
+  if (!kind) return {};
+  if ((await publishMode(db)) !== 'auto') return { why: 'automatic publishing is off, so the admin decides' };
+  if (p.status !== 'pending' && p.status !== 'community') return { why: 'only posts waiting for review and community pop-ups are handled automatically' };
+  if (p.voter_count > 0) return { why: 'people have voted on it, so the admin decides' };
+  if (p.created_by === o.agent.user_id) return { why: 'you cannot remove your own post' };
+  if (looksAimedAtAgents(o.text)) return { why: 'the post contains text aimed at AI agents, so a person has to look' };
+  if (await overDailyCap(db, o.agent.user_id, o.now)) return { why: 'you have used your automatic actions for today' };
+  let mergedInto: string | null = null;
+  if (kind === 'duplicate') {
+    if (!o.dup || o.dup === p.id) return { why: 'give duplicate_of: the pop-up it repeats' };
+    const target = await db.prepare('SELECT id, status, created_at FROM popups WHERE id = ?').bind(o.dup).first<Pick<PopupRow, 'id' | 'status' | 'created_at'>>();
+    if (!target || !(PUBLIC_STATUSES.includes(target.status as never) || (target.status === 'pending' && target.created_at <= p.created_at))) return { why: 'duplicate_of must be a published pop-up, or an older post waiting for review' };
+    const same = await findDuplicates(db, { title: p.title, lat: p.lat, lng: p.lng, start_at: p.start_at, end_at: p.end_at });
+    if (!same.some(d => d.id === target.id)) return { why: 'that pop-up is not at the same place, on overlapping dates, with a similar title, so the admin decides' };
+    mergedInto = target.id;
+  } else {
+    if (!o.quote) return { why: 'give evidence: a quote Spotted finds on the page that shows it' };
+    if (kind === 'out_of_scope' && !(OUT_OF_SCOPE_REASONS as readonly string[]).includes(o.scope ?? '')) return { why: `give scope_reason: ${OUT_OF_SCOPE_REASONS.join(', ')}` };
+  }
+  const reason = kind === 'duplicate' ? 'duplicate' : kind === 'cancelled' ? 'cancelled' : `out of scope (${o.scope})`;
+  return (await autoRemove(db, p, kind, o.agent, { reason, merged_into: mergedInto }, o.now)) ? { done: kind === 'cancelled' ? 'ended' : 'removed' } : { why: 'the post changed while you were checking it' };
 }
 
 const TOOLS: Record<string, Tool> = {
@@ -529,7 +589,7 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   add_note: {
-    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine. To mark a waiting post ready to publish, use verdict looks_real with evidence (a quote you copied word for word from the page, found by Spotted), dates_match true and place_match true. The answer says whether it is ready and, if not, why.',
+    description: 'Leave the admin a note on a pop-up. looks_real and needs_check are for posts waiting for review; details_changed, cancelled, out_of_scope and likely_fake flag a published pop-up for the admin. On published pop-ups, use looks_real to record that you checked and all is fine. To mark a waiting post ready to publish, use verdict looks_real with evidence (a quote you copied word for word from the page, found by Spotted), dates_match true and place_match true. The answer says whether it is ready and, if not, why. You can also fix small things yourself with fixes (Triage on waiting posts, Checker on community posts nobody has voted on), say a source Spotted cannot open is confirmed by two other sites with corroboration, and, when the admin has switched on automatic publishing, have Spotted remove a duplicate or out_of_scope post, or end a cancelled one, when you give the proof it asks for.',
     inputSchema: obj({
       run_id: RUN_ID,
       popup_id: S('Pop-up id.'),
@@ -539,7 +599,22 @@ const TOOLS: Record<string, Tool> = {
       evidence: S(`A passage you copied word for word from evidence_url, ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, that states the dates and the place. Open the page yourself; do not reuse the Scout's quote.`),
       dates_match: { type: 'boolean', description: 'The dates on the page are the dates on the post.' },
       place_match: { type: 'boolean', description: 'The place on the page is the place on the post.' },
-      duplicate_of: S('For verdict duplicate: id of the pop-up it repeats.'),
+      duplicate_of: S('For verdict duplicate: id of the pop-up it repeats. Spotted removes the post when that pop-up is the same place, overlapping dates and a similar title.'),
+      scope_reason: S('For verdict out_of_scope: performance (a concert or show with a ticket), regular_offer (the venue does this all the time), private_or_trade (invite only or trade only), not_a_pop_up (an advert, a shop or something else). Send evidence too.', { enum: [...OUT_OF_SCOPE_REASONS] }),
+      fixes: {
+        type: 'object', additionalProperties: false,
+        description: 'With verdict looks_real: small corrections you make yourself. remove_text: pieces of the description, copied exactly, that no page supports (up to 6). clear: price_text and hours_text, to blank what no page supports. set: address, price_text, hours_text, start_date or end_date (YYYY-MM-DD) to what the page says; your evidence quote must state the new value, worded the same way, and a date may move by at most 7 days. Not allowed once people have voted. Title, place on the map and the core facts stay for a person.',
+        properties: {
+          remove_text: { type: 'array', items: { type: 'string' } },
+          clear: { type: 'array', items: { type: 'string', enum: ['price_text', 'hours_text'] } },
+          set: obj({ address: S('New address, as in your quote.'), price_text: S('New price text, as in your quote.'), hours_text: S('New hours, as in your quote.'), start_date: S('YYYY-MM-DD'), end_date: S('YYYY-MM-DD') }),
+        },
+      },
+      corroboration: {
+        type: 'array', maxItems: 3,
+        description: 'For a post whose source page Spotted or you cannot open (login, blocked): two or three other pages from different sites, each with a quote copied word for word that states the dates and the place. Spotted finds the quotes. Two found quotes from different sites count in place of the quote from the source page, for you and for the Scout.',
+        items: obj({ url: S('Public page.'), quote: S(`${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, word for word.`) }, ['url', 'quote']),
+      },
     }, ['run_id', 'popup_id', 'verdict', 'note']),
     async run(a, x) {
       const run = await requireRun(x, a);
@@ -547,9 +622,9 @@ const TOOLS: Record<string, Tool> = {
       const verdict = str(a, 'verdict', 20, true)!;
       if (!(VERDICTS as readonly string[]).includes(verdict)) throw new ToolError(`verdict must be one of: ${VERDICTS.join(', ')}.`);
       const popupId = str(a, 'popup_id', 40, true)!;
-      const p = await db.prepare('SELECT id, status, title, description, created_by, source_url, evidence, evidence_check FROM popups WHERE id = ?').bind(popupId)
-        .first<{ id: string; status: string; title: string; description: string | null; created_by: string; source_url: string | null; evidence: string | null; evidence_check: string | null }>();
+      const p = await db.prepare('SELECT * FROM popups WHERE id = ?').bind(popupId).first<NotedPopup>();
       if (!p) throw new ToolError('No pop-up with that id.');
+      const role = x.agent!.role;
       const dup = str(a, 'duplicate_of', 40);
       if (verdict === 'duplicate' && !dup) throw new ToolError('Give duplicate_of for verdict duplicate.');
       if (dup && !(await db.prepare('SELECT 1 FROM popups WHERE id = ?').bind(dup).first())) throw new ToolError('duplicate_of is not a pop-up id.');
@@ -558,10 +633,14 @@ const TOOLS: Record<string, Tool> = {
       const note = str(a, 'note', 600, true)!;
 
       // The agent's own quote, looked up the same way as a Scout's.
-      const quote = str(a, 'evidence', EVIDENCE_MAX + 1);
+      let quote = str(a, 'evidence', EVIDENCE_MAX + 1);
       let evidenceUrl = evidenceUrlArg ? safeUrl(evidenceUrlArg)!.toString() : null;
       let evidenceCheck: EvidenceCheck | null = null;
-      if (quote) {
+
+      // Two other sites that state the facts stand in for a source page nobody can open.
+      const corroborated = await corroboration(db, a.corroboration);
+      if (corroborated.length && !quote) { quote = corroborated[0].quote; evidenceUrl = corroborated[0].url; evidenceCheck = 'found'; }
+      else if (quote) {
         if (quote.length < EVIDENCE_MIN || quote.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${quote.length}.`);
         const where = normalizeUrl(evidenceUrl ?? p.source_url ?? '');
         if (!where) throw new ToolError('Give evidence_url: the page the quote comes from.');
@@ -571,6 +650,7 @@ const TOOLS: Record<string, Tool> = {
         }
         evidenceUrl = where;
       }
+      const sourceConfirmed = corroborated.length >= 2;
 
       // Ready to publish only when every condition holds. The reasons come back so the agent can fix them.
       const why: string[] = [];
@@ -579,16 +659,35 @@ const TOOLS: Record<string, Tool> = {
       if (verdict === 'looks_real' && (p.status === 'pending' || quote || a.dates_match !== undefined || a.place_match !== undefined)) {
         if (p.status !== 'pending') why.push('only posts waiting for review can be published');
         if (!quote) why.push('give evidence: a passage copied word for word from the page, with dates_match and place_match; putting it in the note is not enough');
-        else if (evidenceCheck !== 'found') why.push('Spotted could not read that page to find your quote, so a person has to look');
+        else if (evidenceCheck !== 'found' && !sourceConfirmed) why.push('Spotted could not read that page to find your quote. Quote two other sites in corroboration, or a person has to look');
         if (a.dates_match !== true) why.push('dates_match must be true');
         if (a.place_match !== true) why.push('place_match must be true');
         if (p.created_by === x.agent!.user_id) why.push('you cannot publish your own post');
         if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) why.push('the post contains text aimed at AI agents, so a person has to look');
         // The Scout's own confidence does not decide (Zack, 2026-10-03: volume first): the Triage agent's found quote with
         // matching dates and place does. The Scout's quote must still have been found on the page.
-        if (p.created_by.startsWith('agent_') && !isLegacyDraft(p) && p.evidence_check !== 'found') why.push("the Scout's quote was not confirmed on the page");
+        if (p.created_by.startsWith('agent_') && !isLegacyDraft(p) && p.evidence_check !== 'found' && !sourceConfirmed) why.push("the Scout's quote was not confirmed on the page. Quote two other sites in corroboration, or a person has to look");
         ready = why.length === 0;
       }
+
+      // Small corrections the agent makes itself, so the post does not wait for a person over a price or a postcode.
+      let fixed: Record<string, [unknown, unknown]> = {};
+      let fixNote = '';
+      const fixesArg = (() => { try { return parseFixes(a.fixes); } catch (e) { if (e instanceof FixError) throw new ToolError(e.message); throw e; } })();
+      if (fixesArg) {
+        if (verdict !== 'looks_real') throw new ToolError('fixes go with verdict looks_real: fix it, then say it looks real.');
+        const mine = (role === 'triage' && p.status === 'pending') || (role === 'checker' && p.status === 'community');
+        if (!mine) throw new ToolError('Triage can fix posts waiting for review and Checker can fix community pop-ups. Describe the change in the note instead.');
+        if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) throw new ToolError('The post contains text aimed at AI agents, so a person has to look.');
+        if (await overDailyCap(db, x.agent!.user_id, x.now)) throw new ToolError('You have used your fixes for today. Describe the change in the note instead.');
+        try { fixed = await applyFixes(db, p, fixesArg, evidenceCheck === 'found' ? quote : null, x.agent!, x.now); } catch (e) {
+          if (e instanceof FixError) throw new ToolError(e.message);
+          throw e;
+        }
+        const fields = Object.keys(fixed);
+        if (fields.length) fixNote = ` Spotted applied your fixes: ${fields.map(f => f.replace('_at', '')).join(', ')}.`;
+      }
+      const noteText = note + fixNote + (sourceConfirmed ? ` Confirmed on two other sites: ${corroborated.map(c => c.url).join(', ')}.` : '');
 
       const existing = await db.prepare('SELECT id FROM agent_notes WHERE run_id = ? AND popup_id = ?').bind(run.id, p.id).first();
       if (!existing) await useItem(x, run);
@@ -596,7 +695,7 @@ const TOOLS: Record<string, Tool> = {
         `INSERT INTO agent_notes (id, agent_id, run_id, popup_id, verdict, note, evidence_url, evidence, publish_ready, duplicate_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (run_id, popup_id) DO UPDATE SET verdict = excluded.verdict, note = excluded.note, evidence_url = excluded.evidence_url, evidence = excluded.evidence,
            publish_ready = excluded.publish_ready, duplicate_of = excluded.duplicate_of`,
-      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, note, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
+      ).bind(newId(), x.agent!.id, run.id, p.id, verdict, noteText, evidenceUrl, quote, ready ? 1 : 0, dup, x.now).run();
       if (isLegacyDraft(p) && x.agent!.role === 'triage') {
         // The second look replaces the first Triage note, and a ready one also the Scout's old "not sure" note.
         await db.prepare(
@@ -610,8 +709,13 @@ const TOOLS: Record<string, Tool> = {
       }
       // In auto mode the server publishes at once; the same conditions are checked again against every open note.
       const published = ready && (await publishMode(db)) === 'auto' && (await publishReady(db, p.id, x.agent!.user_id, 'auto', x.now));
+      // A duplicate, an out of scope post or a cancelled one leaves the list at once when the proof is there and the switch is on.
+      const auto = await autoAction(db, p, verdict, { quote: evidenceCheck === 'found' ? quote : null, dup, scope: str(a, 'scope_reason', 30), text: [p.title, p.description, note, quote, p.evidence], agent: x.agent!, now: x.now });
       // No snapshot rebuild here: agents publish dozens an hour, and the cron rebuilds every 10 minutes anyway.
-      return { saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}) };
+      return {
+        saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}),
+        ...(Object.keys(fixed).length ? { fixed: Object.keys(fixed) } : {}), ...(auto.done ? { auto: auto.done } : {}), ...(auto.why ? { not_auto_because: auto.why } : {}),
+      };
     },
   },
   start_run: {

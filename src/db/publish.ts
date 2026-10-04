@@ -12,7 +12,7 @@ import { recompute } from './popups';
 export type PublishMode = 'suggest' | 'auto';
 
 /** Agent findings that put a pop-up back in front of the admin. */
-export const FLAGGING_VERDICTS = ['needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'];
+export const FLAGGING_VERDICTS = ['needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled', 'out_of_scope'];
 
 /** An open note says ready, and no open note says otherwise. */
 export const isReady = (notes: readonly { verdict: string; publish_ready: number }[]) =>
@@ -72,6 +72,19 @@ export async function undoAgent(db: D1Database, agent: { id: string; user_id: st
     const moved = await db.prepare("UPDATE popups SET status = 'pending', lease_agent = NULL, lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'community'").bind(now, p.id).run();
     if (!moved.meta.changes) continue;
     await log(db, actor, 'popup.agent_publish_undo', p.id, { agent: agent.id, since }, now);
+    out.reverted += 1;
+  }
+  // What the agent removed or ended on its own (duplicates, out of scope, cancelled) goes back to the status it had.
+  const { results: gone } = await db.prepare(
+    `SELECT a.target_id AS id, p.title, p.status, json_extract(a.detail, '$.from') AS before, json_extract(a.detail, '$.to') AS after
+     FROM audit_log a JOIN popups p ON p.id = a.target_id
+     WHERE a.action IN ('popup.agent_remove', 'popup.agent_end') AND a.created_at >= ? AND json_extract(a.detail, '$.agent') = ?`,
+  ).bind(since, agent.id).all<{ id: string; title: string; status: string; before: string; after: string }>();
+  for (const g of gone) {
+    if (g.status !== g.after) { out.skipped.push({ id: g.id, title: g.title, reason: `its status is now ${g.status}` }); continue; }
+    const back = await db.prepare('UPDATE popups SET status = ?, merged_into = NULL, updated_at = ? WHERE id = ? AND status = ?').bind(g.before, now, g.id, g.after).run();
+    if (!back.meta.changes) continue;
+    await log(db, actor, 'popup.agent_remove_undo', g.id, { agent: agent.id, since, to: g.before }, now);
     out.reverted += 1;
   }
   return out;

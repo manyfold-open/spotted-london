@@ -191,7 +191,7 @@ type QueueItem = Popup & { poster: { id: string; name: string | null; karma: num
 const FLAG_TEXT: Record<string, string> = { no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes', by_agent: 'Found by an agent' };
 const VERDICT: Record<string, [string, string]> = {
   looks_real: ['Looks real', 't-eng'], needs_check: ['Needs a check', 't-watch'], likely_fake: ['Likely fake', 't-err'],
-  duplicate: ['Duplicate', 't-err'], details_changed: ['Details changed', 't-watch'], cancelled: ['Cancelled', 't-err'],
+  duplicate: ['Duplicate', 't-err'], details_changed: ['Details changed', 't-watch'], cancelled: ['Cancelled', 't-err'], out_of_scope: ['Not a pop-up', 't-err'],
 };
 const AGENT_NAME: Record<string, string> = { scout: 'Scout', triage: 'Triage', checker: 'Checker' };
 

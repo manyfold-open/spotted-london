@@ -522,7 +522,7 @@ describe('agent runs', () => {
     await env.DB.prepare("UPDATE popups SET evidence_check = 'unchecked' WHERE id = ?").bind(unchecked.structuredContent.id).run();
     const r1 = await tool('add_note', { run_id: run, popup_id: unchecked.structuredContent.id, ...ready }, triageKey);
     expect(r1.structuredContent.publish_ready).toBe(false);
-    expect(r1.structuredContent.not_ready_because).toEqual(["the Scout's quote was not confirmed on the page"]);
+    expect(r1.structuredContent.not_ready_because).toEqual([expect.stringMatching(/^the Scout's quote was not confirmed on the page\. Quote two other sites in corroboration/)]);
 
     // the Triage agent's page cannot be read
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('no', { status: 403 }));
