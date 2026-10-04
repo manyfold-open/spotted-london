@@ -8,7 +8,7 @@ Adapted from Zack's Sketchbook system used in another project.
 
 1. **Paper and ink.** Warm off-white paper, near-black ink. No gradients (except skeleton shimmer), no blurred shadows.
 2. **One accent.** Orange `#e8622c` is the only brand colour. Other colours carry meaning (status, AI, category tint).
-3. **Colour means state.** Ink = admin verified, green = community verified, dashed yellow = being checked, red = hidden or error, blue = filled by AI, purple = Example.
+3. **Colour means state.** Ink = admin verified, green = community verified, outlined green = source checked by an agent, dashed yellow = being checked, red = hidden or error, blue = filled by AI, purple = Example.
 4. **Outlined, not filled.** Surfaces are separated by 1.5px ink borders and hard shadows.
 5. **Phone first.** Every screen is designed at 375 px first, then widened.
 
@@ -33,6 +33,7 @@ State pairs (text on background):
 |---|---|---|---|
 | Admin verified | `.t-ink` | `--card` | `--ink` |
 | Community verified | `.t-eng` | `#155e3a` | `#d8efe0` |
+| Source checked (an agent matched the post to its source) | `.t-src` | `#155e3a` | `--card`, solid green border; pin is pale green with a solid green border |
 | Being checked | `.t-watch` | `#6b5200` | `#fff3c4`, dashed border |
 | Hidden, errors | `.t-err` | `#a8200d` | `#fde8e6` |
 | Filled by AI | `.t-ai` | `#1b45ad` | `#dce6fc` |

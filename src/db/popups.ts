@@ -73,8 +73,17 @@ async function alreadyAwarded(db: D1Database, userId: string, reason: string, re
   return !!(await db.prepare('SELECT 1 FROM karma_log WHERE user_id = ? AND reason = ? AND ref_id = ?').bind(userId, reason, ref).first());
 }
 
+/**
+ * Column for pop-up queries: 1 when a Triage agent confirmed the post against its source with its own quote (a
+ * `publish_ready` note) and no open note has flagged it since. Uses idx_agent_notes_popup. Show it as "Source checked";
+ * it never changes `status`, so votes and check-ins still decide `verified_community`.
+ */
+export const SOURCE_CHECKED_SQL = `(EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = popups.id AND n.publish_ready = 1)
+  AND NOT EXISTS (SELECT 1 FROM agent_notes f WHERE f.popup_id = popups.id AND f.resolved_at IS NULL
+    AND f.verdict IN ('needs_check', 'likely_fake', 'duplicate', 'details_changed', 'cancelled'))) AS source_checked`;
+
 /** Public JSON shape for a pop-up. */
-export function toPublic(p: PopupRow & { cover_key?: string | null }, extra: Record<string, unknown> = {}) {
+export function toPublic(p: PopupRow & { cover_key?: string | null; source_checked?: number | null }, extra: Record<string, unknown> = {}) {
   return {
     id: p.id,
     slug: p.slug,
@@ -99,6 +108,7 @@ export function toPublic(p: PopupRow & { cover_key?: string | null }, extra: Rec
     hot: p.hot,
     cover_url: p.cover_key ? `/api/v1/images/${p.cover_key}` : null,
     example: !!p.is_example,
+    source_checked: !!p.source_checked,
     created_at: p.created_at,
     ...extra,
   };

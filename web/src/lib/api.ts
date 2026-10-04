@@ -15,6 +15,8 @@ export interface Popup {
   start_at: number; end_at: number; hours_text: string | null; source_url: string | null; status: Status;
   verification: { confidence: number; weighted_votes: number; voters: number; checkins: number };
   score: number; hot: number; cover_url: string | null; created_at: number; example?: boolean;
+  /** An agent confirmed the post against its source. Shown as "Source checked"; status still comes from votes. */
+  source_checked?: boolean;
   distance_m?: number;
   me?: MyState | null;
   images?: { id: string; url: string }[];

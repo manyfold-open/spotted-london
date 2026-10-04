@@ -47,6 +47,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           <span className="mp-navh">Map key</span>
           <span className="tag t-ink"><Icon name="i-shield" />Verified</span>
           <span className="tag t-eng"><Icon name="i-checkc" />Community verified</span>
+          <span className="tag t-src"><Icon name="i-check" />Source checked</span>
           <span className="tag t-watch">Being checked</span>
         </div>
         <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap.</p>

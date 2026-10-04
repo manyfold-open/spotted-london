@@ -7,7 +7,7 @@ import { CATEGORIES, safeUrl } from '../lib/extract';
 import { boxAround, CHECKIN_RADIUS_M, geohash, haversine, inLondon } from '../lib/geo';
 import { DAY, hot, initialStatus, KARMA, PUBLIC_STATUSES, voteWeight } from '../lib/scoring';
 import { MAX_DURATION, windowFor, type When } from '../lib/time';
-import { recompute, toPublic } from '../db/popups';
+import { recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
 import { buildPopupSnapshot, entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 import { awardKarma } from '../db/karma';
 
@@ -73,9 +73,10 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
     args.push(s, n, w, e);
   }
 
-  const sql = `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key
+  const sql = `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
+      ${SOURCE_CHECKED_SQL}
     FROM popups WHERE ${where.join(' AND ')} ORDER BY hot DESC, id LIMIT ? OFFSET ?`;
-  const { results } = await db.prepare(sql).bind(...args, near ? 500 : limit + 1, near ? 0 : offset).all<PopupRow>();
+  const { results } = await db.prepare(sql).bind(...args, near ? 500 : limit + 1, near ? 0 : offset).all<PopupRow & { source_checked: number }>();
 
   let rows = results.map(p => ({ p, d: near ? haversine(near.lat, near.lng, p.lat, p.lng) : null }));
   if (near) {
@@ -112,13 +113,14 @@ popups.get('/:id', async c => {
   const u = c.get('user');
   if (!canSee(p, u)) throw new ApiError(404, 'not_found', 'This pop-up does not exist.');
   const db = c.env.DB;
-  const [{ results: images }, mine, saved, poster] = await Promise.all([
+  const [{ results: images }, mine, saved, poster, checked] = await Promise.all([
     db.prepare('SELECT id, r2_key, position FROM popup_images WHERE popup_id = ? ORDER BY position').bind(p.id).all<{ id: string; r2_key: string; position: number }>(),
     u ? db.prepare('SELECT kind, value FROM votes WHERE popup_id = ? AND user_id = ?').bind(p.id, u.id).all<{ kind: string; value: number }>() : null,
     u ? db.prepare('SELECT 1 AS s FROM saves WHERE popup_id = ? AND user_id = ?').bind(p.id, u.id).first() : null,
     db.prepare('SELECT id, display_name, karma FROM users WHERE id = ?').bind(p.created_by).first<{ id: string; display_name: string | null; karma: number }>(),
+    db.prepare(`SELECT ${SOURCE_CHECKED_SQL} FROM popups WHERE id = ?`).bind(p.id).first<{ source_checked: number }>(),
   ]);
-  return c.json(toPublic(p, {
+  return c.json(toPublic({ ...p, source_checked: checked?.source_checked }, {
     cover_url: images[0] ? `/api/v1/images/${images[0].r2_key}` : null,
     images: images.map(i => ({ id: i.id, url: `/api/v1/images/${i.r2_key}` })),
     posted_by: poster ? { id: poster.id, name: poster.display_name, karma: poster.karma } : null,
