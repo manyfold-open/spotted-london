@@ -101,6 +101,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: currentColor }
 .t-ink { background: var(--ink); color: var(--card) } .t-mute { background: var(--soft); color: var(--ink2) }
 .t-new { background: var(--accent); color: var(--card) } .t-eng { background: var(--eng-bg); color: var(--eng) }
 .t-ai { background: var(--ai-bg); color: var(--ai) } .t-err { background: var(--err-bg); color: var(--err) }
+.t-src { background: var(--card); color: var(--eng); border: 1.5px solid var(--eng) }
 .t-watch { background: var(--watch-bg); color: var(--watch); border: 1.5px dashed var(--watch) }
 .t-out { border-color: var(--ink); background: var(--card); color: var(--ink) }
 .t-sim { background: var(--sim-bg); color: var(--sim) }
@@ -337,6 +338,7 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pinm.verified_admin { background: var(--ink); color: var(--card) }
 .pinm.verified_community { background: var(--eng); color: var(--card) }
 .pinm.community { background: var(--watch-bg); color: var(--watch); border-style: dashed; border-color: var(--watch) }
+.pinm.community.checked { background: var(--eng-bg); color: var(--eng); border-style: solid; border-color: var(--eng) }
 .pinm.live::after { content: ""; position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink) }
 /* MapLibre places a marker with an inline `transform`. The individual `scale`, `rotate` and `translate` properties
    are applied before it, so a `scale` multiplies the marker's offset from the map corner and the pin lands in the

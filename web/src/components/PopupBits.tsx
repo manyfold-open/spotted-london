@@ -8,7 +8,8 @@ import { useErrorToast, useRequireAuth, useSheet, useToast } from '../lib/hooks'
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
 
-export function StatusTag({ status, className = '' }: { status: Popup['status']; className?: string }) {
+export function StatusTag({ status, sourceChecked, className = '' }: { status: Popup['status']; sourceChecked?: boolean; className?: string }) {
+  if (status === 'community' && sourceChecked) return <span className={`tag t-src ${className}`}><Icon name="i-check" />Source checked</span>;
   switch (status) {
     case 'verified_admin': return <span className={`tag t-ink ${className}`}><Icon name="i-shield" />Verified</span>;
     case 'verified_community': return <span className={`tag t-eng ${className}`}><Icon name="i-checkc" />Community verified</span>;
@@ -124,7 +125,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
       </div>
       <div className="cbody">
-        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
+        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} sourceChecked={p.source_checked} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
         <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.closest('.card')?.querySelector('.thumb')); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>

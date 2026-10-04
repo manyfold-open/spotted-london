@@ -241,7 +241,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
-          <StatusTag key={p.status} status={p.status} className={statusChanged ? 'stamp' : ''} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
+          <StatusTag key={p.status} status={p.status} sourceChecked={p.source_checked} className={statusChanged ? 'stamp' : ''} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
           {live ? <span className="tag t-new">On now</span> : null}
         </div>
         <div><h1 style={{ fontSize: 32 }}>{p.title}</h1>{p.host ? <p className="muted" style={{ marginTop: 4 }}>by {p.host}</p> : null}</div>
@@ -263,7 +263,10 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
             <Meter value={v.confidence} big />
             {p.status === 'verified_admin'
               ? <div className="notice small" style={{ marginTop: 12 }}><Icon name="i-shield" /><span>An admin checked this with the host.</span></div>
-              : <ul className="checklist">{checks.map(c => <li key={c.text} className={c.ok ? 'ok' : 'no'}><Icon name={c.ok ? 'i-checkc' : 'i-clock'} /><span>{c.text}</span></li>)}</ul>}
+              : <>
+                {p.status === 'community' && p.source_checked ? <div className="notice small" style={{ marginTop: 12 }}><Icon name="i-check" /><span>A Spotted agent matched this post to its source page. Votes and check-ins still decide if it becomes community verified.</span></div> : null}
+                <ul className="checklist">{checks.map(c => <li key={c.text} className={c.ok ? 'ok' : 'no'}><Icon name={c.ok ? 'i-checkc' : 'i-clock'} /><span>{c.text}</span></li>)}</ul>
+              </>}
             {own ? <p className="weightnote" style={{ marginTop: 14 }}>This is your post, so you cannot vote on it. You earn 10 karma when it is verified.</p> : (
               <>
                 <div className="split" style={{ marginTop: 14 }}>

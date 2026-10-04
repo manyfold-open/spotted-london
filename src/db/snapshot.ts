@@ -6,7 +6,7 @@ import type { Context } from 'hono';
 import type { AppEnv, PopupRow } from '../types';
 import { DAY, hot, PUBLIC_STATUSES, type Status } from '../lib/scoring';
 import { sha256 } from '../lib/util';
-import { toPublic } from './popups';
+import { SOURCE_CHECKED_SQL, toPublic } from './popups';
 
 /** D1 allows about 2 MB in a row. Past this the snapshot is not stored and readers get a fresh build. */
 export const MAX_SNAPSHOT_BYTES = 1_500_000;
@@ -19,9 +19,10 @@ const HORIZON = 90 * DAY;
  */
 export async function loadSnapshotItems(db: D1Database, now: number) {
   const { results } = await db.prepare(
-    `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key
+    `SELECT *, (SELECT r2_key FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
+       ${SOURCE_CHECKED_SQL}
      FROM popups WHERE status IN (${PUBLIC_STATUSES.map(() => '?').join(',')}) AND end_at > ? AND start_at < ? ORDER BY id`,
-  ).bind(...PUBLIC_STATUSES, now, now + HORIZON).all<PopupRow & { cover_key: string | null }>();
+  ).bind(...PUBLIC_STATUSES, now, now + HORIZON).all<PopupRow & { cover_key: string | null; source_checked: number }>();
   return results.map(p => ({
     ...toPublic(p),
     description: null as string | null,
