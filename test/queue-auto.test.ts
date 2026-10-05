@@ -33,7 +33,7 @@ async function user(id: string, role = 'user') {
 }
 
 /** A connected agent with its Spotted key and one open run. */
-async function agent(role: 'triage' | 'checker') {
+async function agent(role: 'triage' | 'checker' | 'scout') {
   const fake = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => {
     const body = JSON.parse(String(init?.body ?? '{}'));
     return Response.json({ jsonrpc: '2.0', id: body.id, result: { kind: 'task', id: 't1', contextId: 'c', status: { state: 'submitted' } } });
@@ -82,7 +82,7 @@ beforeEach(async () => {
   await user('qa_poster');
   await setMode('auto');
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM agent_notes'), env.DB.prepare('DELETE FROM agent_runs'),
+    env.DB.prepare('DELETE FROM agent_notes'), env.DB.prepare('DELETE FROM scout_seen'), env.DB.prepare('DELETE FROM agent_runs'),
     env.DB.prepare("DELETE FROM audit_log WHERE action LIKE 'popup.agent_%'"),
     env.DB.prepare("UPDATE agents SET manyfold_scheduled = 0, enabled = 0, rpc_url = NULL, token_sealed = NULL, token_hint = NULL, key_hash = NULL, key_hint = NULL, next_run_at = NULL"),
   ]);
@@ -348,6 +348,45 @@ describe('automatic removal with proof', () => {
     pages({ 'https://hotel.test/tea': 'Afternoon tea is served every weekend, all year round, at the hotel.' });
     const r = await tool('add_note', { run_id: t.run, popup_id: mine.id, verdict: 'out_of_scope', scope_reason: 'regular_offer', note: 'x', evidence: 'Afternoon tea is served every weekend, all year round', evidence_url: 'https://hotel.test/tea' }, t.key);
     expect(r.structuredContent.not_auto_because).toMatch(/own post/);
+  });
+});
+
+describe('agents do not send again what was turned down', () => {
+  const where = { lat: 51.66, lng: 0.05 };
+  const dates = { start_date: '2026-10-03', end_date: '2026-10-10' };
+
+  it('lists a post removed in the last 30 days when an agent checks for duplicates, and nothing older or elsewhere', async () => {
+    const t = await agent('triage');
+    const recent = await popup({ status: 'removed', title: 'Medicube Wellness Club X2 Pop-up', ...where, updated_at: NOW - 10 * DAY });
+    await popup({ status: 'removed', title: 'Medicube Wellness Club X2 Pop-up', lat: 51.67, lng: 0.05, updated_at: NOW - 45 * DAY });
+    await popup({ status: 'removed', title: 'Medicube Wellness Club X2 Pop-up', lat: 51.69, lng: 0.05, updated_at: NOW - DAY });
+    const r = await tool('check_duplicates', { title: 'Medicube Wellness Club X2 Pop-Up', ...where, ...dates }, t.key);
+    expect(r.structuredContent.duplicates.map((d: any) => [d.id, d.status])).toEqual([[recent.id, 'removed']]);
+    const old = await tool('check_duplicates', { title: 'Medicube Wellness Club X2 Pop-Up', lat: 51.67, lng: 0.05, ...dates }, t.key);
+    expect(old.structuredContent.duplicates).toEqual([]);
+  });
+
+  it('refuses a draft that repeats a rejected post, even from a new link, and says why', async () => {
+    const s = await agent('scout');
+    const rejected = await popup({ status: 'removed', title: 'Medicube Wellness Club X2 Pop-up', lat: 51.62, lng: 0.07, updated_at: NOW - 2 * DAY });
+    pages({ 'https://www.instagram.com/p/new1': '<p>Medicube Wellness Club</p>' });
+    const draft = { run_id: s.run, title: 'Medicube Wellness Club X2 Pop-Up', category: 'beauty', ...dates, lat: 51.62, lng: 0.07, address: 'Hanover Square, London', area: 'Mayfair',
+      source_url: 'https://www.instagram.com/p/new1', evidence: 'Medicube Wellness Club', evidence_url: 'https://www.instagram.com/p/new1', confidence: 'high', note_for_admin: 'x' };
+    const r = await tool('submit_draft', draft, s.key);
+    expect(r.structuredContent).toMatchObject({ sent: false, reason: 'Spotted turned this one down in the last 30 days. Skip it.' });
+    expect(r.structuredContent.duplicates[0]).toMatchObject({ id: rejected.id, status: 'removed' });
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM popups WHERE title LIKE 'Medicube Wellness Club X2%' AND lat = 51.62").first<{ n: number }>())!.n).toBe(1);
+    // a live duplicate keeps the old wording
+    await popup({ status: 'community', title: 'Kiln Road Pop-up', lat: 51.63, lng: 0.07 });
+    const live = await tool('submit_draft', { ...draft, title: 'Kiln Road Pop-up', lat: 51.63, lng: 0.07 }, s.key);
+    expect(live.structuredContent.reason).toBe('Already on Spotted. Skip it.');
+  });
+
+  it('still lets a person add something again after it was removed', async () => {
+    const dupe = await popup({ status: 'removed', title: 'Person Readds This', lat: 51.64, lng: 0.07, updated_at: NOW - DAY });
+    const res = await call('POST', '/popups', { user: await user('qa_human'), body: { title: 'Person Readds This', category: 'market', lat: 51.64, lng: 0.07, start_at: NOW, end_at: NOW + 2 * DAY, address: '1 High Street' } });
+    expect(res.status).toBe(201);
+    expect(dupe.id).not.toBe(res.json.id);
   });
 });
 

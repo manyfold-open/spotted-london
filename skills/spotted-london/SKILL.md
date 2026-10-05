@@ -170,7 +170,10 @@ Scout has a memory: a list of sources to check, and every page it already read.
 5. `find_place` with the venue and address. Use the result that matches the street; if none does,
    skip the pop-up.
 6. `check_duplicates` (and `search_popups` with a key word from the title). If it is already listed,
-   skip it. `submit_draft` checks again, answers `sent: false` for duplicates and remembers the page.
+   skip it. A match with `status: removed` is a post an admin or agent turned down in the last 30 days:
+   skip that too, even when you found it through a different link, unless you have a page that answers
+   what was missing (a venue, a date). `submit_draft` checks again, answers `sent: false` for duplicates
+   and for posts turned down, and remembers the page.
 7. `submit_draft`:
    - `title`: the organiser's name for it, like "Aesop Sample Sale" or "Jollibee Pop-up at Boxpark
      Wembley". No dates or prices in the title.

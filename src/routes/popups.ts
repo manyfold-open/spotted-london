@@ -180,13 +180,17 @@ popups.post('/', async c => {
 
 type DupeInput = { title: string; lat: number; lng: number; start_at: number; end_at: number };
 
-/** Same few hundred metres, overlapping dates, similar title (SPEC §3.2). */
-export async function findDuplicates(db: D1Database, x: DupeInput): Promise<PopupRow[]> {
+/**
+ * Same few hundred metres, overlapping dates, similar title (SPEC §3.2). A removed post does not count, so a person can
+ * add something again. Agents pass `removedSince` to also see what was turned down since then, so the Scout does not send
+ * a post the admin already rejected (on 5 Oct 2026 it sent a rejected one again from a new link).
+ */
+export async function findDuplicates(db: D1Database, x: DupeInput, opts: { removedSince?: number } = {}): Promise<PopupRow[]> {
   const box = boxAround(x.lat, x.lng, 300);
   const { results } = await db.prepare(
-    `SELECT * FROM popups WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND start_at < ? AND end_at > ?
-       AND status NOT IN ('removed') LIMIT 50`,
-  ).bind(box.south, box.north, box.west, box.east, x.end_at, x.start_at).all<PopupRow>();
+    `SELECT * FROM popups WHERE lat BETWEEN ?1 AND ?2 AND lng BETWEEN ?3 AND ?4 AND start_at < ?5 AND end_at > ?6
+       AND (status != 'removed' OR updated_at >= ?7) LIMIT 50`,
+  ).bind(box.south, box.north, box.west, box.east, x.end_at, x.start_at, opts.removedSince ?? Number.MAX_SAFE_INTEGER).all<PopupRow>();
   return results.filter(p => titleSimilarity(p.title, x.title) >= 0.8);
 }
 
