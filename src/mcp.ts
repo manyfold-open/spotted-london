@@ -100,6 +100,9 @@ function dates(a: Args) {
   return { start_at, end_at: endDay };
 }
 
+/** How long a removed post still counts as a duplicate for agents. */
+const TURNED_DOWN_FOR = 30 * DAY;
+
 /** Most pages one run may mark as read, and most sources it may suggest. */
 const SEEN_PER_RUN = 300, SUGGESTIONS_PER_RUN = 5;
 
@@ -302,12 +305,12 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   check_duplicates: {
-    description: 'Check whether a pop-up is already on Spotted (same place, overlapping dates, similar title) before sending it.',
+    description: 'Check whether a pop-up is already on Spotted (same place, overlapping dates, similar title) before sending it. Posts that were turned down in the last 30 days are listed too, with status removed: skip those, an admin or agent already decided.',
     inputSchema: obj({ title: S('Pop-up title.'), lat: N('Latitude.'), lng: N('Longitude.'), start_date: S('First day, YYYY-MM-DD.'), end_date: S('Last day, YYYY-MM-DD.') }, ['title', 'lat', 'lng', 'start_date', 'end_date']),
     async run(a, x) {
       const lat = numArg(a, 'lat'), lng = numArg(a, 'lng');
       if (lat === null || lng === null) throw new ToolError('lat and lng are required.');
-      const found = await findDuplicates(x.c.env.DB, { title: str(a, 'title', 100, true)!, lat, lng, ...dates(a) });
+      const found = await findDuplicates(x.c.env.DB, { title: str(a, 'title', 100, true)!, lat, lng, ...dates(a) }, { removedSince: x.now - TURNED_DOWN_FOR });
       return { duplicates: found.map(p => brief(toPublic(p), x.origin)) };
     },
   },
@@ -506,11 +509,11 @@ const TOOLS: Record<string, Tool> = {
       }
       const evidence = str(a, 'evidence', EVIDENCE_MAX + 1, true)!;
       if (evidence.length < EVIDENCE_MIN || evidence.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${evidence.length}.`);
-      const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number });
+      const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number }, { removedSince: x.now - TURNED_DOWN_FOR });
       if (dupes.length) {
         await markSeen(x, run, seenUrl, 'duplicate', { sourceId, popupId: dupes[0].id });
         await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
-        return { sent: false, reason: 'Already on Spotted. Skip it.', duplicates: dupes.map(p => brief(toPublic(p), x.origin)) };
+        return { sent: false, reason: dupes.every(p => p.status === 'removed') ? 'Spotted turned this one down in the last 30 days. Skip it.' : 'Already on Spotted. Skip it.', duplicates: dupes.map(p => brief(toPublic(p), x.origin)) };
       }
       const evidenceUrl = normalizeUrl(str(a, 'evidence_url', 500) ?? source);
       if (!evidenceUrl) throw new ToolError('evidence_url must be a public web address.');
