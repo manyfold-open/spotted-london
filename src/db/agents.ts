@@ -83,7 +83,7 @@ export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: st
   },
   concierge: {
     name: 'Concierge',
-    job: 'Answers visitors who type what they are after into Ask, with up to 5 real pop-ups and a reason each. It only reads the public list, so it needs no Spotted key, no schedule and no runs. Spotted sends it each question and checks every pop-up it names.',
+    job: 'Answers visitors who type what they are after into Ask, with up to 5 real pop-ups and a reason each, using the tags on pop-ups (interactive, late night, family and so on) and what the visitor leans towards. It only reads the public list, so it needs no Spotted key, no schedule and no runs. Spotted sends it each question and checks every pop-up it names.',
     unit: 'answers',
     tools: [],
   },

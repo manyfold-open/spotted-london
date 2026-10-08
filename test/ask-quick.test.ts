@@ -17,10 +17,19 @@ function item(id: string, o: { category?: string; free?: boolean; borough?: stri
 describe('quickGuess', () => {
   it('reads when, free, categories and a known area from the words', () => {
     expect(quickGuess('Something free and a bit weird this weekend near Shoreditch', ['Shoreditch', 'Soho']))
-      .toEqual({ when: 'weekend', free: true, categories: [], borough: 'Shoreditch' });
+      .toEqual({ when: 'weekend', free: true, categories: [], borough: 'Shoreditch', tags: [], avoid: [] });
     expect(quickGuess('street food tonight', [])).toMatchObject({ when: 'today', categories: ['food'] });
     expect(quickGuess('an art exhibition or a market on Saturday', [])).toMatchObject({ when: 'weekend', categories: ['market', 'exhibition', 'art'] });
-    expect(quickGuess('anything good', ['Soho'])).toEqual({ when: 'week', free: false, categories: [], borough: null });
+    expect(quickGuess('anything good', ['Soho'])).toEqual({ when: 'week', free: false, categories: [], borough: null, tags: [], avoid: [] });
+  });
+
+  it('reads the obvious tag words, and "indoors" or rain as avoiding outdoors', () => {
+    expect(quickGuess('something with kids that is outdoors and late', []).tags).toEqual(['family', 'late_night', 'outdoors']);
+    expect(quickGuess('vegan and interactive, a bit of live music', []).tags).toEqual(['vegan', 'interactive', 'live_music']);
+    expect(quickGuess('it is raining, what is on', [])).toMatchObject({ tags: [], avoid: ['outdoors'] });
+    expect(quickGuess('indoors please', []).avoid).toEqual(['outdoors']);
+    expect(quickGuess('outdoors even if it rains', [])).toMatchObject({ tags: ['outdoors'], avoid: [] });
+    expect(quickGuess('chocolate lateral thinking', []).tags).toEqual([]);
   });
 
   it('does not take part of a word for a category or an area', () => {
@@ -49,6 +58,18 @@ describe('meanwhile', () => {
     expect(meanwhile(all, 'free tech', null, NOW).map(p => p.id)).toEqual(['a', 'b', 'd']);
     expect(meanwhile(all, 'hello there', null, NOW).map(p => p.id)).toEqual(['c', 'a', 'b', 'd']);
     expect(meanwhile([], 'anything', null, NOW)).toEqual([]);
+  });
+
+  it('filters by tag, avoids a tag, and falls back to an untagged list when little is tagged yet', () => {
+    const tagged = [
+      { ...item('t1', { category: 'market', hot: 3, free: true }), tags: ['family', 'outdoors'] },
+      { ...item('t2', { category: 'market', hot: 2, free: true }), tags: ['family'] },
+      { ...item('t3', { category: 'market', hot: 1, free: true }), tags: null },
+    ];
+    expect(meanwhile(tagged, 'something with kids', null, NOW).map(p => p.id)).toEqual(['t1', 't2']);
+    expect(meanwhile(tagged, 'kids and outdoors', null, NOW).map(p => p.id)).toEqual(['t1']);
+    expect(meanwhile(tagged, 'it is raining', null, NOW).map(p => p.id)).toEqual(['t2', 't3']);
+    expect(meanwhile(tagged, 'vegan please', null, NOW).map(p => p.id)).toEqual(['t1', 't2', 't3']); // nothing is tagged vegan: the tag is dropped
   });
 
   it('keeps at most n and puts what the visitor likes first when For you is on', () => {

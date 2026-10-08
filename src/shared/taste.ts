@@ -3,11 +3,14 @@
 // tests run the same code. Nothing here is sent to a server.
 
 import { CATEGORIES, isCategory } from './categories';
+import { isTag, TAGS } from './tags';
 import type { MyStateMap } from './my-state';
 
 /** What the ranking needs from a pop-up. The public list items have all of it. */
 export interface TasteItem {
   id: string; category: string; hot: number; cover_url?: string | null;
+  /** What the page states (src/shared/tags.ts). Null or missing: nobody has tagged it yet, which says nothing either way. */
+  tags?: readonly string[] | null;
   price: { type: string | null }; location: { borough: string | null };
   start_at: number; end_at: number;
 }
@@ -23,6 +26,8 @@ export interface Tally { y: number; n: number }
 export interface Act {
   /** Category, normalised area (or null) and whether it was free when counted. */
   c: string; b: string | null; f: boolean;
+  /** Tags it had when counted, left out when it had none. */
+  t?: string[];
   /** Saved. */
   s?: true;
   /** Quality vote: 1 up, -1 down. */
@@ -33,6 +38,8 @@ export interface Taste {
   v: 1;
   cats: Record<string, Tally>;
   boroughs: Record<string, Tally>;
+  /** Yes and no per tag (src/shared/tags.ts). Each answer counts for half as much as it does for the category. */
+  tags: Record<string, Tally>;
   /** Yes and no to free pop-ups only. */
   free: Tally;
   /** Saves and quality votes already counted above, by pop-up id. Newest last. */
@@ -57,8 +64,18 @@ const TASTE_WEIGHT = 4;
 const HIDE_AT = 0.25;
 /** The deck only offers pop-ups that start within this long, so a card is never about something months away. */
 const DECK_HORIZON = 21 * 24 * 3_600_000;
+/** A tag gets this share of an answer: a swipe is a verdict on the whole pop-up, and a tag is only part of the reason. */
+export const TAG_SHARE = 0.5;
+/** A tag counts for ranking and for the summary only once it holds two swipes' worth (tallies are at TAG_SHARE), so one swipe never decides alone. */
+export const TAG_MIN_TALLY = 2 * TAG_SHARE;
+/** A tag is "leaned towards" or "skipped" at these smoothed rates: two clear swipes get there, one yes among three does not. */
+const TAG_LIKE_AT = 0.65, TAG_SKIP_AT = 0.35;
+/** How far the tags can move the score from the category's: a quarter of the way from neutral, so at most 0.125 either way. */
+const TAG_NUDGE = 0.25;
+/** The summary Ask may send names at most this many tags liked and this many avoided. */
+const TAG_SUMMARY_MAX = 3;
 
-export const emptyTaste = (): Taste => ({ v: 1, cats: {}, boroughs: {}, free: { y: 0, n: 0 }, acts: {}, swipes: 0, on: false, seen: false });
+export const emptyTaste = (): Taste => ({ v: 1, cats: {}, boroughs: {}, tags: {}, free: { y: 0, n: 0 }, acts: {}, swipes: 0, on: false, seen: false });
 
 /** Smoothed yes rate between 0 and 1. Nothing known gives 0.5, so one answer never decides alone. */
 export const rate = (t: Tally | undefined) => (((t?.y ?? 0) + 1) / ((t?.y ?? 0) + (t?.n ?? 0) + 2));
@@ -79,15 +96,18 @@ export function parseTaste(raw: string | null | undefined): Taste {
   for (const [k, t] of Object.entries(v.cats ?? {})) if (isCategory(k)) cats[k] = tally(t);
   const boroughs: Taste['boroughs'] = {};
   for (const [k, t] of Object.entries(v.boroughs ?? {}).slice(0, 80)) boroughs[k.slice(0, 60)] = tally(t);
+  const tags: Taste['tags'] = {};
+  for (const [k, t] of Object.entries(v.tags ?? {}).slice(0, 80)) if (isTag(k)) tags[k] = tally(t);
   const acts: Taste['acts'] = {};
   for (const [id, a] of Object.entries(v.acts ?? {})) {
     const o = (a ?? {}) as Partial<Act>;
     const q = o.q === 1 || o.q === -1 ? o.q : undefined;
     if (Object.keys(acts).length >= ACTS_MAX || id.length > 64 || typeof o.c !== 'string' || (o.s !== true && !q)) continue;
-    acts[id] = { c: o.c.slice(0, 40), b: typeof o.b === 'string' ? o.b.slice(0, 60) : null, f: o.f === true, ...(o.s === true ? { s: true as const } : {}), ...(q ? { q } : {}) };
+    const t = Array.isArray(o.t) ? [...new Set(o.t.filter(isTag))].slice(0, 5) : [];
+    acts[id] = { c: o.c.slice(0, 40), b: typeof o.b === 'string' ? o.b.slice(0, 60) : null, f: o.f === true, ...(t.length ? { t } : {}), ...(o.s === true ? { s: true as const } : {}), ...(q ? { q } : {}) };
   }
   const swipes = typeof v.swipes === 'number' && Number.isFinite(v.swipes) ? Math.max(0, Math.min(10_000, Math.floor(v.swipes))) : 0;
-  return { v: 1, cats, boroughs, free: tally(v.free), acts, swipes, on: v.on === true, seen: v.seen === true };
+  return { v: 1, cats, boroughs, tags, free: tally(v.free), acts, swipes, on: v.on === true, seen: v.seen === true };
 }
 
 const bump = (m: Record<string, Tally>, key: string, yes: boolean, w: number) => {
@@ -106,13 +126,20 @@ export function learn(taste: Taste, item: TasteItem, yes: boolean, weight = 1, d
   const next: Taste = { ...taste, cats: isCategory(item.category) ? bump(taste.cats, item.category, yes, weight) : taste.cats };
   const b = item.location.borough?.trim().toLowerCase();
   if (b) next.boroughs = bump(taste.boroughs, b, yes, weight);
+  // Untagged (null) teaches nothing about tags. Tags the list no longer knows are skipped.
+  let tags = taste.tags;
+  for (const tag of new Set(item.tags ?? [])) if (isTag(tag)) tags = bump(tags, tag, yes, weight * TAG_SHARE);
+  next.tags = tags;
   if (item.price.type === 'free') next.free = yes ? { y: Math.max(0, taste.free.y + weight), n: taste.free.n } : { y: taste.free.y, n: Math.max(0, taste.free.n + weight) };
   if (deck) next.swipes = taste.swipes + 1;
   return next;
 }
 
-const factsOf = (i: TasteItem): Pick<Act, 'c' | 'b' | 'f'> => ({ c: i.category.slice(0, 40), b: i.location.borough?.trim().toLowerCase() || null, f: i.price.type === 'free' });
-const asItem = (a: Act): TasteItem => ({ id: '', category: a.c, hot: 0, price: { type: a.f ? 'free' : null }, location: { borough: a.b }, start_at: 0, end_at: 0 });
+const factsOf = (i: TasteItem): Pick<Act, 'c' | 'b' | 'f' | 't'> => {
+  const t = [...new Set((i.tags ?? []).filter(isTag))].slice(0, 5);
+  return { c: i.category.slice(0, 40), b: i.location.borough?.trim().toLowerCase() || null, f: i.price.type === 'free', ...(t.length ? { t } : {}) };
+};
+const asItem = (a: Act): TasteItem => ({ id: '', category: a.c, hot: 0, tags: a.t ?? null, price: { type: a.f ? 'free' : null }, location: { borough: a.b }, start_at: 0, end_at: 0 });
 
 /** Adds (sign 1) or takes back (sign -1) what one pop-up's save and vote are worth. */
 const count = (t: Taste, a: Act, sign: 1 | -1): Taste => {
@@ -165,9 +192,20 @@ export function forgetSwipes(taste: Taste): Taste {
   return t;
 }
 
-/** 0 to 1, how much someone is likely to like this pop-up. The category counts most; free and area nudge it. */
+/** A tag someone has answered about enough times to count. */
+const known = (taste: Taste, tag: string) => {
+  const t = taste.tags[tag];
+  return !!t && t.y + t.n >= TAG_MIN_TALLY;
+};
+
+/**
+ * 0 to 1, how much someone is likely to like this pop-up. The category counts most; its tags nudge it up or down by at
+ * most 0.125 (liked tags up, skipped tags down), and free and area nudge it. A pop-up nobody has tagged, or whose tags have too few answers, is scored by category alone.
+ */
 export function affinity(taste: Taste, item: TasteItem): number {
   let a = rate(taste.cats[item.category]);
+  const tags = [...new Set(item.tags ?? [])].filter(t => isTag(t) && known(taste, t));
+  if (tags.length) a = Math.min(1, Math.max(0, a + (tags.reduce((s, t) => s + rate(taste.tags[t]), 0) / tags.length - 0.5) * TAG_NUDGE));
   if (item.price.type === 'free') a = a * 0.8 + rate(taste.free) * 0.2;
   const b = item.location.borough?.trim().toLowerCase();
   if (b && taste.boroughs[b]) a = a * 0.85 + rate(taste.boroughs[b]) * 0.15;
@@ -183,7 +221,11 @@ export function hiddenCategories(taste: Taste): string[] {
  * The short summary Ask may send with a question: categories liked and left out, and whether free entry is liked.
  * Nothing else leaves the browser. Null when "For you" is off or says nothing yet.
  */
-export interface TasteSummary { likes: string[]; left_out: string[]; free: 'likes' | 'avoids' | null }
+export interface TasteSummary {
+  likes: string[]; left_out: string[]; free: 'likes' | 'avoids' | null;
+  /** Tags answered about at least twice with a clear lean. Left out when there are none. Vocabulary keys only. */
+  tag_likes?: string[]; tag_avoids?: string[];
+}
 
 export function tasteSummary(taste: Taste): TasteSummary | null {
   if (!taste.on || taste.swipes <= 0) return null;
@@ -192,7 +234,16 @@ export function tasteSummary(taste: Taste): TasteSummary | null {
   const answers = taste.free.y + taste.free.n;
   const r = rate(taste.free);
   const free = answers >= 2 ? (r >= 0.67 ? 'likes' : r <= 0.33 ? 'avoids' : null) : null;
-  return likes.length || left_out.length || free ? { likes, left_out, free } : null;
+  const tag_likes = leaningTags(taste, true), tag_avoids = leaningTags(taste, false);
+  if (!likes.length && !left_out.length && !free && !tag_likes.length && !tag_avoids.length) return null;
+  return { likes, left_out, free, ...(tag_likes.length ? { tag_likes } : {}), ...(tag_avoids.length ? { tag_avoids } : {}) };
+}
+
+/** Tags with enough answers and a clear lean, strongest first. At most TAG_SUMMARY_MAX. */
+function leaningTags(taste: Taste, liked: boolean): string[] {
+  return TAGS.filter(t => known(taste, t) && (liked ? rate(taste.tags[t]) >= TAG_LIKE_AT : rate(taste.tags[t]) <= TAG_SKIP_AT))
+    .sort((a, b) => (liked ? rate(taste.tags[b]) - rate(taste.tags[a]) : rate(taste.tags[a]) - rate(taste.tags[b])) || TAGS.indexOf(a) - TAGS.indexOf(b))
+    .slice(0, TAG_SUMMARY_MAX);
 }
 
 /** Categories someone said yes to more than no, best first. */
@@ -227,17 +278,21 @@ export function pickDeck<T extends TasteItem>(items: T[], now: number, size = DE
 
   const picked: T[] = [];
   const areas = new Set<string>();
+  const shown = new Set<string>();
   let free = 0;
   const take = (cat: string) => {
     const pool = (byCat.get(cat) ?? []).filter(p => !picked.includes(p));
     if (!pool.length) return false;
     const score = (p: T) => (p.cover_url ? 2 : 0) + Math.max(0, Math.min(3, p.hot)) + rand() * 2
       + (p.price.type === 'free' ? (free < 3 ? 0.6 : -0.6) : 0)
-      - (p.location.borough && areas.has(p.location.borough.toLowerCase()) ? 1 : 0);
+      - (p.location.borough && areas.has(p.location.borough.toLowerCase()) ? 1 : 0)
+      // a card that shows a tag the deck has not shown yet teaches something new
+      + (p.tags?.some(t => !shown.has(t)) ? 0.5 : 0);
     const best = pool.map(p => ({ p, s: score(p) })).sort((a, b) => b.s - a.s)[0].p;
     picked.push(best);
     if (best.location.borough) areas.add(best.location.borough.toLowerCase());
     if (best.price.type === 'free') free++;
+    for (const tag of best.tags ?? []) shown.add(tag);
     return true;
   };
   for (const c of order) { if (picked.length >= size) break; take(c); }
