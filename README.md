@@ -179,6 +179,15 @@ One-time setup:
 2. In Manyfold, create an agent for it on its **own sandbox** (it reads text typed by anonymous visitors) and give it the public tools with no key: `mf mcp add spotted <APP_URL>/mcp --scope project --agent-id agt_…`.
 3. On /admin/agent press **Concierge** under Add another, press Connect with Manyfold, approve that agent, and switch it on. Ask shows for visitors only while a Concierge is on.
 
+## Tags
+
+A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or `outdoors`: facts the organiser's page states, from a fixed list in `src/shared/tags.ts` (design: `docs/superpowers/specs/2026-10-08-scout-tags-design.md`). They are stored in `popups.tags` (migration `0019_tags.sql`, one nullable column), travel in the public snapshot, and show as small read-only labels on the pop-up sheet.
+
+- `GET /api/v1/popups?tag=family,outdoors` keeps pop-ups that have every one of the tags, `avoid=outdoors` drops any that have one. Pop-ups nobody has tagged yet fail `tag` and pass `avoid`.
+- `search_popups` (MCP) takes `tags` and `avoid_tags` and returns each pop-up's `tags` (`null` means nobody has tagged it yet).
+- The admin sets or clears tags with `PUT /api/v1/admin/popups/:id/tags` (`{"tags": ["family"]}`, `[]` for none, `null` for not looked at yet).
+- Apply the migration before merging the pull request: `npx wrangler d1 migrations apply spotted-db --remote`. The code deployed now ignores the new column.
+
 ## Instagram and Threads posts (Apify)
 
 Scout can read public Instagram and Threads posts that Spotted fetches for it. Add sources on `/admin/agent` under Scout sources, kind Social, with a real address:
