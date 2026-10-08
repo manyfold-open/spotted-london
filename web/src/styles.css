@@ -11,6 +11,8 @@
   --eng: #155e3a; --eng-bg: #d8efe0;
   --watch: #6b5200; --watch-bg: #fff3c4;
   --err: #a8200d; --err-bg: #fde8e6;
+  /* one colour per category: the map pin fill, and (mixed with paper) the cover behind a pop-up without a photo */
+  --cc-food: #f6a04d; --cc-dining: #d9594c; --cc-market: #8fcf7a; --cc-exhibition: #6fa8f0; --cc-art: #a98ae8; --cc-event: #ec6aa0; --cc-fashion: #4fc3c0; --cc-sample: #f2d04a; --cc-beauty: #f3b6c9; --cc-tech: #9fb0c0; --cc-other: #d6cdbb;
   --here: #2f6bff; --note: #fff6cf; --glass: rgba(244, 239, 230, .9); --scrim: rgba(29, 27, 24, .38);
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --sans: "Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
@@ -166,17 +168,17 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 .vote svg.i { width: 15px; height: 15px }
 .carousel { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 16px 12px; margin: 0 -16px }
 .carousel .card { flex: 0 0 82%; scroll-snap-align: center }
-.pat-food { background-color: var(--you-bg); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
-.pat-fashion { background-color: var(--sim-bg); background-image: repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
-.pat-sample { background-color: var(--accent-soft); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
-.pat-dining { background-color: var(--you-bg); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px), repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
-.pat-exhibition { background-color: var(--ai-bg); background-image: repeating-linear-gradient(90deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
-.pat-art { background-color: var(--ai-bg); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
-.pat-event { background-color: var(--sim-bg); background-image: repeating-conic-gradient(rgba(29,27,24,.07) 0 25%, transparent 0 50%); background-size: 22px 22px }
-.pat-market { background-color: var(--eng-bg); background-image: repeating-linear-gradient(0deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
-.pat-beauty { background-color: var(--err-bg); background-image: radial-gradient(rgba(29,27,24,.1) 2px, transparent 2.2px); background-size: 16px 16px }
-.pat-tech { background-color: var(--soft); background-image: linear-gradient(rgba(29,27,24,.07) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(29,27,24,.07) 1.5px, transparent 1.5px); background-size: 14px 14px }
-.pat-other { background-color: var(--watch-bg); background-image: repeating-linear-gradient(135deg, rgba(29,27,24,.07) 0 2px, transparent 2px 10px) }
+.pat-food { background-color: color-mix(in srgb, var(--cc-food) 42%, var(--card)); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
+.pat-fashion { background-color: color-mix(in srgb, var(--cc-fashion) 42%, var(--card)); background-image: repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
+.pat-sample { background-color: color-mix(in srgb, var(--cc-sample) 42%, var(--card)); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
+.pat-dining { background-color: color-mix(in srgb, var(--cc-dining) 42%, var(--card)); background-image: repeating-linear-gradient(45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px), repeating-linear-gradient(-45deg, rgba(29,27,24,.07) 0 2px, transparent 2px 12px) }
+.pat-exhibition { background-color: color-mix(in srgb, var(--cc-exhibition) 42%, var(--card)); background-image: repeating-linear-gradient(90deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
+.pat-art { background-color: color-mix(in srgb, var(--cc-art) 42%, var(--card)); background-image: radial-gradient(rgba(29,27,24,.13) 1.5px, transparent 1.7px); background-size: 12px 12px }
+.pat-event { background-color: color-mix(in srgb, var(--cc-event) 42%, var(--card)); background-image: repeating-conic-gradient(rgba(29,27,24,.07) 0 25%, transparent 0 50%); background-size: 22px 22px }
+.pat-market { background-color: color-mix(in srgb, var(--cc-market) 42%, var(--card)); background-image: repeating-linear-gradient(0deg, rgba(29,27,24,.07) 0 2px, transparent 2px 14px) }
+.pat-beauty { background-color: color-mix(in srgb, var(--cc-beauty) 42%, var(--card)); background-image: radial-gradient(rgba(29,27,24,.1) 2px, transparent 2.2px); background-size: 16px 16px }
+.pat-tech { background-color: color-mix(in srgb, var(--cc-tech) 42%, var(--card)); background-image: linear-gradient(rgba(29,27,24,.07) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(29,27,24,.07) 1.5px, transparent 1.5px); background-size: 14px 14px }
+.pat-other { background-color: color-mix(in srgb, var(--cc-other) 42%, var(--card)); background-image: repeating-linear-gradient(135deg, rgba(29,27,24,.07) 0 2px, transparent 2px 10px) }
 
 /* ---------- panels, notices, skeletons ---------- */
 .panel { background: var(--card); border: 1.5px solid var(--ink); border-radius: 16px; box-shadow: var(--shadow); padding: 20px }
@@ -337,9 +339,7 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pinm svg.i { width: 16px; height: 16px }
 /* Colour = category (--cc, set by .cc-<key>), outline and badge = status. Admin verified: thick ink ring and ink check.
    Community verified: green check. Source checked: green outlined check. Still being checked: dashed ring, no badge. */
-.cc-food { --cc: #f6a04d } .cc-dining { --cc: #d9594c } .cc-market { --cc: #8fcf7a } .cc-exhibition { --cc: #6fa8f0 }
-.cc-art { --cc: #a98ae8 } .cc-event { --cc: #ec6aa0 } .cc-fashion { --cc: #4fc3c0 } .cc-sample { --cc: #f2d04a }
-.cc-beauty { --cc: #f3b6c9 } .cc-tech { --cc: #9fb0c0 } .cc-other { --cc: #d6cdbb }
+.cc-food { --cc: var(--cc-food) } .cc-dining { --cc: var(--cc-dining) } .cc-market { --cc: var(--cc-market) } .cc-exhibition { --cc: var(--cc-exhibition) } .cc-art { --cc: var(--cc-art) } .cc-event { --cc: var(--cc-event) } .cc-fashion { --cc: var(--cc-fashion) } .cc-sample { --cc: var(--cc-sample) } .cc-beauty { --cc: var(--cc-beauty) } .cc-tech { --cc: var(--cc-tech) } .cc-other { --cc: var(--cc-other) }
 .pinm { background: var(--cc, var(--soft)); color: var(--ink) }
 .pinm.verified_admin { border-width: 3px }
 .pinm.community:not(.checked) { border-style: dashed }
