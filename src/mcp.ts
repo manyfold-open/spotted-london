@@ -25,6 +25,7 @@ import { snapshotItems, type SnapshotItem } from './db/snapshot';
 import { filterPopups } from './shared/filter-popups';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
+import { addPhotoFromUrl, pagePhoto, resolveImageUrl, type PhotoSource } from './lib/photo';
 import { differentSites, FixError, OUT_OF_SCOPE_REASONS, parseFixes } from './lib/triage';
 import { applyFixes, autoRemove, overDailyCap, type AutoKind } from './db/triage';
 
@@ -187,6 +188,41 @@ async function verifyEvidence(db: D1Database, quote: string, url: string): Promi
   const post = await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>();
   if (!post && SOCIAL_HOSTS.test(new URL(url).hostname)) return 'unchecked';
   return checkEvidence(quote, url, post);
+}
+
+/**
+ * A photo for a new draft. The agent's image_url comes first, then a picture of a post Spotted fetched itself,
+ * then the main picture of the page. It never fails the draft: the answer says what happened.
+ */
+async function attachScoutPhoto(x: Ctx, popupId: string, given: string | null, pages: string[]): Promise<string> {
+  const db = x.c.env.DB;
+  try {
+    const candidates: PhotoSource[] = [];
+    const page = pages[0];
+    if (given) {
+      const image = resolveImageUrl(given, page);
+      if (image) candidates.push({ imageUrl: image, pageUrl: page });
+    }
+    if (!candidates.length) {
+      const urls = [...new Set(pages.flatMap(u => [u, `${u}/`]))];
+      const post = await db.prepare(`SELECT url, image_urls FROM social_posts WHERE url IN (${urls.map(() => '?').join(',')}) AND image_urls IS NOT NULL LIMIT 1`).bind(...urls).first<{ url: string; image_urls: string }>();
+      const first = post ? (JSON.parse(post.image_urls) as string[])[0] : null;
+      if (post && first) candidates.push({ imageUrl: first, pageUrl: post.url });
+    }
+    if (!candidates.length) {
+      for (const u of [...new Set(pages)].slice(0, 2)) {
+        if (SOCIAL_HOSTS.test(new URL(u).hostname)) continue; // a login wall: no picture to read
+        const image = await pagePhoto(u);
+        if (image) { candidates.push({ imageUrl: image, pageUrl: u }); break; }
+      }
+    }
+    if (!candidates.length) return 'No photo found.';
+    const r = await addPhotoFromUrl(x.c.env, popupId, x.agent!.user_id, candidates[0], x.now);
+    return r.saved ? 'Photo saved.' : `No photo: ${r.reason}`;
+  } catch (e) {
+    console.error('scout photo failed', e);
+    return 'No photo: it could not be read.';
+  }
 }
 
 /** A popups row with the evidence columns the Scout and Triage fill in. */
@@ -491,6 +527,7 @@ const TOOLS: Record<string, Tool> = {
       confidence: S('high: dates and place confirmed by the organiser or venue page, or by two independent pages that agree; missing hours or price does not matter. check: dates or place come from one page or search snippets only, or pages disagree.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
+      image_url: S('Optional. A photo of the pop-up itself: the main picture of the organiser page (its og:image), or an address from get_social_posts images. Spotted copies it, credits the page and shows it on the pop-up. Skip logos, maps and screenshots. When you leave it out, Spotted tries the post images and then the page picture.'),
       source_id: S('Id from list_sources of the source that led you here, if any.'),
     }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url', 'evidence']),
     async run(a, x) {
@@ -545,7 +582,8 @@ const TOOLS: Record<string, Tool> = {
           .bind(newId(), url, i === 0 ? sourceId : null, id, run.id, x.now)),
       ]);
       await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
-      return { sent: true, id, status: 'pending', message: 'Draft saved. It is waiting for the admin.' };
+      const photo = await attachScoutPhoto(x, id, str(a, 'image_url', 2000), [seenUrl, evidenceUrl, ...links.map(l => l.url)]);
+      return { sent: true, id, status: 'pending', photo, message: 'Draft saved. It is waiting for the admin.' };
     },
   },
   list_review_queue: {

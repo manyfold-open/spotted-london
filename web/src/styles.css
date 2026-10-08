@@ -789,3 +789,5 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .ask-why { margin-top: 4px; padding-left: 10px; border-left: 3px solid var(--accent); font-size: 13.5px; line-height: 1.4; color: var(--ink) }
 .ask-item .mp-dist { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--here); color: #fff; white-space: nowrap; flex: none }
 @media (prefers-reduced-motion: reduce) { .ask-wrap { animation: none } .ask-item { transition: none } }
+.linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--ink2); text-decoration: underline; cursor: pointer }
+.photo-credit { margin: -4px 0 0 }
