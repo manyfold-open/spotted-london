@@ -3,10 +3,11 @@ import { Link, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Popup } from '../lib/api';
 import { prefetchPopup } from '../lib/cache';
-import { distance, fmtDay, isLive } from '../lib/format';
+import { CATS, distance, fmtDay, isLive } from '../lib/format';
 import { useFilters, useSheet, useToast } from '../lib/hooks';
 import { haptic, scrollBehavior, usePhone } from '../lib/motion';
 import { useNearMe } from '../lib/near-me';
+import { updateTaste, useTaste } from '../lib/taste';
 import type { Snap } from '../lib/map-home';
 import { Icon } from '../components/Icon';
 import type { PopupMapHandle } from '../components/maps';
@@ -18,6 +19,7 @@ import { TopBar } from '../components/TopBar';
 
 // The map code is big. The page frame (bar, chips, sheet) paints first and the map fades in when it arrives.
 const PopupMap = lazy(() => import('../components/maps').then(m => ({ default: m.PopupMap })));
+const TasteDeck = lazy(() => import('../components/TasteDeck').then(m => ({ default: m.TasteDeck })));
 
 type View = 'map' | 'list';
 
@@ -36,6 +38,9 @@ export default function HomePage() {
   const near = useNearMe();
   const q = usePopups(near.filter ? near.pos : null);
   const items = q.data?.items ?? [];
+  const taste = useTaste();
+  const [deck, setDeck] = useState<'first' | 'retake' | null>(null); // the swipe that sets up "For you"
+  const openDeck = useCallback(() => setDeck(taste.swipes > 0 ? 'retake' : 'first'), [taste.swipes]);
   const view: View = sp.get('view') === 'list' ? 'list' : 'map';
 
   const [snap, setSnap] = useState<Snap>(view === 'list' ? 'full' : 'peek');
@@ -133,13 +138,22 @@ export default function HomePage() {
   const grid = view === 'list';
   const modeSwitch = <ModeSwitch view={view} onView={goView} />;
   const count = q.isPending ? 'Loading' : nearOn ? `${items.length} near you` : `${items.length} pop-up${items.length === 1 ? '' : 's'}`;
-  const sub = nearOn ? 'within 3 km, closest first' : `London · ${fmtDay(Date.now())}`;
+  const sub = q.forYou ? (nearOn ? 'picked for you, within 3 km' : 'picked for you') : nearOn ? 'within 3 km, closest first' : `London · ${fmtDay(Date.now())}`;
+  const hidden = q.hidden.map(c => CATS[c as keyof typeof CATS]);
+  const fy = q.forYou ? (
+    <div className="mp-fy">
+      <span className="t">{hidden.length ? `Leaving out ${hidden.join(', ')}` : 'Starting with what you like'}</span>
+      <button type="button" className="btn sm subtle" onClick={() => updateTaste(t => ({ ...t, on: false }))}>Show all</button>
+      <button type="button" className="btn sm subtle" onClick={openDeck}>Retake</button>
+    </div>
+  ) : null;
 
   const header = phone ? (
-    <div className="mp-hrow">{modeSwitch}<span className="mp-count"><b>{count}</b><small>{sub}</small></span></div>
+    <><div className="mp-hrow">{modeSwitch}<span className="mp-count"><b>{count}</b><small>{sub}</small></span></div>{fy}</>
   ) : (
     <>
-      <Filters near={nearOn} locating={near.state === 'asking'} onNear={onNear} />
+      <Filters near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} />
+      {fy}
       <div className="mp-hrow">
         <span className="mp-count"><b>{count}</b><small>{sub}</small></span><span className="spacer" /><VerifiedSwitch />
         {view === 'map' ? <button type="button" className="mp-collapse" aria-label="Hide the list" title="Hide the list" onClick={() => setPanelOpen(false)}><Icon name="i-left" /></button> : null}
@@ -191,7 +205,7 @@ export default function HomePage() {
       <TopBar floating menuOpen={menuOpen} onMenu={openMenu}>{phone ? null : modeSwitch}</TopBar>
       {phone ? (
         <div className="mp-chips" ref={chips}>
-          <Filters inline near={nearOn} locating={near.state === 'asking'} onNear={onNear} />
+          <Filters inline near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} />
         </div>
       ) : null}
 
@@ -207,10 +221,24 @@ export default function HomePage() {
         </div>
       ) : null}
 
+      {!taste.seen && !near.prompt && !deck && view === 'map' && (q.all?.length ?? 0) >= 4 ? (
+        <div className="mp-prompt" role="dialog" aria-label="Pick what you like">
+          <h2><Icon name="i-sparkle" />Pop-ups for you?</h2>
+          <p>Swipe through 10 pop-ups. We put the ones you like first. You can always see everything.</p>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn primary sm" onClick={openDeck}>Start</button>
+            <button className="btn sm" onClick={() => updateTaste(t => ({ ...t, seen: true }))}>Not now</button>
+          </div>
+          <p className="fine"><Icon name="i-info" />Your picks stay on this device.</p>
+        </div>
+      ) : null}
+
       <MapSheet phone={phone} snap={snap} onSnap={goSnap} onVisible={setVisible} header={header} collapsed={!panelOpen && view === 'map'}>{body}</MapSheet>
       {!phone && view === 'map' && !panelOpen ? (
         <button type="button" className="btn mp-reopen" onClick={() => setPanelOpen(true)}><Icon name="i-list" />Show list<span className="mp-reopen-n">{q.isPending ? '' : items.length}</span></button>
       ) : null}
+
+      {deck ? <Suspense fallback={null}><TasteDeck items={q.all ?? []} fresh={deck === 'retake'} onClose={() => setDeck(null)} /></Suspense> : null}
 
       <div className="mp-fabs">
         <button type="button" className="mp-fab loc" aria-label={near.pos ? 'Back to my location' : 'Show my location'} onClick={onLocate}>

@@ -48,7 +48,7 @@ src/lib/extract.ts      paste-a-link autofill parsing (JSON-LD, Open Graph, LLM 
 src/lib/time.ts         Europe/London calendar maths (BST safe)
 src/db/popups.ts        recompute(): aggregates + status after every vote/check-in/report
 src/db/snapshot.ts      the public list as one row in `snapshots` (key 'popups'): built by cron and by waitUntil when a pop-up enters or leaves the public set; GET /popups/snapshot sends it as stored
-src/shared/             plain TS used by both the Worker and web/ (imported by relative path): filterPopups (the browser-side twin of listPopups; test/snapshot.test.ts keeps them equal), my-state, categories (the one list of pop-up categories)
+src/shared/             plain TS used by both the Worker and web/ (imported by relative path): filterPopups (the browser-side twin of listPopups; test/snapshot.test.ts keeps them equal), my-state, categories (the one list of pop-up categories), taste ("For you": learn from swipes, affinity, forYou order, pickDeck; tested in test/taste.test.ts)
 src/db/karma.ts         awardKarma(): idempotent per (user, reason, ref), daily cap
 src/routes/*.ts         auth, popups, extract, geocode, me, admin, misc (newsletter, images, users)
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
@@ -67,7 +67,7 @@ migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
 web/src/components/     Shell (menu + bar per route), TopBar, NavMenu, MapSheet, ListBits (usePopups, Filters), PopupSheet, PopupBits, maps, Icon, Turnstile
 web/src/pages/          HomePage (full-screen map + list, `/`, `/p/:slug`; `/map` redirects here), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent, with ScoutSources)
-web/src/lib/            map-home (pure: sheet snap, away check, location start; tested in test/map-home.test.ts), near-me (useNearMe)
+web/src/lib/            map-home (pure: sheet snap, away check, location start; tested in test/map-home.test.ts), near-me (useNearMe), taste (localStorage `spotted.taste` store, useTaste)
 ```
 
 ## Agent fleet (quantity first, quality later)
@@ -108,6 +108,7 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - Categories live only in `src/shared/categories.ts`. A new key needs, in the same change: a migration that rebuilds `popups` to widen its CHECK (SQLite cannot alter one, so park the rows in a copy table, drop `popups`, recreate it under the same name, insert the rows back and drop the copy, with `PRAGMA defer_foreign_keys = on`. Never rename: a rename leaves the deferred foreign-key violations raised by the drop uncleared and the commit fails once any child row exists. See `migrations/0014_categories.sql`), an icon symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule in `styles.css`. `test/categories.test.ts` and `test/category-assets.test.ts` fail when one is missing. The tie-break rules are in `skills/spotted-london/SKILL.md` and in the `submit_draft` category text in `src/mcp.ts`: keep them in step.
 - `source_checked` (in the public list and the detail) is not a status: it is `SOURCE_CHECKED_SQL` in `src/db/popups.ts`, a Triage `publish_ready` note with no open flagging note. It only changes the label and pin of a `community` pop-up ("Source checked", green). Votes and check-ins still decide `verified_community`.
 - `findDuplicates` ignores `removed` posts, so a person can add something again. Agents (`check_duplicates`, `submit_draft`) pass `removedSince` (30 days, `TURNED_DOWN_FOR` in `src/mcp.ts`) so the Scout does not resend what an admin rejected: on 5 Oct 2026 it sent a rejected Medicube post again from a new Instagram link. Do not make the default stricter; humans re-adding a rejected post is allowed.
+- "For you" (taste) is personal and stays in the browser: `spotted.taste` in localStorage, never sent to the Worker and never in the public list or snapshot. It only re-orders the list after `filterPopups` (`forYou` in `src/shared/taste.ts`) and hides a category after two noes and no yes; a category chip picked by hand beats the hiding. Retake clears the old answers when the first new one comes in. Changing how a pop-up is scored for taste means changing `src/shared/taste.ts` and its test only.
 - Pop-up sheet is `?p=<slug>` on list pages; shared links are `/p/<slug>`.
 - UI copy: plain English, no em dashes, en dashes or spaced hyphens. Errors say what happened and what to do.
 - Icons: Koboyo hand-drawn SVGs (koboyo.com/icons), filled paths with `fill: currentColor`. Add new ones to `web/src/components/Icon.tsx` with coordinates rounded to whole numbers first (`npx svgo --precision 0 icon.svg`); that halves the path data and is invisible at our sizes. Licence forbids letting users pick or download icons. The category icons for dining, art and event are drawn in-house as strokes, not Koboyo.
@@ -154,4 +155,5 @@ Not done yet, roughly in priority order:
 3. Vote ring detection in the daily abuse scan.
 4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.
 5. Show a pop-up's extra links (`popup_links`) on the pop-up sheet, and let Submit take more than one link.
-6. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).
+6. Taste, next steps (decided 2026-10-08 with Zack): sync the taste to the account (needs a migration and `DELETE /me` must remove it), learn from saves and votes, then "Ask" for recommendations through an agent on Manyfold, then tags from Scouts for finer taste than the 11 categories. Ask is not built; Manyfold agents run asynchronously (A2A `message/send` with `blocking: false`, then `tasks/get`), so a chat needs polling and a measured wait first.
+7. Reduce the main bundle further (about 142 KB gzip after rounding icon paths; React, React Router and TanStack Query are most of it).

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, listParams, type Popup } from '../lib/api';
 import { filterPopups } from '../../../src/shared/filter-popups';
+import { forYou, hiddenCategories } from '../../../src/shared/taste';
+import { updateTaste, useTaste } from '../lib/taste';
 import { CAT_LIST, CATS, catIcon, looksLikeEmail } from '../lib/format';
 import { mergeMe } from '../lib/cache';
 import { useDebounced, useErrorToast, useFilters, useMe, useMyState } from '../lib/hooks';
@@ -23,6 +25,8 @@ export function usePopups(near?: [number, number] | null) {
     staleTime: 60_000,
   });
   const mine = useMyState();
+  const taste = useTaste();
+  const picked = taste.on && taste.swipes > 0; // "For you" is on and there is something to go on
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   useEffect(() => { const t = setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 60_000); return () => clearInterval(t); }, []); // "today" and "on now" move with the clock
   const [lat, lng] = near ?? [];
@@ -30,18 +34,24 @@ export function usePopups(near?: [number, number] | null) {
     if (!snap.data) return undefined;
     const params = listParams({ when: f.when, category: f.category, verified: f.verified, q, ...(near ? { near, radius_km: 3, sort: 'distance' as const } : {}) });
     const page = filterPopups(snap.data.items, { ...params, limit: 'all' }, Date.now()); // all of them: the map and the count must not stop at one page of 50
-    return { ...page, items: mergeMe(page.items, mine) };
+    // For you: re-order by taste and drop categories you said no to (unless you picked a category yourself)
+    const items = picked ? forYou(page.items, taste, !!f.category) : page.items;
+    return { ...page, items: mergeMe(items, mine) };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is rebuilt on every render; lat and lng stand in for it
-  }, [snap.data, f.when, f.category, f.verified, q, lat, lng, mine, minute]);
-  return { ...snap, data };
+  }, [snap.data, f.when, f.category, f.verified, q, lat, lng, mine, minute, picked, taste]);
+  return { ...snap, data, all: snap.data?.items, forYou: picked, hidden: picked && !f.category ? hiddenCategories(taste) : [] };
 }
 
 /**
  * The When and Category chips. `inline` puts everything in one row that scrolls sideways (the phone, floating
  * over the map); otherwise there are two rows (the desktop panel).
  */
-export function Filters({ near, locating, onNear, inline }: { near: boolean; locating: boolean; onNear: () => void; inline?: boolean }) {
+export function Filters({ near, locating, onNear, inline, onPick }: { near: boolean; locating: boolean; onNear: () => void; inline?: boolean; onPick: () => void }) {
   const f = useFilters();
+  const taste = useTaste();
+  const on = taste.on && taste.swipes > 0;
+  // First time (no answers yet): the chip opens the swipe. After that it switches the personal order on and off.
+  const youChip = <button className="chip you" aria-pressed={on} onClick={() => (taste.swipes > 0 ? updateTaste(t => ({ ...t, on: !t.on })) : onPick())}><Icon name="i-sparkle" />For you</button>;
   const nearChip = <button className="chip" aria-pressed={near} onClick={onNear}>{locating ? <span className="spin" /> : <Icon name="i-locate" />}Near me</button>;
   const whens = WHENS.map(([k, l]) => <button key={k} className="chip" aria-pressed={f.when === k} onClick={() => f.set({ when: k === 'week' ? null : k })}>{l}</button>);
   const cats = (
@@ -53,7 +63,7 @@ export function Filters({ near, locating, onNear, inline }: { near: boolean; loc
   if (inline) {
     return (
       <div className="chips noscroll" role="group" aria-label="Filters">
-        {nearChip}{whens}
+        {youChip}{nearChip}{whens}
         <button className="chip" aria-pressed={f.verified} onClick={() => f.set({ verified: f.verified ? null : '1' })}><Icon name="i-shield" />Verified</button>
         <span className="mp-sep" aria-hidden="true" />{cats}
       </div>
@@ -61,7 +71,7 @@ export function Filters({ near, locating, onNear, inline }: { near: boolean; loc
   }
   return (
     <div className="filters">
-      <div className="chips noscroll" role="group" aria-label="When">{nearChip}{whens}</div>
+      <div className="chips noscroll" role="group" aria-label="When">{youChip}{nearChip}{whens}</div>
       <div className="chips noscroll" role="group" aria-label="Category">{cats}</div>
     </div>
   );
