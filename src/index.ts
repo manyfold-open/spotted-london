@@ -12,6 +12,7 @@ import { runCron } from './cron';
 import { auth } from './routes/auth';
 import { pages } from './pages';
 import { geocode } from './routes/geocode';
+import { ask } from './routes/ask';
 import { agentsAdmin } from './routes/agents';
 import { mcp } from './mcp';
 
@@ -30,6 +31,7 @@ api.route('/admin', admin);
 api.route('/newsletter', newsletter);
 api.route('/images', images);
 api.route('/geocode', geocode);
+api.route('/ask', ask);
 
 app.route('/api/v1', api);
 app.route('/mcp', mcp);

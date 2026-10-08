@@ -128,13 +128,14 @@ In the Google console, add `<APP_URL>/api/v1/auth/google/callback` as an authori
 
 ## AI agents and MCP
 
-Three AI agents run on [Manyfold](https://manyfold.ai), not on Cloudflare, so they cost no Workers AI quota. Spotted keeps their settings at **/admin/agent**, starts their runs, and shows what they did.
+Four kinds of AI agent run on [Manyfold](https://manyfold.ai), not on Cloudflare, so they cost no Workers AI quota. Spotted keeps their settings at **/admin/agent**, starts their runs, and shows what they did.
 
 | Agent | Job | Writes |
 |---|---|---|
 | Scout | finds new pop-ups on the public web | pending drafts, posted as "Scout agent" |
 | Triage | checks each post in the review queue | a note per post (looks real, needs a check, likely fake, duplicate, not a pop-up); fixes small details itself, publishes what it confirmed, removes duplicates and non pop-ups with proof |
 | Checker | rechecks live pop-ups against their source | a flag when one is cancelled or changed |
+| Concierge | answers the questions visitors type into Ask | nothing: it only reads the public list and replies with pop-up ids and a reason each |
 
 Nothing an agent writes is published without the admin. Drafts are always `pending`, and notes show in the review queue until the admin decides or dismisses them.
 
@@ -160,6 +161,22 @@ Scout's memory (migration `0005_scout_sources.sql`, `src/db/scout.ts`):
 A run counts as done only when the agent reports back with `finish_run`. A turn that ends without it is marked failed, which usually means the agent's `spotted` MCP server is missing or carries another agent's key.
 
 When a Manyfold token expires or is revoked, runs fail with "Manyfold rejected the agent token"; press Connect again on that agent.
+
+## Ask for recommendations (Concierge)
+
+A visitor types what they want ("something free and a bit weird this weekend near Shoreditch") and gets up to 5 real pop-ups back with a reason each. Anyone can ask, signed in or not. Design and the measured wait: `docs/superpowers/specs/2026-10-08-ask-recommendations-design.md`.
+
+- **Flow**: `POST /api/v1/ask {text, taste?, near_me?, turnstile_token?}` stores the question in `asks` and starts the Concierge over A2A (not waiting). The page polls `GET /api/v1/ask/:id` every 2 seconds; each poll asks Manyfold how the task is doing, at most once every 1.5 seconds. `GET /api/v1/ask/status` says whether Ask is on, whether it is resting and how many questions this visitor has left.
+- **The agent can only read**: a Concierge has the public `search_popups` and `get_popup` tools and no Spotted key. It replies with JSON, and Spotted keeps only the pop-ups that are in the public list at that moment. Reasons lose web addresses. The question, the taste summary and pop-up text are data for the agent, never instructions; the brief says so, and the agent's skill (section Concierge) repeats it.
+- **Privacy**: only a short summary of the taste goes along (liked and left-out categories, and whether free entry is liked). The position never leaves the browser; `near_me` only asks the agent for more candidates so the browser can put the nearest first. The question is kept 7 days with a salted hash of the IP, never the IP.
+- **Limits** (counted from the `asks` table, no KV writes): 5 questions per visitor per London day, 150 for everyone (`ASK_DAILY_CAP`, optional variable, `0` switches Ask off), Turnstile on a visitor's first question of the day, 90 seconds to answer. At a limit the API answers 429 or 503 with a message the page shows; nothing else on the page changes.
+- **Cost**: every question is one model turn on Manyfold (Sonnet 5.5, high effort in the first tests). Lower `ASK_DAILY_CAP` if that matters.
+
+One-time setup:
+
+1. Apply the migration: `npx wrangler d1 migrations apply spotted-db --remote` (0018 adds the `concierge` role and the `asks` table). Do this before merging the pull request; the code deployed now keeps working with the new schema.
+2. In Manyfold, create an agent for it on its **own sandbox** (it reads text typed by anonymous visitors) and give it the public tools with no key: `mf mcp add spotted <APP_URL>/mcp --scope project --agent-id agt_…`.
+3. On /admin/agent press **Concierge** under Add another, press Connect with Manyfold, approve that agent, and switch it on. Ask shows for visitors only while a Concierge is on.
 
 ## Instagram and Threads posts (Apify)
 

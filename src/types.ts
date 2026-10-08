@@ -19,6 +19,8 @@ export type Bindings = Cloudflare.Env & {
   MANYFOLD_API_URL?: string;
   /** Apify API token for fetching Instagram and Threads posts. Without it nothing is fetched. */
   APIFY_TOKEN?: string;
+  /** Most Ask questions in one London day, for all visitors together. Defaults to 150; 0 switches Ask off. */
+  ASK_DAILY_CAP?: string;
 };
 
 export interface UserRow {

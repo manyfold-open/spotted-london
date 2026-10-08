@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Agent, type AgentRun, type AgentsView, type Schedule } from '../lib/api';
+import { api, type Agent, type AgentRun, type AgentsView, type AskStats, type Schedule } from '../lib/api';
 import { useErrorToast, useMe, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { ScoutSources } from './ScoutSources';
@@ -36,14 +36,14 @@ export default function AgentsPage() {
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Agents</h1>
-      <p className="intro">AI agents on Manyfold help run Spotted. You can add as many Scouts, Triage and Checker agents as you like, each with its own schedule and instructions. They send drafts and leave notes, and everything they send waits in the <Link to="/admin">review queue</Link> for you.</p>
+      <p className="intro">AI agents on Manyfold help run Spotted. You can add as many Scouts, Triage and Checker agents as you like, each with its own schedule and instructions. They send drafts and leave notes, and everything they send waits in the <Link to="/admin">review queue</Link> for you. A Concierge is different: it answers the questions visitors type into Ask, using only the public list.</p>
       {q.data && !q.data.agents_key_set ? (
         <div className="notice err" style={{ marginTop: 18 }}><Icon name="i-info" /><span>The <code>AGENTS_KEY</code> secret is not set, so agent tokens cannot be saved. Run <code>npx wrangler secret put AGENTS_KEY</code> with 32 or more random characters, then reload this page.</span></div>
       ) : null}
       {q.isPending ? <Skeleton list /> : q.data ? (
         <>
           <PublishMode mode={q.data.auto_publish} />
-          <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} />)}</div>
+          <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} ask={q.data.ask} />)}</div>
           <AddAgent roles={q.data.roles} />
           <ScoutSources />
           <Setup view={q.data} />
@@ -59,7 +59,7 @@ function AddAgent({ roles }: { roles: AgentsView['roles'] }) {
   const onError = useErrorToast();
   const add = useMutation({
     mutationFn: (role: string) => api<Agent>('/admin/agents', { method: 'POST', json: { role } }),
-    onSuccess: a => { qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: [...v.agents, a] }); toast(`${a.name} added. Connect it to Manyfold and give it a key before it can run.`, 'i-sparkle'); },
+    onSuccess: a => { qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: [...v.agents, a] }); toast(a.role === 'concierge' ? `${a.name} added. Connect it to Manyfold, then switch it on.` : `${a.name} added. Connect it to Manyfold and give it a key before it can run.`, 'i-sparkle'); },
     onError,
   });
   return (
@@ -137,14 +137,17 @@ function useSave(id: string) {
   });
 }
 
-function AgentCard({ a }: { a: Agent }) {
+function AgentCard({ a, ask }: { a: Agent; ask: AskStats | null }) {
   const qc = useQueryClient();
   const toast = useToast();
   const onError = useErrorToast();
   const save = useSave(a.id);
   const [notes, setNotes] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
-  const [open, setOpen] = useState(!a.connected || !a.key_hint);
+  const concierge = a.role === 'concierge';
+  // The Concierge only reads the public list, so it never needs a Spotted key.
+  const needsKey = !concierge && !a.key_hint;
+  const [open, setOpen] = useState(!a.connected || needsKey);
   const running = a.runs.find(r => r.status === 'running');
   const put = (x: Agent) => qc.setQueryData<AgentsView>(['agents'], v => v && { ...v, agents: v.agents.map(y => (y.id === x.id ? x : y)) });
   const run = useMutation({
@@ -154,7 +157,7 @@ function AgentCard({ a }: { a: Agent }) {
   });
   const state = running ? <span className="tag t-ai"><span className="spin" />Working</span>
     : !a.connected ? <span className="tag t-watch">Not connected</span>
-    : !a.key_hint ? <span className="tag t-watch">Needs a key</span>
+    : needsKey ? <span className="tag t-watch">Needs a key</span>
     : a.enabled ? <span className="tag t-eng">On</span> : <span className="tag t-mute">Off</span>;
 
   return (
@@ -174,6 +177,7 @@ function AgentCard({ a }: { a: Agent }) {
         {name !== null && name.trim() && name.trim() !== a.name ? <button className="btn sm primary" disabled={save.isPending}>Save name</button> : null}
       </form>
 
+      {concierge ? <AskToday ask={ask} /> : (
       <div className="agrid">
         <div className="field">
           <span className="lbl">When it runs</span>
@@ -195,31 +199,46 @@ function AgentCard({ a }: { a: Agent }) {
             onUp={() => a.max_items < 50 && save.mutate({ max_items: Math.min(50, a.max_items + (a.max_items >= 10 ? 5 : 1)) })} />
         </div>
       </div>
+      )}
 
       <form className="field" style={{ marginTop: 16 }} noValidate onSubmit={e => { e.preventDefault(); save.mutate({ instructions: notes }, { onSuccess: () => { setNotes(null); toast('Instructions saved'); } }); }}>
         <label className="lbl" htmlFor={`ins-${a.id}`}>Instructions</label>
         <textarea id={`ins-${a.id}`} className="input" maxLength={2000} value={notes ?? a.instructions ?? ''} onChange={e => setNotes(e.target.value)}
-          placeholder={a.role === 'scout' ? 'For example: Only check the venue sources, or: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.role === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
-        <span className="hint">Added to every run. Write it like a note to a helper.</span>
+          placeholder={concierge ? 'For example: Prefer pop-ups with a photo, or: Keep every reason under 100 characters.' : a.role === 'scout' ? 'For example: Only check the venue sources, or: Focus on food and sample sales in East London. Skip anything that needs a ticket over £20.' : a.role === 'triage' ? 'For example: Be strict with posts that only link to an Instagram profile.' : 'For example: Check verified pop-ups first.'} />
+        <span className="hint">{concierge ? 'Added to every question. Write it like a note to a helper.' : 'Added to every run. Write it like a note to a helper.'}</span>
         {notes !== null && notes !== (a.instructions ?? '') ? (
           <div className="row"><button className="btn sm primary" disabled={save.isPending}>Save instructions</button><button type="button" className="btn sm subtle" onClick={() => setNotes(null)}>Cancel</button></div>
         ) : null}
       </form>
 
-      {a.role !== 'checker' ? <Undo a={a} /> : null}
+      {a.role === 'scout' || a.role === 'triage' ? <Undo a={a} /> : null}
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn sm primary" disabled={run.isPending || !!running || !a.connected || !a.key_hint} onClick={() => run.mutate()}>
-          {run.isPending ? <span className="spin" /> : <Icon name="i-bolt" />}Run now
-        </button>
+        {concierge ? null : (
+          <button className="btn sm primary" disabled={run.isPending || !!running || !a.connected || !a.key_hint} onClick={() => run.mutate()}>
+            {run.isPending ? <span className="spin" /> : <Icon name="i-bolt" />}Run now
+          </button>
+        )}
         <button className="btn sm" aria-expanded={open} onClick={() => setOpen(o => !o)}><Icon name="i-link" />Connection</button>
         {a.open_notes ? <Link className="btn sm subtle" to="/admin"><Icon name="i-flag" />{a.open_notes} open {a.open_notes === 1 ? 'note' : 'notes'}</Link> : null}
       </div>
-      {!a.connected || !a.key_hint ? <p className="small muted" style={{ marginTop: 8 }}>Connect it to Manyfold and create a Spotted key before it can run.</p> : null}
+      {concierge && !a.connected ? <p className="small muted" style={{ marginTop: 8 }}>Connect it to Manyfold, then switch it on. Ask appears for visitors once a Concierge is on.</p> : null}
+      {!concierge && (!a.connected || !a.key_hint) ? <p className="small muted" style={{ marginTop: 8 }}>Connect it to Manyfold and create a Spotted key before it can run.</p> : null}
 
       {open ? <Connection a={a} /> : null}
       <Runs runs={a.runs} unit={a.unit} />
     </section>
+  );
+}
+
+/** What the Concierge is doing today: how many questions came in against the daily cap. */
+function AskToday({ ask }: { ask: AskStats | null }) {
+  if (!ask) return <p className="small muted" style={{ marginTop: 14 }}>Ask is not set up yet: apply migration 0018 first (see the pull request).</p>;
+  return (
+    <div className="field" style={{ marginTop: 14 }}>
+      <span className="lbl">Today</span>
+      <span className="hint">{ask.today} of {ask.cap} questions used. Each visitor gets {ask.per_visitor} a day. {ask.failed_today ? `${ask.failed_today} could not be answered${ask.last_error ? `, the last because: ${ask.last_error}` : ''}.` : 'None have failed.'}</span>
+    </div>
   );
 }
 
@@ -292,6 +311,7 @@ function Connection({ a }: { a: Agent }) {
         <button className="btn sm subtle" style={{ marginTop: 8, marginLeft: -10 }} onClick={() => setManual(true)}>Paste an address and token instead</button>
       )}
 
+      {a.role === 'concierge' ? null : (
       <div className="field" style={{ marginTop: 18 }}>
         <span className="lbl">Spotted key</span>
         {key ? (
@@ -305,6 +325,7 @@ function Connection({ a }: { a: Agent }) {
           {a.key_hint ? <button className="btn sm danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>Revoke</button> : null}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -431,6 +452,8 @@ function Setup({ view }: { view: AgentsView }) {
           <li>Press <b>Connect with Manyfold</b>. In the Manyfold tab, check the code matches, pick the agent, tick Enable A2A exposure, and approve. This page picks it up by itself.</li>
           <li>Press Run now once and read the result below the agent. When it looks right, switch the agent on.</li>
         </ol>
+        <p className="small" style={{ marginTop: 12 }}><b>A Concierge is simpler.</b> Create the agent in Manyfold, give it the public tools with no key and no skill, then press Connect with Manyfold and switch it on. Keep it on its own sandbox, because it reads text typed by anonymous visitors.
+          <Cmd copy={copy} text={`mf mcp add spotted ${view.mcp_url} --scope project --agent-id agt_…`} /></p>
         <p className="small muted" style={{ marginTop: 12 }}>The same MCP address works without a key for anyone's AI assistant. It can then search and read public pop-ups, but not write.</p>
       </div>
     </>
