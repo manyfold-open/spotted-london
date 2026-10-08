@@ -5,6 +5,7 @@ import { ApiError, newId } from '../lib/util';
 import { jsonBody } from '../lib/validate';
 import { ASK_MAX_CHARS, cleanQuestion, readTaste } from '../lib/ask';
 import { snapshotItems } from '../db/snapshot';
+import { ASK_RESTING, askLimited } from '../shared/ask-messages';
 import { advanceAsk, answerOf, ASK_PER_VISITOR, availableAgent, createAsk, dailyCap, loadAsk, startAsk, usage, type AskRow } from '../db/ask';
 
 // Ask for recommendations. Anyone can ask, signed in or not, so the limits are per visitor (a salted hash of the IP)
@@ -12,8 +13,8 @@ import { advanceAsk, answerOf, ASK_PER_VISITOR, availableAgent, createAsk, daily
 
 export const ask = new Hono<AppEnv>();
 
-export const RESTING = 'Ask is resting for today. The filters and For you still work.';
-export const LIMITED = `You have used today's ${ASK_PER_VISITOR} questions. Come back tomorrow. The filters and For you still work.`;
+const RESTING = ASK_RESTING;
+const LIMITED = askLimited(ASK_PER_VISITOR);
 const FAILED = 'Ask could not answer this time. The filters and For you still work. Try again in a minute.';
 const NOTHING = 'Nothing on Spotted matches that right now. Try the filters, or ask in other words.';
 
@@ -29,7 +30,8 @@ async function view(c: { env: AppEnv['Bindings'] }, a: AskRow, now: number, left
     const item = byId.get(p.id);
     return item ? [{ id: item.id, slug: item.slug, title: item.title, reason: p.reason }] : [];
   });
-  return { ...base, picks, note: picks.length ? (answer?.note ?? '') : (answer?.note || NOTHING), near_me: !!a.near_me };
+  // `near`: the agent judged the request to be about the visitor's position, and the browser can order by distance
+  return { ...base, picks, note: picks.length ? (answer?.note ?? '') : (answer?.note || NOTHING), near: !!a.near_me && !!answer?.near };
 }
 
 /** Whether to show Ask at all, and what is left today. Before an agent is connected (or migration 0018), it is simply off. */

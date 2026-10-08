@@ -17,8 +17,9 @@ import { londonParts, londonTime } from '../lib/time';
 import { ApiError } from '../lib/util';
 import type { AgentRow } from './agents';
 import { snapshotItems } from './snapshot';
+import { ASK_PER_VISITOR } from '../shared/ask-messages';
 
-export const ASK_PER_VISITOR = 5;
+export { ASK_PER_VISITOR };
 /** All questions together in one London day. Each one is a model turn on Manyfold, so this is the cost lever. */
 export const ASK_DAILY_CAP = 150;
 /** A question that has no answer after this long fails, so the page never waits for ever. */

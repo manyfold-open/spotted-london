@@ -63,6 +63,14 @@ export interface ScoutSource {
 }
 export interface AgentNote { id: string; agent_id: string; agent_name?: string | null; evidence?: string | null; publish_ready?: boolean; verdict: string; note: string; evidence_url: string | null; duplicate_of: string | null; created_at: number }
 
+/** Ask for recommendations (src/routes/ask.ts). */
+export interface AskStatus { available: boolean; resting: boolean; per_visitor: number; left: number; max_chars: number; needs_bot_check: boolean; turnstile_site_key: string | null }
+export interface AskPick { id: string; slug: string; title: string; reason: string }
+export type AskView =
+  | { id: string; status: 'pending'; left?: number; elapsed_ms: number; poll_ms: number }
+  | { id: string; status: 'failed'; left?: number; message: string }
+  | { id: string; status: 'done'; left?: number; picks: AskPick[]; note: string; near: boolean };
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public data?: Record<string, unknown>) { super(message); }
 }

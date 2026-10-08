@@ -122,6 +122,7 @@ describe('the brief', () => {
     expect(b).toContain('Thursday, 8 October 2026, 14:00');
     expect(b).toContain('at most 5 pop-ups');
     expect(b).not.toContain('up to 10 candidates');
+    expect(b).not.toContain('"near"');
     expect(b).toContain('http://spotted.test/mcp');
   });
 
@@ -137,6 +138,7 @@ describe('the brief', () => {
     const b = askBrief({ question: 'something near me', taste: null, nearMe: true, now: NOW, appUrl: 'http://spotted.test' });
     expect(b).toContain('up to 10 candidates');
     expect(b).toContain('must not guess a place');
+    expect(b).toContain('"near":<true or false>');
     expect(b).not.toContain('What this visitor usually likes');
   });
 });
@@ -164,7 +166,35 @@ describe('reading the agent answer', () => {
     expect(a.picks[0].reason).not.toMatch(/https?:|evil/);
     expect(a.picks[0].reason.length).toBeLessThanOrEqual(160);
     expect(a.note).toBe('Nothing else');
-    expect(parseAnswer(answer([], 'Nothing free near there.'), resolve, 5)).toEqual({ picks: [], note: 'Nothing free near there.' });
+    expect(parseAnswer(answer([], 'Nothing free near there.'), resolve, 5)).toEqual({ picks: [], note: 'Nothing free near there.', near: false });
+  });
+
+  it('keeps more than 5 candidates only when the agent says the request was about the visitor position', () => {
+    const ids = Array.from({ length: 9 }, (_, i) => `p${i}`);
+    const any = (k: string) => (k.startsWith('p') ? k : null);
+    const picks = ids.map(id => ({ id, reason: id }));
+    expect(parseAnswer(JSON.stringify({ picks, near: false }), any, 10)!.picks).toHaveLength(5);
+    expect(parseAnswer(JSON.stringify({ picks }), any, 10)!.picks).toHaveLength(5);
+    expect(parseAnswer(JSON.stringify({ picks, near: true }), any, 10)).toMatchObject({ near: true, picks: expect.arrayContaining([]) });
+    expect(parseAnswer(JSON.stringify({ picks, near: true }), any, 10)!.picks).toHaveLength(9);
+    expect(parseAnswer(JSON.stringify({ picks: [...picks, { id: 'p9' }, { id: 'p10' }], near: true }), any, 10)!.picks).toHaveLength(10);
+  });
+
+  it('lifts the answer out of JSON with a small slip, and still checks every id', () => {
+    // seen from the real Concierge: a stray quote after a reason
+    const slip = 'Hours unknown, so I will leave that one out.\n\n{"picks":[{"id":"as_1","reason":"A free walk, open late.","},{"id":"made-up","reason":"Not real."},{"id":"as_2","reason":"Free art, \\"odd\\" in a good way."}],"note":"Only free ones.","near":true}';
+    expect(parseAnswer(slip, resolve, 10)).toEqual({
+      picks: [{ id: 'as_1', reason: 'A free walk, open late.' }, { id: 'as_2', reason: 'Free art, "odd" in a good way.' }],
+      note: 'Only free ones.', near: true,
+    });
+    expect(parseAnswer('{"picks":[{"id":"as_1","reason":"ok",}],,}', resolve, 5)!.picks.map(p => p.id)).toEqual(['as_1']);
+    expect(parseAnswer('{"picks":[{"id":"as_1"', resolve, 5)!.picks).toEqual([{ id: 'as_1', reason: '' }]);
+  });
+
+  it('does not make an answer out of text that was never meant as one', () => {
+    expect(parseAnswer('You could try "id": "as_1" at the market.', resolve, 5)).toBeNull();
+    expect(parseAnswer('{"picks": [], oops', resolve, 5)).toBeNull();
+    expect(parseAnswer('{"picks":[{"id":"invented"}', resolve, 5)).toEqual({ picks: [], note: '', near: false });
   });
 
   it('returns null when there is no readable answer', () => {
@@ -313,6 +343,29 @@ describe('POST /ask and GET /ask/:id', () => {
     expect(mf.sent[0]).toContain('up to 10 candidates');
     const row = await env.DB.prepare('SELECT near_me FROM asks').first<{ near_me: number }>();
     expect(row!.near_me).toBe(1);
+  });
+
+  it('hands the browser a near flag only when the agent judged the request to be about the visitor position', async () => {
+    await concierge();
+    fakeManyfold();
+    const many = Array.from({ length: 8 }, (_, i) => ({ id: i % 2 ? 'as_1' : 'as_2', reason: `r${i}` }));
+    const id = (await ask('something near me', { body: { near_me: true }, ip: '198.51.100.21' })).json.id;
+    mf.state = 'completed';
+    mf.text = JSON.stringify({ picks: [{ id: 'as_1', reason: 'a' }, { id: 'as_2', reason: 'b' }], near: true });
+    expect((await call('GET', `/ask/${id}`, { now: NOW + 3000 })).json).toMatchObject({ status: 'done', near: true });
+
+    mf.state = 'working';
+    const notNear = (await ask('free art', { body: { near_me: true }, ip: '198.51.100.22' })).json.id;
+    mf.state = 'completed';
+    mf.text = JSON.stringify({ picks: many, near: false });
+    expect((await call('GET', `/ask/${notNear}`, { now: NOW + 3000 })).json).toMatchObject({ status: 'done', near: false });
+
+    // the browser cannot order by distance when it never offered to (near_me not sent), whatever the agent says
+    mf.state = 'working';
+    const noPos = (await ask('near me please', { ip: '198.51.100.23' })).json.id;
+    mf.state = 'completed';
+    mf.text = JSON.stringify({ picks: [{ id: 'as_1', reason: 'a' }], near: true });
+    expect((await call('GET', `/ask/${noPos}`, { now: NOW + 3000 })).json.near).toBe(false);
   });
 
   it('fails softly when the answer cannot be read, the task fails, Manyfold is down or the token is rejected', async () => {

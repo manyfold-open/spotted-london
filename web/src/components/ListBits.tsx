@@ -4,6 +4,7 @@ import { api, listParams, type Popup } from '../lib/api';
 import { filterPopups } from '../../../src/shared/filter-popups';
 import { forYou, hiddenCategories } from '../../../src/shared/taste';
 import { updateTaste, useTaste } from '../lib/taste';
+import { useAsk, useAskStatus } from '../lib/ask';
 import { CAT_LIST, CATS, catIcon, looksLikeEmail } from '../lib/format';
 import { mergeMe } from '../lib/cache';
 import { useDebounced, useErrorToast, useFilters, useMe, useMyState } from '../lib/hooks';
@@ -46,9 +47,15 @@ export function usePopups(near?: [number, number] | null) {
  * The When and Category chips. `inline` puts everything in one row that scrolls sideways (the phone, floating
  * over the map); otherwise there are two rows (the desktop panel).
  */
-export function Filters({ near, locating, onNear, inline, onPick }: { near: boolean; locating: boolean; onNear: () => void; inline?: boolean; onPick: () => void }) {
+export function Filters({ near, locating, onNear, inline, onPick, onAsk }: { near: boolean; locating: boolean; onNear: () => void; inline?: boolean; onPick: () => void; onAsk?: () => void }) {
   const f = useFilters();
   const taste = useTaste();
+  // Ask only shows while a Concierge agent is on. A new answer you have not looked at yet gets a dot.
+  const askOn = useAskStatus().data?.available && !!onAsk;
+  const asked = useAsk();
+  const askChip = askOn ? (
+    <button className="chip ask" onClick={onAsk}><Icon name="i-bolt" />Ask{asked.unseen ? <><span className="dot" aria-hidden="true" /><span className="sr">, new answer</span></> : null}</button>
+  ) : null;
   const on = taste.on && taste.swipes > 0;
   // First time (no answers yet): the chip opens the swipe. After that it switches the personal order on and off.
   const youChip = <button className="chip you" aria-pressed={on} onClick={() => (taste.swipes > 0 ? updateTaste(t => ({ ...t, on: !t.on })) : onPick())}><Icon name="i-sparkle" />For you</button>;
@@ -63,7 +70,7 @@ export function Filters({ near, locating, onNear, inline, onPick }: { near: bool
   if (inline) {
     return (
       <div className="chips noscroll" role="group" aria-label="Filters">
-        {youChip}{nearChip}{whens}
+        {askChip}{youChip}{nearChip}{whens}
         <button className="chip" aria-pressed={f.verified} onClick={() => f.set({ verified: f.verified ? null : '1' })}><Icon name="i-shield" />Verified</button>
         <span className="mp-sep" aria-hidden="true" />{cats}
       </div>
@@ -71,7 +78,7 @@ export function Filters({ near, locating, onNear, inline, onPick }: { near: bool
   }
   return (
     <div className="filters">
-      <div className="chips noscroll" role="group" aria-label="When">{youChip}{nearChip}{whens}</div>
+      <div className="chips noscroll" role="group" aria-label="When">{askChip}{youChip}{nearChip}{whens}</div>
       <div className="chips noscroll" role="group" aria-label="Category">{cats}</div>
     </div>
   );
