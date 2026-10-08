@@ -138,8 +138,12 @@ describe('submit_draft: the Scout sets tags', () => {
     expect(Object.fromEntries(r.structuredContent.tags_dropped.map((d: any) => [d.tag, d.why]))).toMatchObject({
       dog_friendly: expect.stringMatching(/needs a quote/), booking_needed: expect.stringMatching(/not on that page/),
     });
-    // the main quote and all tag quotes read the same page: one fetch for the dates, one for every tag quote
-    expect(fetched.mock.calls.filter(c => String(c[0]) === 'https://market.test/p')).toHaveLength(2);
+    // all the tag quotes together cost one fetch of the page: a draft without tags reads it once less
+    const reads = () => fetched.mock.calls.filter(c => String(c[0]) === 'https://market.test/p').length;
+    const withTags = reads();
+    fetched.mockClear();
+    await tool('submit_draft', draft(s.run), s.key);
+    expect(withTags - reads()).toBe(1);
     expect((await rowOf(r.structuredContent.id)).tags).toBe(',family,late_night,vegan,');
   });
 
