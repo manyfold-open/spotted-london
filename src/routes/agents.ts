@@ -9,6 +9,7 @@ import { checkRpcUrl, probe } from '../lib/a2a';
 import { connectPoll, connectStart } from '../lib/manyfold';
 import { AGENT_INFO, AGENT_ROLES, AGENTS_PER_ROLE_MAX, blocker, loadAgent, nextRunAt, SCHEDULES, startRun, type AgentRow, type RunRow } from '../db/agents';
 import { audit } from './admin';
+import { askStats } from '../db/ask';
 import { publishMode, publishStats, setPublishMode, undoAgent } from '../db/publish';
 import { rebuildSnapshotSoon } from '../db/snapshot';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
@@ -40,12 +41,13 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { publ
 agentsAdmin.get('/', async c => {
   await requireAgentManager(c);
   const db = c.env.DB;
-  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats] = await Promise.all([
+  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats, askToday] = await Promise.all([
     db.prepare('SELECT * FROM agents').all<AgentRow>(),
     db.prepare('SELECT * FROM agent_runs WHERE started_at > ? ORDER BY started_at DESC LIMIT 100').bind(c.get('now') - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT agent_id, COUNT(*) AS n FROM agent_notes WHERE resolved_at IS NULL AND verdict != 'looks_real' GROUP BY agent_id").all<{ agent_id: string; n: number }>(),
     publishMode(db),
     publishStats(db),
+    askStats(c.env, c.get('now')),
   ]);
   const origin = c.env.APP_URL ? new URL(c.env.APP_URL).origin : new URL(c.req.url).origin;
   return c.json({
@@ -53,6 +55,7 @@ agentsAdmin.get('/', async c => {
     skill_url: SKILL_URL,
     agents_key_set: (c.env.AGENTS_KEY ?? '').length >= 32,
     auto_publish: mode,
+    ask: askToday,
     roles: AGENT_ROLES.map(role => ({ role, name: AGENT_INFO[role].name })),
     agents: [...agents].sort((x, y) => AGENT_ROLES.indexOf(x.role) - AGENT_ROLES.indexOf(y.role) || x.created_at - y.created_at || x.id.localeCompare(y.id)).map(a =>
       view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0, stats.get(a.id))),
@@ -98,7 +101,7 @@ agentsAdmin.post('/', async c => {
   if (await db.prepare('SELECT 1 FROM agents WHERE lower(name) = lower(?)').bind(name).first()) throw new ApiError(409, 'agent_name_taken', 'Another agent already has this name. Pick a different one.');
   const id = `${role}-${newId().slice(0, 6)}`;
   const userId = `agent_${id.replace('-', '_')}`;
-  const defaults = { scout: ['daily', 7, 20], triage: ['every_6h', 8, 30], checker: ['daily', 9, 30] }[role] as [string, number, number];
+  const defaults = { scout: ['daily', 7, 20], triage: ['every_6h', 8, 30], checker: ['daily', 9, 30], concierge: ['manual', 7, 5] }[role] as [string, number, number];
   await db.batch([
     db.prepare("INSERT INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES (?, ?, ?, 'user', 0, 0, ?)").bind(userId, `${id}@agents.spotted.invalid`, name, now),
     db.prepare('INSERT INTO agents (id, role, name, user_id, schedule, run_hour, max_items, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(id, role, name, userId, defaults[0], defaults[1], defaults[2], now, now),
@@ -235,7 +238,7 @@ agentsAdmin.post('/:id/connect/poll', async c => {
   if (!got) return c.json({ status: 'denied' });
   const rpcUrl = checkRpcUrl(got.rpcUrl, c.env.ENVIRONMENT === 'development');
   // An agent still called "Scout 2" or similar takes the name it has in Manyfold, unless another agent has it.
-  const takesName = /^(Scout|Triage|Checker)( \d+)?$/.test(a.name) && got.name && got.name !== a.name
+  const takesName = /^(Scout|Triage|Checker|Concierge)( \d+)?$/.test(a.name) && got.name && got.name !== a.name
     && !(await db.prepare('SELECT 1 FROM agents WHERE lower(name) = lower(?) AND id != ?').bind(got.name, a.id).first());
   await db.prepare('UPDATE agents SET rpc_url = ?, token_sealed = ?, token_hint = ?, name = ?, updated_at = ? WHERE id = ?')
     .bind(rpcUrl, await seal(c.env.AGENTS_KEY, got.token), hint(got.token), takesName ? got.name.slice(0, 40) : a.name, now, a.id).run();

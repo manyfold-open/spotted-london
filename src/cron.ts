@@ -7,6 +7,7 @@ import { runAgents } from './db/agents';
 import { SEEN_KEEP } from './db/scout';
 import { purgeSocial, runSocial } from './db/social';
 import { buildPopupSnapshot } from './db/snapshot';
+import { purgeAsks } from './db/ask';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
@@ -28,6 +29,8 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await purgeExpiredAuth(env.DB, now);
       await purgeScoutSeen(env.DB, now);
       await purgeSocial(env.DB, now);
+      // Last, and caught: before migration 0018 there is no asks table, and that must not stop anything else.
+      await purgeAsks(env.DB, now).catch(e => console.warn('ask purge skipped', e));
       break;
     default:
       console.warn('unknown cron', cron);

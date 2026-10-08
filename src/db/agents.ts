@@ -10,9 +10,9 @@ import { londonParts, nextLondonSlot } from '../lib/time';
 import { ApiError, newId, sha256 } from '../lib/util';
 
 /** What an agent does. Each role can have many agents; the first of each is named after its role. */
-export type AgentRole = 'scout' | 'triage' | 'checker';
+export type AgentRole = 'scout' | 'triage' | 'checker' | 'concierge';
 export type Schedule = 'hourly' | 'every_6h' | 'daily' | 'weekly' | 'manual';
-export const AGENT_ROLES: AgentRole[] = ['scout', 'triage', 'checker'];
+export const AGENT_ROLES: AgentRole[] = ['scout', 'triage', 'checker', 'concierge'];
 export const AGENTS_PER_ROLE_MAX = 20;
 export const SCHEDULES: Schedule[] = ['hourly', 'every_6h', 'daily', 'weekly', 'manual'];
 
@@ -81,6 +81,12 @@ export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: st
     unit: 'notes',
     tools: ['start_run', 'list_live_popups', 'add_note', 'finish_run'],
   },
+  concierge: {
+    name: 'Concierge',
+    job: 'Answers visitors who type what they are after into Ask, with up to 5 real pop-ups and a reason each. It only reads the public list, so it needs no Spotted key, no schedule and no runs. Spotted sends it each question and checks every pop-up it names.',
+    unit: 'answers',
+    tools: [],
+  },
 };
 
 export async function loadAgent(db: D1Database, id: string): Promise<AgentRow> {
@@ -124,7 +130,7 @@ export function brief(a: AgentRow, runId: string, appUrl: string, now: number): 
 /** Why an agent cannot start a run right now, or null when it can. */
 export async function blocker(db: D1Database, a: AgentRow, now: number): Promise<ApiError | null> {
   if (!a.rpc_url || !a.token_sealed) return new ApiError(409, 'agent_not_connected', 'Connect this agent first: open Connection and press Connect with Manyfold.');
-  if (!a.key_hash) return new ApiError(409, 'agent_key_missing', 'Create a Spotted key for this agent first, and add it to the agent in Manyfold with mf mcp add (see Set up an agent).');
+  if (!a.key_hash && a.role !== 'concierge') return new ApiError(409, 'agent_key_missing', 'Create a Spotted key for this agent first, and add it to the agent in Manyfold with mf mcp add (see Set up an agent).');
   const open = await db.prepare("SELECT id FROM agent_runs WHERE agent_id = ? AND status = 'running' AND started_at > ?").bind(a.id, now - RUN_TIMEOUT).first();
   if (open) return new ApiError(409, 'agent_busy', 'This agent is still working on its last run. Wait for it to finish, then try again.');
   return null;
@@ -133,6 +139,7 @@ export async function blocker(db: D1Database, a: AgentRow, now: number): Promise
 /** Starts a run on Manyfold. The run is recorded first, so a failure to start is visible too. */
 export async function startRun(env: Bindings, a: AgentRow, trigger: RunRow['trigger'], now: number, via: string | null = null): Promise<RunRow> {
   const db = env.DB;
+  if (a.role === 'concierge') throw new ApiError(409, 'agent_has_no_runs', 'The Concierge answers visitors\' questions in Ask. It has no runs to start. Switch it on and it takes questions.');
   const stop = await blocker(db, a, now);
   if (stop) throw stop;
   const token = await unseal(env.AGENTS_KEY, a.token_sealed!);
@@ -202,7 +209,7 @@ export async function checkRuns(env: Bindings, now: number): Promise<void> {
 export async function dispatchDue(env: Bindings, now: number): Promise<void> {
   const db = env.DB;
   const { results } = await db.prepare(
-    `SELECT * FROM agents WHERE enabled = 1 AND schedule != 'manual' AND next_run_at IS NOT NULL
+    `SELECT * FROM agents WHERE enabled = 1 AND role != 'concierge' AND schedule != 'manual' AND next_run_at IS NOT NULL
        AND next_run_at + CASE manyfold_scheduled WHEN 1 THEN ? ELSE 0 END <= ?`,
   ).bind(BACKUP_GRACE, now).all<AgentRow>();
   for (const a of results) {
