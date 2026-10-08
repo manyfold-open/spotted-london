@@ -168,6 +168,14 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const [botToken, setBotToken] = useState<string | null>(null);
   const needsBot = useNeedsTurnstile();
 
+  const removePhoto = async (imageId: string) => {
+    try {
+      await api(`/popups/${p.id}/images/${imageId}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['popup'] }); qc.invalidateQueries({ queryKey: ['popups'] });
+      toast('Photo removed', 'i-check');
+    } catch (e) { onError(e); }
+  };
+
   const live = isLive(p);
   const started = p.start_at <= Date.now();
   const v = p.verification;
@@ -253,6 +261,8 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           {p.price.text ? <><dt><Icon name="i-pound" />Price</dt><dd>{p.price.text}</dd></> : null}
           <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow">{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
         </dl>
+        {p.images?.[0]?.credit ? <p className="small muted photo-credit">Photo: {p.images[0].credit_url ? <a href={p.images[0].credit_url} target="_blank" rel="noopener nofollow">{p.images[0].credit}</a> : p.images[0].credit}
+          {me && (me.role === 'admin' || own) ? <> · <button type="button" className="linkbtn" onClick={() => removePhoto(p.images![0].id)}>Remove photo</button></> : null}</p> : null}
         {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <Img key={i.id} src={i.url} />)}</div> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
