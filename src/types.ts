@@ -70,7 +70,7 @@ export interface PopupRow {
   created_at: number;
   updated_at: number;
   is_example: number;
-  /** NULL: nobody has looked; '': none apply; ',a,b,': see src/shared/tags.ts. Absent before migration 0019. */
+  /** NULL: nobody has looked; '': none apply; ',a,b,': see src/shared/tags.ts. Absent before migration 0020. */
   tags?: string | null;
 }
 

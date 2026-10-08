@@ -181,7 +181,7 @@ One-time setup:
 
 ## Tags
 
-A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or `outdoors`: facts the organiser's page states, from a fixed list in `src/shared/tags.ts` (design: `docs/superpowers/specs/2026-10-08-scout-tags-design.md`). They are stored in `popups.tags` (migration `0019_tags.sql`, one nullable column), travel in the public snapshot, and show as small read-only labels on the pop-up sheet.
+A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or `outdoors`: facts the organiser's page states, from a fixed list in `src/shared/tags.ts` (design: `docs/superpowers/specs/2026-10-08-scout-tags-design.md`). They are stored in `popups.tags` (migration `0020_tags.sql`, one nullable column), travel in the public snapshot, and show as small read-only labels on the pop-up sheet.
 
 - `GET /api/v1/popups?tag=family,outdoors` keeps pop-ups that have every one of the tags, `avoid=outdoors` drops any that have one. Pop-ups nobody has tagged yet fail `tag` and pass `avoid`.
 - `search_popups` (MCP) takes `tags` and `avoid_tags` and returns each pop-up's `tags` (`null` means nobody has tagged it yet).
