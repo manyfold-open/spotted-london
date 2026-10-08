@@ -102,6 +102,28 @@ function findJson(text: string): unknown {
   return null;
 }
 
+/**
+ * A model now and then writes JSON with a small slip (a stray quote or comma). When the text was meant as an answer
+ * (it has a "picks" list) but does not parse, the ids and reasons are lifted out one by one. Nothing is trusted more
+ * for it: every id still has to be in the public list, and the reasons are cleaned like any others.
+ */
+function salvage(text: string): { picks: { id: string; reason: string }[]; note: string; near: boolean } | null {
+  if (!/"picks"\s*:/.test(text)) return null;
+  const ids = [...text.matchAll(/"id"\s*:\s*"([^"]{1,120})"/g)];
+  if (!ids.length) return null;
+  const str = /"reason"\s*:\s*"((?:[^"\\]|\\.)*)"/;
+  const unescape = (s: string) => { try { return JSON.parse(`"${s}"`) as string; } catch { return s; } };
+  const picks = ids.map((m, i) => {
+    const from = (m.index ?? 0) + m[0].length;
+    const to = ids[i + 1]?.index ?? text.length;
+    return { id: m[1], reason: unescape(str.exec(text.slice(from, to))?.[1] ?? '') };
+  });
+  // note and near come after the list, so look past the last pick
+  const tail = text.slice(ids[ids.length - 1].index ?? 0);
+  const note = /"note"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(tail)?.[1];
+  return { picks, note: unescape(note ?? ''), near: /"near"\s*:\s*true/.test(tail) };
+}
+
 /** An id as the agent may have written it: the id itself, or the /p/<slug> link search_popups returns. */
 const idKey = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/^.*\/p\//, '').replace(/[?#].*$/, '').slice(0, 120) : '');
 
@@ -111,7 +133,7 @@ const idKey = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/^.*\/p\
  * Returns null when the text holds no readable answer at all (an empty picks list is a valid answer).
  */
 export function parseAnswer(text: string, resolve: (key: string) => string | null, max: number): Answer | null {
-  const v = findJson(text);
+  const v = findJson(text) ?? salvage(text);
   if (!v) return null;
   const o = v as { picks?: unknown; note?: unknown };
   const list = Array.isArray(v) ? v : o.picks;

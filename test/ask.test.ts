@@ -180,6 +180,23 @@ describe('reading the agent answer', () => {
     expect(parseAnswer(JSON.stringify({ picks: [...picks, { id: 'p9' }, { id: 'p10' }], near: true }), any, 10)!.picks).toHaveLength(10);
   });
 
+  it('lifts the answer out of JSON with a small slip, and still checks every id', () => {
+    // seen from the real Concierge: a stray quote after a reason
+    const slip = 'Hours unknown, so I will leave that one out.\n\n{"picks":[{"id":"as_1","reason":"A free walk, open late.","},{"id":"made-up","reason":"Not real."},{"id":"as_2","reason":"Free art, \\"odd\\" in a good way."}],"note":"Only free ones.","near":true}';
+    expect(parseAnswer(slip, resolve, 10)).toEqual({
+      picks: [{ id: 'as_1', reason: 'A free walk, open late.' }, { id: 'as_2', reason: 'Free art, "odd" in a good way.' }],
+      note: 'Only free ones.', near: true,
+    });
+    expect(parseAnswer('{"picks":[{"id":"as_1","reason":"ok",}],,}', resolve, 5)!.picks.map(p => p.id)).toEqual(['as_1']);
+    expect(parseAnswer('{"picks":[{"id":"as_1"', resolve, 5)!.picks).toEqual([{ id: 'as_1', reason: '' }]);
+  });
+
+  it('does not make an answer out of text that was never meant as one', () => {
+    expect(parseAnswer('You could try "id": "as_1" at the market.', resolve, 5)).toBeNull();
+    expect(parseAnswer('{"picks": [], oops', resolve, 5)).toBeNull();
+    expect(parseAnswer('{"picks":[{"id":"invented"}', resolve, 5)).toEqual({ picks: [], note: '', near: false });
+  });
+
   it('returns null when there is no readable answer', () => {
     expect(parseAnswer('I could not find anything, sorry.', resolve, 5)).toBeNull();
     expect(parseAnswer('{"hello": 1}', resolve, 5)).toBeNull();
