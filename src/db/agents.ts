@@ -65,19 +65,19 @@ export const RUN_TIMEOUT = 3 * HOUR;
 export const AGENT_INFO: Record<AgentRole, { name: string; job: string; unit: string; tools: string[] }> = {
   scout: {
     name: 'Scout',
-    job: 'Finds new London pop-ups on the web and sends them in as drafts. Every draft waits in the review queue for you.',
+    job: 'Finds new London pop-ups on the web and sends them in as drafts. Every draft waits in the review queue for you. It also tags each one (interactive, late night, family and so on) with facts the page states.',
     unit: 'drafts',
     tools: ['start_run', 'list_sources', 'get_social_posts', 'check_seen', 'find_place', 'check_duplicates', 'submit_draft', 'skip_url', 'mark_source_checked', 'suggest_source', 'finish_run'],
   },
   triage: {
     name: 'Triage',
-    job: 'Checks each post waiting for review against its source on its own. It fixes small things itself (a price or postcode the page contradicts, a sentence no page supports) and publishes what it could confirm with its own quote. It removes duplicates and posts that are not pop-ups, with proof. The rest wait for you with a note: needs a check, likely fake.',
+    job: 'Checks each post waiting for review against its source on its own. It fixes small things itself (a price or postcode the page contradicts, a sentence no page supports) and publishes what it could confirm with its own quote. It removes duplicates and posts that are not pop-ups, with proof. It corrects tags the page does not support. The rest wait for you with a note: needs a check, likely fake.',
     unit: 'notes',
     tools: ['start_run', 'list_review_queue', 'check_duplicates', 'add_note', 'finish_run'],
   },
   checker: {
     name: 'Checker',
-    job: 'Rechecks live pop-ups against their source links. It corrects small details on community pop-ups nobody has voted on, ends cancelled ones, and flags the rest for you.',
+    job: 'Rechecks live pop-ups against their source links. It corrects small details on community pop-ups nobody has voted on, ends cancelled ones, and flags the rest for you. It also corrects tags on live pop-ups.',
     unit: 'notes',
     tools: ['start_run', 'list_live_popups', 'add_note', 'finish_run'],
   },

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Agent, type AgentRun, type AgentsView, type AskStats, type Schedule } from '../lib/api';
+import { api, type Agent, type AgentRun, type AgentsView, type AskStats, type Schedule, type TagReport } from '../lib/api';
+import { TAG_LABELS } from '../../../src/shared/tags';
 import { useErrorToast, useMe, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { ScoutSources } from './ScoutSources';
@@ -46,6 +47,7 @@ export default function AgentsPage() {
           <div className="stack agents" style={{ marginTop: 22 }}>{q.data.agents.map(a => <AgentCard key={a.id} a={a} ask={q.data.ask} />)}</div>
           <AddAgent roles={q.data.roles} />
           <ScoutSources />
+          <TagsReport />
           <Setup view={q.data} />
         </>
       ) : <div className="empty" style={{ marginTop: 22 }}><p>{q.error?.message ?? 'Could not load the agents.'}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>}
@@ -67,6 +69,41 @@ function AddAgent({ roles }: { roles: AgentsView['roles'] }) {
       <span className="muted">Add another</span>
       {roles.map(r => <button key={r.role} className="btn sm" disabled={add.isPending} onClick={() => add.mutate(r.role)}><Icon name="i-plus" />{r.name}</button>)}
     </div>
+  );
+}
+
+/** How far tagging has got, which tags are used, what Triage and Checker changed, and ten pop-ups to check by eye. */
+function TagsReport() {
+  const q = useQuery({ queryKey: ['tag-report'], queryFn: () => api<TagReport>('/admin/agents/tag-report'), staleTime: 60_000 });
+  const r = q.data;
+  const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : '0%');
+  return (
+    <section className="panel" style={{ marginTop: 22 }} aria-labelledby="tg-h">
+      <h2 id="tg-h">Tags</h2>
+      {q.isPending ? <p className="muted" style={{ marginTop: 6 }}>Loading.</p> : q.isError || !r ? <p className="muted" style={{ marginTop: 6 }}>The tag report could not be loaded. Reload the page to try again.</p> : (
+        <>
+          <p className="muted" style={{ marginTop: 6 }}>
+            {r.coverage.tagged} of {r.coverage.live} live pop-ups have tags ({pct(r.coverage.tagged, r.coverage.live)}). {r.coverage.none_apply} were looked at and none apply, {r.coverage.not_looked_at} have not been looked at yet. The list is up to 10 minutes behind.
+          </p>
+          <ul className="tag-row" style={{ marginTop: 10 }} aria-label="Pop-ups per tag">
+            {r.uses.map(u => <li key={u.tag} className="tag t-line" title={u.share < 0.01 && r.coverage.live >= 100 ? 'Under 1% of live pop-ups: a candidate to drop or merge' : undefined}>{TAG_LABELS[u.tag]} {u.n}</li>)}
+          </ul>
+          {r.changes.length ? (
+            <p className="muted" style={{ marginTop: 10 }}>Last 30 days: {r.changes.map(c => `${c.agent} (${c.role}) changed ${c.edits}, added ${c.added}, removed ${c.removed}`).join('; ')}.</p>
+          ) : <p className="muted" style={{ marginTop: 10 }}>No tag changes by Triage or Checker yet.</p>}
+          {r.samples.length ? (
+            <>
+              <h3 style={{ marginTop: 14 }}>Check these by eye</h3>
+              <ul className="stack" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
+                {r.samples.map(s => (
+                  <li key={s.id}><a href={`/p/${s.slug}`} target="_blank" rel="noopener">{s.title}</a>: {s.tags.map(t => TAG_LABELS[t]).join(', ')}{s.source_url ? <> (<a href={s.source_url} target="_blank" rel="noopener nofollow">source</a>)</> : null}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

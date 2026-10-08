@@ -197,3 +197,15 @@ describe('admin sets tags; the public list and search show them', () => {
     expect(JSON.stringify(bad)).toContain('family');
   });
 });
+
+describe('the agents\' skill', () => {
+  it('names every tag, and says which need a quote', async () => {
+    const skill = (await import('../skills/spotted-london/SKILL.md?raw')).default as string;
+    for (const t of TAGS) {
+      const row = skill.split('\n').find(l => l.startsWith(`| \`${t}\` |`));
+      expect(row, t).toBeTruthy();
+      expect(row).toContain(TAG_INFO[t].means);
+      expect(row!.trim().endsWith(TAG_INFO[t].claim ? '| yes |' : '| no |'), t).toBe(true);
+    }
+  });
+});

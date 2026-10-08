@@ -12,6 +12,7 @@ import { audit } from './admin';
 import { askStats } from '../db/ask';
 import { publishMode, publishStats, setPublishMode, undoAgent } from '../db/publish';
 import { rebuildSnapshotSoon } from '../db/snapshot';
+import { tagReport } from '../db/tags';
 import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type SourceRow } from '../db/scout';
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
@@ -63,6 +64,12 @@ agentsAdmin.get('/', async c => {
 });
 
 /** Whether agents' verified posts wait for the admin's click ('suggest') or go live at once ('auto'). */
+/** Numbers for the tags block on /admin/agent: coverage, use per tag, what agents changed, and ten pop-ups to check by eye. Admin only (it names pop-ups). */
+agentsAdmin.get('/tag-report', async c => {
+  requireAdmin(c);
+  return c.json(await tagReport(c.env.DB, c.get('now')));
+});
+
 agentsAdmin.put('/settings', async c => {
   const admin = requireAdmin(c);
   const now = c.get('now');

@@ -49,6 +49,37 @@ export const quoteInText = (text: string, quote: string): boolean => normalizeQu
 
 export class EvidenceError extends Error {}
 
+/** The page at `url` as text, or null when it cannot be read (blocked, login, timeout, not text). `finished` is false when the page was bigger than we read. */
+async function readPage(url: string, fetcher: typeof fetch): Promise<{ html: string; finished: boolean } | null> {
+  let res: Response;
+  try {
+    res = await fetcher(url, {
+      headers: { 'user-agent': 'SpottedLondonBot/0.1 (+https://spotted.london/bot)', accept: 'text/html,application/xhtml+xml' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000),
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok || !/html|text/i.test(res.headers.get('content-type') ?? '') || !res.body) {
+    await res.body?.cancel();
+    return null;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let html = '';
+  let size = 0;
+  let finished = false;
+  while (size < MAX_HTML) {
+    const { done, value } = await reader.read();
+    if (done || !value) { finished = true; break; }
+    html += decoder.decode(value, { stream: true });
+    size += value.length;
+  }
+  await reader.cancel().catch(() => {});
+  return { html, finished };
+}
+
 /**
  * Where the quote must be found. Posts Spotted fetched itself are checked against their stored
  * text. Other pages are fetched. A page that cannot be read (blocked, login, timeout) is
@@ -66,36 +97,46 @@ export async function checkEvidence(
   }
   const target = safeUrl(url);
   if (!target) throw new EvidenceError('evidence_url must be a public web address.');
-  let res: Response;
-  try {
-    res = await fetcher(target.toString(), {
-      headers: { 'user-agent': 'SpottedLondonBot/0.1 (+https://spotted.london/bot)', accept: 'text/html,application/xhtml+xml' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(6000),
-    });
-  } catch {
-    return 'unchecked';
-  }
-  if (!res.ok || !/html|text/i.test(res.headers.get('content-type') ?? '') || !res.body) {
-    await res.body?.cancel();
-    return 'unchecked';
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let html = '';
-  let size = 0;
-  let finished = false;
-  while (size < MAX_HTML) {
-    const { done, value } = await reader.read();
-    if (done || !value) { finished = true; break; }
-    html += decoder.decode(value, { stream: true });
-    size += value.length;
-  }
-  await reader.cancel().catch(() => {});
-  if (quoteInHtml(html, quote)) return 'found';
+  const page = await readPage(target.toString(), fetcher);
+  if (!page) return 'unchecked';
+  if (quoteInHtml(page.html, quote)) return 'found';
   // A page bigger than we read (some site builders put the text far down) may have the quote past the cut.
-  if (!finished) return 'unchecked';
+  if (!page.finished) return 'unchecked';
   throw new EvidenceError('The page loaded but the quote is not on it. Copy a sentence from the page word for word. If your tool summarises pages, fetch the raw page.');
+}
+
+export type QuoteCheck = 'found' | 'missing' | 'unchecked';
+
+/**
+ * Several quotes against one page, fetched and read once (the Worker has about 10 ms of CPU, and the page text is the
+ * expensive part). Unlike checkEvidence it never throws for a quote that is not there: each quote says `found`,
+ * `missing` (the page loaded and does not have it) or `unchecked` (the page could not be read). Used for the tag
+ * quotes, where one wrong quote must not stop the others or the draft.
+ */
+export async function checkQuotes(
+  quotes: readonly string[],
+  url: string,
+  post: { body: string | null } | null,
+  fetcher: typeof fetch = fetch,
+): Promise<Map<string, QuoteCheck>> {
+  const out = new Map<string, QuoteCheck>();
+  if (post) {
+    const text = normalizeQuote(post.body ?? '');
+    for (const q of quotes) out.set(q, text.includes(normalizeQuote(q)) ? 'found' : 'missing');
+    return out;
+  }
+  const target = safeUrl(url);
+  const page = target ? await readPage(target.toString(), fetcher) : null;
+  if (!page) { for (const q of quotes) out.set(q, 'unchecked'); return out; }
+  const visible = normalizeQuote(visibleText(page.html));
+  let raw: string | null = null;
+  for (const q of quotes) {
+    const n = normalizeQuote(q);
+    if (visible.includes(n)) { out.set(q, 'found'); continue; }
+    raw ??= normalizeQuote(unescapedHtml(page.html));
+    out.set(q, raw.includes(n) ? 'found' : page.finished ? 'missing' : 'unchecked');
+  }
+  return out;
 }
 
 // Phrases that address an AI instead of describing a pop-up. A post that has one is never publish-ready:
