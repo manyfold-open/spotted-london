@@ -93,6 +93,22 @@ export function hiddenCategories(taste: Taste): string[] {
   return CATEGORIES.filter(c => taste.cats[c] && rate(taste.cats[c]) <= HIDE_AT);
 }
 
+/**
+ * The short summary Ask may send with a question: categories liked and left out, and whether free entry is liked.
+ * Nothing else leaves the browser. Null when "For you" is off or says nothing yet.
+ */
+export interface TasteSummary { likes: string[]; left_out: string[]; free: 'likes' | 'avoids' | null }
+
+export function tasteSummary(taste: Taste): TasteSummary | null {
+  if (!taste.on || taste.swipes <= 0) return null;
+  const likes = likedCategories(taste).slice(0, 4);
+  const left_out = hiddenCategories(taste);
+  const answers = taste.free.y + taste.free.n;
+  const r = rate(taste.free);
+  const free = answers >= 2 ? (r >= 0.67 ? 'likes' : r <= 0.33 ? 'avoids' : null) : null;
+  return likes.length || left_out.length || free ? { likes, left_out, free } : null;
+}
+
 /** Categories someone said yes to more than no, best first. */
 export function likedCategories(taste: Taste): string[] {
   return CATEGORIES.filter(c => taste.cats[c] && taste.cats[c].y > taste.cats[c].n)

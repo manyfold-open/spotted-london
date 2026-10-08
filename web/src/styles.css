@@ -734,3 +734,32 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .td-liked { justify-content: center }
 @media (max-width: 380px) { .td-b span { display: none } .td-b { width: 56px; padding: 0; justify-content: center } }
 @media (prefers-reduced-motion: reduce) { .td-wrap { animation: none } .td-card { transition: none !important } }
+
+/* ---------- Ask: type what you want, an agent answers (src/routes/ask.ts) ---------- */
+.chip.ask { position: relative; background: var(--card) }
+.chip.ask .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink); margin-left: 2px }
+.ask-wrap { position: fixed; inset: 0; z-index: 50; overflow-y: auto; overscroll-behavior: contain; background: var(--paper); background-image: radial-gradient(var(--dot) 1.1px, transparent 1.2px); background-size: 22px 22px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 24px); animation: fade var(--dur-2) }
+.ask-col { width: 100%; max-width: 560px; margin: 0 auto }
+.ask-form { display: grid; gap: 10px }
+.ask-form textarea.input { min-height: 84px }
+.ask-ex { flex-wrap: wrap }
+.ask-go { gap: 12px; align-items: center }
+.ask-fine { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 11.5px; color: var(--ink3) }
+.ask-fine svg.i { width: 14px; height: 14px; flex: none; margin-top: 1px }
+.ask-out { margin-top: 18px; display: grid; gap: 10px }
+.ask-state { margin: 0; display: flex; gap: 10px; align-items: center; color: var(--ink2); font-size: 13.5px }
+.ask-h { margin: 8px 0 0; font-size: 20px }
+.ask-out > p { margin: 0 }
+.ask-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px }
+.ask-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--card); text-decoration: none; color: var(--ink); transition: translate var(--dur-1), box-shadow var(--dur-1) }
+@media (hover: hover) { .ask-item:hover { box-shadow: var(--shadow-sm); translate: -1px -1px; color: var(--ink) } }
+.ask-item:active { scale: .98 }
+.ask-item .sw { width: 52px; height: 52px; border-radius: 10px; border: 1.5px solid var(--ink); display: grid; place-items: center; flex: none; overflow: hidden; position: relative }
+.ask-item .sw img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }
+.ask-item .sw svg.i { width: 26px; height: 26px }
+.ask-t { min-width: 0; flex: 1; display: grid; gap: 2px }
+.ask-t b { font-size: 15px; line-height: 1.25 }
+.ask-m { font-size: 12px; color: var(--ink2) }
+.ask-why { margin-top: 4px; padding-left: 10px; border-left: 3px solid var(--accent); font-size: 13.5px; line-height: 1.4; color: var(--ink) }
+.ask-item .mp-dist { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--here); color: #fff; white-space: nowrap; flex: none }
+@media (prefers-reduced-motion: reduce) { .ask-wrap { animation: none } .ask-item { transition: none } }
