@@ -168,3 +168,15 @@ If this is too much at once: **PR A, plus Scout tags only in PR B** (no Triage/C
 3. **Backfill.** Wait for turnover and look at coverage after a week (recommended), or build the Checker sweep in PR B?
 4. **Visitors see tags** as read-only labels on the pop-up sheet. OK?
 5. **Whole thing or the smaller slice** first?
+
+## Changes made while building (2026-10-08)
+
+Zack approved the whole design (all 18 tags, claim tags as listed, no sweep yet, visible labels, all three pull requests). Built in #48 (schema and read side), #49 (agents) and #51 (taste and Ask). Differences from what is written above:
+
+- **The migration is `0020_tags.sql`.** `main` took `0019` twice while this was written (`user_taste`, `photo_source`).
+- **A claim tag's quote must also say something about the tag**, checked by a small cue test per tag (`CLAIM_CUES` in `src/lib/tagging.ts`: "Kids go free" for `family`, a time of 10pm or later for `late_night`). Without it an agent could attach the dates quote to every tag.
+- **All quotes for one page are read from one fetch** (`checkQuotes` in `src/lib/evidence.ts`), because the Worker's CPU is the scarce part.
+- **Tag changes by Triage and Checker are limited to 60 a day per agent** (`AGENT_TAG_EDITS_PER_DAY`), separate from the 40 fixes and removals. `undoAgent` does not put them back; an admin clears them with `PUT /admin/popups/:id/tags`.
+- **Checker may tag community pop-ups that people voted on** (people vote on whether a pop-up exists, not on its tags); Triage only tags waiting posts.
+- **Taste:** since "For you" now also lives on the account for signed-in people, tag tallies are synced with it. Ask still gets only the short summary. A tag nudges a score by at most 0.125 (liked tags up, skipped tags down) instead of blending at 0.25, so a liked tag can never lower a score.
+- **Not built, as agreed:** the Checker sweep (`untagged_only`), tag filter chips for visitors, tags on the Submit form. Look at the Tags block on /admin/agent after about a week.
