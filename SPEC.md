@@ -542,6 +542,7 @@ CREATE TABLE audit_log (
 | 圖片處理 | 前端壓縮，不用 Cloudflare Images |
 | AI 自動填表 | Workers AI（2026-09-30 接上）。文字：`@cf/meta/llama-3.3-70b-instruct-fp8-fast`；截圖：`@cf/meta/llama-4-scout-17b-16e-instruct`（吃 base64 圖片、支援 JSON schema）。截圖在前端縮成長邊 1600px 的 JPEG 再上傳（≤ 2 MB），伺服器不存圖。免費額度用完回 503 `ai_quota`，請用戶自己填 |
 | 表單元件 | 全部自製，不用瀏覽器原生 UI：日期選擇器（英式格式、週一開始、手機為底部 sheet）、搜尋清除鈕、Email 驗證訊息、捲軸、地圖縮放鈕 |
+| 個性化推薦 For you（2026-10-08） | 第一次進首頁出 10 張真實 pop-up 卡片（盡量每個分類一張、有照片、免費與付費混合、不同區域），右滑想去、左滑不想去、可跳過。口味只存在瀏覽器（localStorage `spotted.taste`），不用登入、不送伺服器、不進公開 snapshot。排序＝hot + 4×(喜好分數−0.5)；某分類兩次不要且沒有想去就在 For you 隱藏（自己點分類 chip 會顯示）。首頁 chip 列最前面有 For you，旁邊的「Show all」一鍵看全部。之後：登入後同步、從存檔投票學習、問 AI（接 Manyfold agent，非即時，需先量等待時間）、Scout 補標籤 |
 | Review queue 自動消化（2026-10-04） | 目標：人只處理少數真正需要人的案子。Triage 可用 `fixes` 修待審草稿的小細節（刪掉找不到出處的句子、清空價格/時間、把地址/價格/時間/日期改成來源頁寫的值，需附 Spotted 找得到的引用；日期最多移 7 天）；Checker 可修沒人投過票的 community 活動。來源頁打不開時，用 `corroboration`（兩個不同網站、各自的引用都找得到）代替。`duplicate`（Spotted 驗證同地點、日期重疊、標題相似）、`out_of_scope`（新 verdict，要附理由和引用）、`cancelled`（變成 `ended`）在 auto 模式下自動處理。每個 agent 每天最多 40 次，全部寫 audit，可 undo。仍留給人：貼文含針對 agent 的文字、核心資料互相矛盾、`likely_fake`、有人投過票或已被 admin 認證的 |
 | 部署 | https://spotted-london.zack11712.workers.dev（2026-09-30 上線；Google 登入、照片（R2）已開啟；Email 登入待設定 Resend） |
 | 範例資料 | 已於 2026-10-02 用 `seed/clear-examples.sql` 從線上清除（9 個虛構活動、165 個假帳號）。`is_example` 欄位與 Example 標示保留，之後要用範例資料可重新載入 `seed/examples.sql` |
