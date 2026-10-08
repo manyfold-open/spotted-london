@@ -8,6 +8,7 @@ import { Icon } from '../components/Icon';
 import { CardSkeletons, Cover, PopupCard, StatusTag } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { Logo } from '../components/Shell';
+import { flushTaste, forgetTaste } from '../lib/taste';
 
 /* ---------------- Saved ---------------- */
 export function Saved() {
@@ -114,8 +115,8 @@ export function MePage() {
     onError,
   });
   const logout = useMutation({
-    mutationFn: () => api('/auth/logout', { method: 'POST' }),
-    onSuccess: () => { qc.clear(); nav('/'); toast('Signed out'); },
+    mutationFn: async () => { await flushTaste(); return api('/auth/logout', { method: 'POST' }); },
+    onSuccess: () => { forgetTaste(); qc.clear(); nav('/'); toast('Signed out'); },
     onError,
   });
   const newsletter = useMutation({ mutationFn: () => api('/newsletter/subscribe', { method: 'POST', json: { email: me!.email } }), onSuccess: () => toast('Check your inbox to confirm', 'i-mail'), onError });

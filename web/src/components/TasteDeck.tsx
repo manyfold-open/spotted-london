@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import type { Popup } from '../lib/api';
 import { CATS, catIcon, dateRange, isLive } from '../lib/format';
 import { haptic, reducedMotion } from '../lib/motion';
-import { getTaste, updateTaste } from '../lib/taste';
+import { getTaste, updateTaste, useKeptNote } from '../lib/taste';
 import { DECK_SIZE, forgetSwipes, learn, likedCategories, pickDeck, type Taste } from '../../../src/shared/taste';
 import { Icon } from './Icon';
 import { Img } from './PopupBits';
@@ -13,7 +13,7 @@ const FLY_MS = 220;
 
 /**
  * The first-run swipe: ten real pop-ups, one at a time. Right (or the tick) means "I'd go", left (or the cross)
- * means "not for me", Skip means "no opinion". Each answer goes straight into the taste kept on this device.
+ * means "not for me", Skip means "no opinion". Each answer goes straight into the taste kept on this device, and on the account when someone is signed in.
  * `fresh` (Retake) forgets the old swipes (not what saves and votes are worth) when the first new one comes in, so closing early changes nothing.
  */
 export function TasteDeck({ items, fresh, onClose }: { items: Popup[]; fresh: boolean; onClose: () => void }) {
@@ -22,6 +22,7 @@ export function TasteDeck({ items, fresh, onClose }: { items: Popup[]; fresh: bo
   const [drag, setDrag] = useState(0);
   const [fly, setFly] = useState<Dir | null>(null);
   const [result, setResult] = useState<Taste | null>(null);
+  const kept = useKeptNote();
   const start = useRef<{ x: number; t: number } | null>(null);
   const cleared = useRef(!fresh);
   const answered = useRef(0);
@@ -128,6 +129,7 @@ export function TasteDeck({ items, fresh, onClose }: { items: Popup[]; fresh: bo
           <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
             <button type="button" className="btn primary" onClick={onClose} data-first>{liked.length ? 'Show my picks' : 'Show everything'}</button>
           </div>
+          <p className="td-kept">{kept}</p>
         </div>
       ) : (
         <>
