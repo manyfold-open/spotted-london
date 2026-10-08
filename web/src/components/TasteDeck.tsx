@@ -3,7 +3,7 @@ import type { Popup } from '../lib/api';
 import { CATS, catIcon, dateRange, isLive } from '../lib/format';
 import { haptic, reducedMotion } from '../lib/motion';
 import { getTaste, updateTaste, useKeptNote } from '../lib/taste';
-import { DECK_SIZE, emptyTaste, learn, likedCategories, pickDeck, type Taste } from '../../../src/shared/taste';
+import { DECK_SIZE, forgetSwipes, learn, likedCategories, pickDeck, type Taste } from '../../../src/shared/taste';
 import { Icon } from './Icon';
 import { Img } from './PopupBits';
 
@@ -14,7 +14,7 @@ const FLY_MS = 220;
 /**
  * The first-run swipe: ten real pop-ups, one at a time. Right (or the tick) means "I'd go", left (or the cross)
  * means "not for me", Skip means "no opinion". Each answer goes straight into the taste kept on this device, and on the account when someone is signed in.
- * `fresh` (Retake) forgets the old answers when the first new one comes in, so closing early changes nothing.
+ * `fresh` (Retake) forgets the old swipes (not what saves and votes are worth) when the first new one comes in, so closing early changes nothing.
  */
 export function TasteDeck({ items, fresh, onClose }: { items: Popup[]; fresh: boolean; onClose: () => void }) {
   const deck = useMemo(() => pickDeck(items, Date.now(), DECK_SIZE), []); // eslint-disable-line react-hooks/exhaustive-deps -- one deck per opening
@@ -41,7 +41,7 @@ export function TasteDeck({ items, fresh, onClose }: { items: Popup[]; fresh: bo
     if (dir !== 'skip') {
       answered.current++;
       updateTaste(t => {
-        const base = cleared.current ? t : { ...emptyTaste(), seen: true, on: t.on };
+        const base = cleared.current ? t : forgetSwipes(t); // Retake: old swipes go, saves and votes still count
         cleared.current = true;
         return learn(base, p, dir === 'yes');
       });

@@ -53,8 +53,8 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 export const useTaste = () => useSyncExternalStore(subscribe, () => current, () => EMPTY);
 const EMPTY = emptyTaste();
 
-/** Changes the taste from its current value. */
-export const updateTaste = (fn: (t: Taste) => Taste) => set(fn(current));
+/** Changes the taste from its current value. Returning the same object changes nothing (no write, no re-render). */
+export const updateTaste = (fn: (t: Taste) => Taste) => { const next = fn(current); if (next !== current) set(next); };
 
 /** Starts again: forgets every answer, keeps nothing. */
 export const resetTaste = () => set({ ...emptyTaste(), seen: true });

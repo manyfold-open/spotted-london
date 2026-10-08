@@ -3,6 +3,7 @@
 // tests run the same code. Nothing here is sent to a server.
 
 import { CATEGORIES, isCategory } from './categories';
+import type { MyStateMap } from './my-state';
 
 /** What the ranking needs from a pop-up. The public list items have all of it. */
 export interface TasteItem {
@@ -14,12 +15,28 @@ export interface TasteItem {
 /** Weighted yes and no counts. Saves count half a swipe, so these are not whole numbers. */
 export interface Tally { y: number; n: number }
 
+/**
+ * What a save or a quality vote has already put into the tallies for one pop-up, with the facts it was counted
+ * under (so taking it back is exact even if the pop-up changed since). Saves and votes are state, not events:
+ * the tallies hold this once per pop-up, however often the button is pressed.
+ */
+export interface Act {
+  /** Category, normalised area (or null) and whether it was free when counted. */
+  c: string; b: string | null; f: boolean;
+  /** Saved. */
+  s?: true;
+  /** Quality vote: 1 up, -1 down. */
+  q?: 1 | -1;
+}
+
 export interface Taste {
   v: 1;
   cats: Record<string, Tally>;
   boroughs: Record<string, Tally>;
   /** Yes and no to free pop-ups only. */
   free: Tally;
+  /** Saves and quality votes already counted above, by pop-up id. Newest last. */
+  acts: Record<string, Act>;
   /** Answers given in the deck. Skips are not counted. */
   swipes: number;
   /** "For you" is switched on. */
@@ -29,6 +46,11 @@ export interface Taste {
 }
 
 export const DECK_SIZE = 10;
+/** A save is half a swipe in favour. A quality vote is a whole yes or no. */
+export const SAVE_WEIGHT = 0.5;
+export const QUALITY_WEIGHT = 1;
+/** Most pop-ups remembered in `acts`. Past it, new saves and votes are not learned from (forgetting one would count it twice). */
+export const ACTS_MAX = 1000;
 /** How much of the "hot" scale a fully liked category is worth. Hot moves by about 3.5 across a week of start times. */
 const TASTE_WEIGHT = 4;
 /** A category is hidden from "For you" at or below this smoothed yes rate: two noes and no yes, or the like. */
@@ -36,7 +58,7 @@ const HIDE_AT = 0.25;
 /** The deck only offers pop-ups that start within this long, so a card is never about something months away. */
 const DECK_HORIZON = 21 * 24 * 3_600_000;
 
-export const emptyTaste = (): Taste => ({ v: 1, cats: {}, boroughs: {}, free: { y: 0, n: 0 }, swipes: 0, on: false, seen: false });
+export const emptyTaste = (): Taste => ({ v: 1, cats: {}, boroughs: {}, free: { y: 0, n: 0 }, acts: {}, swipes: 0, on: false, seen: false });
 
 /** Smoothed yes rate between 0 and 1. Nothing known gives 0.5, so one answer never decides alone. */
 export const rate = (t: Tally | undefined) => (((t?.y ?? 0) + 1) / ((t?.y ?? 0) + (t?.n ?? 0) + 2));
@@ -57,26 +79,90 @@ export function parseTaste(raw: string | null | undefined): Taste {
   for (const [k, t] of Object.entries(v.cats ?? {})) if (isCategory(k)) cats[k] = tally(t);
   const boroughs: Taste['boroughs'] = {};
   for (const [k, t] of Object.entries(v.boroughs ?? {}).slice(0, 80)) boroughs[k.slice(0, 60)] = tally(t);
+  const acts: Taste['acts'] = {};
+  for (const [id, a] of Object.entries(v.acts ?? {})) {
+    const o = (a ?? {}) as Partial<Act>;
+    const q = o.q === 1 || o.q === -1 ? o.q : undefined;
+    if (Object.keys(acts).length >= ACTS_MAX || id.length > 64 || typeof o.c !== 'string' || (o.s !== true && !q)) continue;
+    acts[id] = { c: o.c.slice(0, 40), b: typeof o.b === 'string' ? o.b.slice(0, 60) : null, f: o.f === true, ...(o.s === true ? { s: true as const } : {}), ...(q ? { q } : {}) };
+  }
   const swipes = typeof v.swipes === 'number' && Number.isFinite(v.swipes) ? Math.max(0, Math.min(10_000, Math.floor(v.swipes))) : 0;
-  return { v: 1, cats, boroughs, free: tally(v.free), swipes, on: v.on === true, seen: v.seen === true };
+  return { v: 1, cats, boroughs, free: tally(v.free), acts, swipes, on: v.on === true, seen: v.seen === true };
 }
 
 const bump = (m: Record<string, Tally>, key: string, yes: boolean, w: number) => {
   const t = m[key] ?? { y: 0, n: 0 };
-  return { ...m, [key]: yes ? { y: t.y + w, n: t.n } : { y: t.y, n: t.n + w } };
+  const y = Math.max(0, t.y + (yes ? w : 0)), n = Math.max(0, t.n + (yes ? 0 : w));
+  const { [key]: _gone, ...rest } = m;
+  return y || n ? { ...rest, [key]: { y, n } } : rest; // a tally taken back to nothing leaves no trace
 };
 
 /**
  * One answer about one pop-up. `weight` is 1 for a swipe in the deck; softer signals (a save) use less.
- * `deck` marks an answer given on a card, which is what counts toward `swipes`.
+ * `deck` marks an answer given on a card, which is what counts toward `swipes`. A negative weight takes an
+ * earlier answer back (never below zero).
  */
 export function learn(taste: Taste, item: TasteItem, yes: boolean, weight = 1, deck = true): Taste {
   const next: Taste = { ...taste, cats: isCategory(item.category) ? bump(taste.cats, item.category, yes, weight) : taste.cats };
   const b = item.location.borough?.trim().toLowerCase();
   if (b) next.boroughs = bump(taste.boroughs, b, yes, weight);
-  if (item.price.type === 'free') next.free = yes ? { y: taste.free.y + weight, n: taste.free.n } : { y: taste.free.y, n: taste.free.n + weight };
+  if (item.price.type === 'free') next.free = yes ? { y: Math.max(0, taste.free.y + weight), n: taste.free.n } : { y: taste.free.y, n: Math.max(0, taste.free.n + weight) };
   if (deck) next.swipes = taste.swipes + 1;
   return next;
+}
+
+const factsOf = (i: TasteItem): Pick<Act, 'c' | 'b' | 'f'> => ({ c: i.category.slice(0, 40), b: i.location.borough?.trim().toLowerCase() || null, f: i.price.type === 'free' });
+const asItem = (a: Act): TasteItem => ({ id: '', category: a.c, hot: 0, price: { type: a.f ? 'free' : null }, location: { borough: a.b }, start_at: 0, end_at: 0 });
+
+/** Adds (sign 1) or takes back (sign -1) what one pop-up's save and vote are worth. */
+const count = (t: Taste, a: Act, sign: 1 | -1): Taste => {
+  if (a.s) t = learn(t, asItem(a), true, sign * SAVE_WEIGHT, false);
+  if (a.q) t = learn(t, asItem(a), a.q > 0, sign * QUALITY_WEIGHT, false);
+  return t;
+};
+
+/**
+ * Sets whether a pop-up is saved and what the quality vote on it is (1, -1 or 0 for none). Each is the state it
+ * is now, not a click: asking for what is already counted changes nothing and returns the same object, undoing
+ * is asking for the opposite, and the tallies end up as if the other state had never been counted. Swipes are
+ * never touched, and neither are `on` or `seen`.
+ */
+export function setActs(taste: Taste, item: TasteItem, now: { saved?: boolean; quality?: number }): Taste {
+  const old = taste.acts[item.id];
+  const saved = now.saved ?? !!old?.s;
+  const quality = now.quality === undefined ? (old?.q ?? 0) : Math.sign(now.quality);
+  if (saved === !!old?.s && quality === (old?.q ?? 0)) return taste;
+  if (!old && Object.keys(taste.acts).length >= ACTS_MAX) return taste;
+  let t = old ? count(taste, old, -1) : taste;
+  const { [item.id]: _old, ...rest } = taste.acts;
+  if (!saved && !quality) return { ...t, acts: rest };
+  const act: Act = { ...factsOf(item), ...(saved ? { s: true as const } : {}), ...(quality ? { q: quality as 1 | -1 } : {}) };
+  return { ...count(t, act, 1), acts: { ...rest, [item.id]: act } };
+}
+
+/**
+ * Brings the taste in line with the saves and votes someone has now (`mine`, from GET /me/state) on the pop-ups in
+ * `items`. The first run counts what they saved and voted before this existed, a later run counts what is new
+ * and takes back what is gone, and any run after that changes nothing. Pop-ups that are not in `items` are left
+ * as they are, and without `mine` (signed out, still loading) nothing happens.
+ */
+export function syncActions(taste: Taste, items: TasteItem[], mine: MyStateMap | null | undefined): Taste {
+  if (!mine) return taste;
+  const saved = new Set(mine.saved);
+  let t = taste;
+  for (const p of items) {
+    const quality = mine.votes[p.id]?.quality ?? 0;
+    if (!saved.has(p.id) && !quality && !t.acts[p.id]) continue;
+    t = setActs(t, p, { saved: saved.has(p.id), quality });
+  }
+  return t;
+}
+
+/** Starts the swipes again (Retake): forgets every swipe but keeps what saves and votes are worth. */
+export function forgetSwipes(taste: Taste): Taste {
+  let t: Taste = { ...emptyTaste(), seen: true, on: taste.on, acts: taste.acts };
+  for (const a of Object.values(taste.acts)) t = count(t, a, 1);
+  return t;
 }
 
 /** 0 to 1, how much someone is likely to like this pop-up. The category counts most; free and area nudge it. */

@@ -51,10 +51,17 @@ describe('GET and PUT /me/taste', () => {
     const u = await user();
     const put = await call('PUT', '/me/taste', { user: u, body: { taste: { v: 1, cats: { food: { y: 2, n: 0 }, nonsense: { y: 9, n: 9 } }, boroughs: {}, free: { y: -4, n: 'x' }, swipes: 3.7, on: true, seen: 'yes', extra: 'ignored' }, base: 0 } });
     expect(put.status).toBe(200);
-    expect(put.json.taste).toEqual({ v: 1, cats: { food: { y: 2, n: 0 } }, boroughs: {}, free: { y: 0, n: 0 }, swipes: 3, on: true, seen: false });
+    expect(put.json.taste).toEqual({ v: 1, cats: { food: { y: 2, n: 0 } }, boroughs: {}, free: { y: 0, n: 0 }, acts: {}, swipes: 3, on: true, seen: false });
     const row = await env.DB.prepare('SELECT data FROM user_taste WHERE user_id = ?').bind(u).first<{ data: string }>();
     expect(row!.data).not.toContain('nonsense');
     expect(row!.data).not.toContain('extra');
+  });
+
+  it('keeps the saves and votes ledger (acts) with the taste', async () => {
+    const u = await user();
+    const taste = { ...liked(), acts: { p1: { c: 'food', b: 'camden', f: true, s: true, q: 1 }, p2: { c: 'art', b: null, f: false, q: -1 } } };
+    await call('PUT', '/me/taste', { user: u, body: { taste, base: 0 } });
+    expect((await call('GET', '/me/taste', { user: u })).json.taste.acts).toEqual(taste.acts);
   });
 
   it('refuses what is not a taste', async () => {
