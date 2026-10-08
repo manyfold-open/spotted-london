@@ -12,6 +12,10 @@ describe('every category has its look', () => {
     expect(styles).toMatch(new RegExp(`^\\.pat-${c} \\{`, 'm'));
   });
 
+  it.each([...CATEGORIES])('%s has a pin colour', c => {
+    expect(styles).toMatch(new RegExp(`\\.cc-${c} \\{ --cc: #[0-9a-f]{6} \\}`));
+  });
+
   it('has no symbol or pattern for a category that no longer exists', () => {
     const symbols = [...iconSource.matchAll(/<symbol id="c-([a-z]+)"/g)].map(m => m[1]);
     const patterns = [...styles.matchAll(/^\.pat-([a-z]+) \{/gm)].map(m => m[1]);

@@ -11,6 +11,8 @@ import { recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
 import { tagFilter } from '../shared/tags';
 import { buildPopupSnapshot, entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 import { awardKarma } from '../db/karma';
+import { addPhotoFromUrl, resolveImageUrl } from '../lib/photo';
+import { audit } from './admin';
 
 export const popups = new Hono<AppEnv>();
 
@@ -121,7 +123,7 @@ popups.get('/:id', async c => {
   if (!canSee(p, u)) throw new ApiError(404, 'not_found', 'This pop-up does not exist.');
   const db = c.env.DB;
   const [{ results: images }, mine, saved, poster, checked] = await Promise.all([
-    db.prepare('SELECT id, r2_key, position FROM popup_images WHERE popup_id = ? ORDER BY position').bind(p.id).all<{ id: string; r2_key: string; position: number }>(),
+    db.prepare('SELECT id, r2_key, position, source_url, credit FROM popup_images WHERE popup_id = ? ORDER BY position').bind(p.id).all<{ id: string; r2_key: string; position: number; source_url: string | null; credit: string | null }>(),
     u ? db.prepare('SELECT kind, value FROM votes WHERE popup_id = ? AND user_id = ?').bind(p.id, u.id).all<{ kind: string; value: number }>() : null,
     u ? db.prepare('SELECT 1 AS s FROM saves WHERE popup_id = ? AND user_id = ?').bind(p.id, u.id).first() : null,
     db.prepare('SELECT id, display_name, karma FROM users WHERE id = ?').bind(p.created_by).first<{ id: string; display_name: string | null; karma: number }>(),
@@ -129,7 +131,7 @@ popups.get('/:id', async c => {
   ]);
   return c.json(toPublic({ ...p, source_checked: checked?.source_checked }, {
     cover_url: images[0] ? `/api/v1/images/${images[0].r2_key}` : null,
-    images: images.map(i => ({ id: i.id, url: `/api/v1/images/${i.r2_key}` })),
+    images: images.map(i => ({ id: i.id, url: `/api/v1/images/${i.r2_key}`, credit: i.credit, credit_url: i.source_url })),
     posted_by: poster ? { id: poster.id, name: poster.display_name, karma: poster.karma } : null,
     me: u ? {
       existence_vote: mine?.results.find(v => v.kind === 'existence')?.value ?? 0,
@@ -363,6 +365,39 @@ popups.post('/:id/images', async c => {
   await db.prepare('INSERT INTO popup_images (id, popup_id, r2_key, position, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, p.id, key, count?.n ?? 0, u.id, c.get('now')).run();
   return c.json({ id, url: `/api/v1/images/${key}` }, 201);
+});
+
+/* ---------- POST /popups/:id/images/from-url { image_url, page_url } ----------
+   The poster pasted a link and the page has a main picture (og:image). We copy it, never hotlink, and credit the page. */
+popups.post('/:id/images/from-url', async c => {
+  const u = requireUser(c);
+  if (!c.env.IMAGES) throw new ApiError(501, 'photos_not_enabled', 'Photo uploads are not switched on yet. Your pop-up was saved without photos.');
+  const p = await load(c.env.DB, c.req.param('id'));
+  if (p.created_by !== u.id && u.role !== 'admin') throw new ApiError(403, 'not_yours', 'Only the poster can add photos for now.');
+  const b = await jsonBody(c.req);
+  const page = safeUrl(text(b, 'page_url', { max: 1000 }) ?? '');
+  const image = resolveImageUrl(text(b, 'image_url', { max: 2000 }), page?.toString() ?? 'https://invalid.example/');
+  if (!image) throw bad('image_url_invalid', 'That photo address is not a public web link.');
+  const r = await addPhotoFromUrl(c.env, p.id, u.id, { imageUrl: image, pageUrl: page?.toString() ?? null }, c.get('now'));
+  if (!r.saved) throw new ApiError(422, 'photo_not_saved', `${r.reason} Your pop-up was saved without it.`);
+  return c.json({ id: r.id, url: r.url }, 201);
+});
+
+/* ---------- DELETE /popups/:id/images/:imageId (the poster, or an admin who takes a photo down) ---------- */
+popups.delete('/:id/images/:imageId', async c => {
+  const u = requireUser(c);
+  const db = c.env.DB;
+  const p = await load(db, c.req.param('id'));
+  if (p.created_by !== u.id && u.role !== 'admin') throw new ApiError(403, 'not_yours', 'Only the poster or an admin can remove a photo.');
+  const img = await db.prepare('SELECT id, r2_key, source_url, position FROM popup_images WHERE id = ? AND popup_id = ?').bind(c.req.param('imageId'), p.id).first<{ id: string; r2_key: string; source_url: string | null; position: number }>();
+  if (!img) throw new ApiError(404, 'not_found', 'That photo is not on this pop-up.');
+  await db.prepare('DELETE FROM popup_images WHERE id = ?').bind(img.id).run();
+  // Positions stay in order so the first photo is still the cover.
+  await db.prepare('UPDATE popup_images SET position = position - 1 WHERE popup_id = ? AND position > ?').bind(p.id, img.position).run();
+  await c.env.IMAGES?.delete(img.r2_key);
+  if (u.role === 'admin') await audit(db, u.id, 'popup.image_remove', 'popup', p.id, { image: img.id, source_url: img.source_url }, c.get('now'));
+  if (PUBLIC_STATUSES.includes(p.status)) rebuildSnapshotSoon(c); // the cover may have changed
+  return c.json({ removed: true });
 });
 
 /* ---------- input parsing shared by create and edit ---------- */

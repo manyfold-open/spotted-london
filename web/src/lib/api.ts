@@ -22,7 +22,7 @@ export interface Popup {
   source_checked?: boolean;
   distance_m?: number;
   me?: MyState | null;
-  images?: { id: string; url: string }[];
+  images?: { id: string; url: string; credit?: string | null; credit_url?: string | null }[];
   posted_by?: { id: string; name: string | null; karma: number } | null;
 }
 

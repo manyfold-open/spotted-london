@@ -45,10 +45,11 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
         </nav>
         <div className="mp-key" aria-label="Map key">
           <span className="mp-navh">Map key</span>
-          <div><span className="tag t-ink"><Icon name="i-shield" />Verified</span><p>An admin confirmed it.</p></div>
-          <div><span className="tag t-eng"><Icon name="i-checkc" />Community verified</span><p>Enough people voted or checked in.</p></div>
-          <div><span className="tag t-src"><Icon name="i-check" />Source checked</span><p>A Spotted agent matched it to its source page. People have not confirmed it yet.</p></div>
-          <div><span className="tag t-watch">Being checked</span><p>Not confirmed yet. Your vote helps.</p></div>
+          <p>The colour of a pin is its kind. Pick a kind in the chips to see its colour.</p>
+          <div><span className="keypin verified_admin"><i><Icon name="i-check" /></i></span><p><b>Admin verified.</b> Thick ring and a dark tick.</p></div>
+          <div><span className="keypin verified_community"><i><Icon name="i-check" /></i></span><p><b>Community verified.</b> A green tick. Enough people voted or checked in.</p></div>
+          <div><span className="keypin checked"><i><Icon name="i-check" /></i></span><p><b>Source checked.</b> A green outlined tick. A Spotted agent matched it to its source page. People have not confirmed it yet.</p></div>
+          <div><span className="keypin community" /><p><b>Being checked.</b> Dashed ring, no tick. Your vote helps.</p></div>
         </div>
         <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap.</p>
       </aside>

@@ -1,6 +1,6 @@
 // The one list of pop-up categories. The Worker, the web app and the agent tools all import it.
 // A new key needs, in the same change: a migration that widens the CHECK on popups.category,
-// an icon symbol (c-<key>) in web/src/components/Icon.tsx and a .pat-<key> rule in web/src/styles.css.
+// an icon symbol (c-<key>) in web/src/components/Icon.tsx a .pat-<key> rule and a .cc-<key> pin colour in web/src/styles.css.
 // test/categories.test.ts and test/category-assets.test.ts fail when one of those is missing.
 
 /** In chip order. */

@@ -85,6 +85,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const [price, setPrice] = useState('');
   const [desc, setDesc] = useState('');
   const [photos, setPhotos] = useState<Photo[]>([]);
+  // The main picture of the pasted link. We copy it when the pop-up is posted, and credit the page.
+  const [linkPhoto, setLinkPhoto] = useState<{ image: string; page: string } | null>(null);
   const [flags, setFlags] = useState<Partial<Record<FieldKey, Flag>>>({});
   const [ai, setAi] = useState<{ state: 'idle' | 'busy' | 'done' | 'error'; msg?: string }>({ state: 'idle' });
   const [shot, setShot] = useState<string | null>(null); // preview of the screenshot being read
@@ -120,6 +122,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   /* ----- AI autofill: a link, the post text, or a screenshot ----- */
   type Input = { kind: 'link' | 'text'; value: string } | { kind: 'image'; file: File };
   const fill = async (input: Input) => {
+    setLinkPhoto(null);
     setAi({ state: 'busy', msg: input.kind === 'link' ? 'Reading the page. Looking for dates, place and price.' : input.kind === 'text' ? 'Reading the text.' : 'Reading your screenshot. This takes a few seconds.' });
     try {
       let r: { fields: Extracted; platform: string | null };
@@ -148,6 +151,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
         if (places.items[0]) { setPlace(places.items[0]); setWhereText(places.items[0].label); }
         next.where = 'check';
       }
+      if (input.kind === 'link' && f.image_url) setLinkPhoto({ image: f.image_url, page: input.value });
       setFlags(next);
       const checks = Object.values(next).filter(v => v === 'check').length;
       setAi({ state: 'done', msg: `Filled ${n} field${n === 1 ? '' : 's'}. Blue fields came from AI${checks ? `, and ${checks} need a closer look` : ''}. Check them before you submit.` });
@@ -171,7 +175,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   /* ----- photos ----- */
   const addPhotos = (files: FileList | null) => {
     if (!files) return;
-    const room = 5 - photos.length;
+    const room = 5 - photos.length - (linkPhoto ? 1 : 0);
     const list = [...files].filter(f => f.type.startsWith('image/')).slice(0, room);
     if (files.length > room) toast('You can add up to 5 photos', 'i-image');
     setPhotos(ps => [...ps, ...list.map(file => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
@@ -214,6 +218,11 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
           const blob = await compressImage(ph.file);
           await api(`/popups/${created.id}/images`, { method: 'POST', body: blob, headers: { 'content-type': blob.type } });
         } catch (e) { onError(e); }
+      }
+      if (photosOn && linkPhoto) {
+        setSaving('Copying the photo from the link');
+        try { await api(`/popups/${created.id}/images/from-url`, { method: 'POST', json: { image_url: linkPhoto.image, page_url: linkPhoto.page } }); }
+        catch { toast('Posted, but we could not copy the photo from the link. You can add one yourself.', 'i-image'); }
       }
       qc.invalidateQueries({ queryKey: ['popups'] });
       qc.invalidateQueries({ queryKey: ['me'] });
@@ -331,11 +340,13 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
             <textarea className={cls('desc')} value={desc} onChange={e => { setDesc(e.target.value); clearFlag('desc'); }} maxLength={2000} placeholder="Queues, what to bring, anything useful" /></label>
 
           {photosOn ? <div className="field"><span className="lbl">Photos <span className="muted small">(up to 5)</span></span>
-            {photos.length ? <div className="thumbs">{photos.map(p => (
+            {photos.length || linkPhoto ? <div className="thumbs">{linkPhoto ? (
+              <figure key="link"><img src={linkPhoto.image} alt="" referrerPolicy="no-referrer" onError={() => setLinkPhoto(null)} /><button type="button" aria-label="Remove the photo from the link" onClick={() => setLinkPhoto(null)}><Icon name="i-x" /></button></figure>
+            ) : null}{photos.map(p => (
               <figure key={p.id}><img src={p.url} alt="" /><button type="button" aria-label="Remove photo" onClick={() => { URL.revokeObjectURL(p.url); setPhotos(ps => ps.filter(x => x.id !== p.id)); }}><Icon name="i-x" /></button></figure>
             ))}</div> : null}
-            {photos.length < 5 ? <span className="btn sm filebtn" style={{ alignSelf: 'flex-start' }}><Icon name="i-image" />Add photos<input type="file" accept="image/*" multiple onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} aria-label="Add photos" /></span> : null}
-            <span className="hint">We shrink photos before uploading them.</span>
+            {photos.length + (linkPhoto ? 1 : 0) < 5 ? <span className="btn sm filebtn" style={{ alignSelf: 'flex-start' }}><Icon name="i-image" />Add photos<input type="file" accept="image/*" multiple onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} aria-label="Add photos" /></span> : null}
+            <span className="hint">{linkPhoto ? `The first photo is from ${linkPhoto.page.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0]}. We credit the page. Remove it if it does not show the pop-up. ` : ''}We shrink photos before uploading them.</span>
           </div> : <div className="notice small"><Icon name="i-image" /><span>Photo uploads are coming soon. Add a source link so people can see what it looks like.</span></div>}
 
           <Turnstile onToken={setBotToken} resetKey={botReset} />
