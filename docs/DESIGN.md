@@ -40,7 +40,7 @@ State pairs (text on background):
 | Example data | `.t-sim` | `#553095` | `#ebe0fa` |
 | On now | `.t-new` | `--card` | `--accent` |
 
-Category pin colours (`.cc-<key>`) are separate from the cover tints below. Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top. Related categories share a tint and differ by hatch: food (diagonal) and dining (cross-hatch) are orange, exhibition (stripes) and art (dots) are blue. The eleven keys live in `src/shared/categories.ts`, and a new one needs a symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule, which `test/category-assets.test.ts` enforces.
+Each category has one colour token (`--cc-<key>`, in `:root`). The map pin uses it as is (`.cc-<key>`); a cover without a photo uses it mixed 42% into paper plus an ink hatch pattern (`.pat-<key>`), with the category icon on top, so a card and its pin read as the same kind. Hatches differ per category (food diagonal, dining cross-hatch, exhibition stripes, art dots, ...). The eleven keys live in `src/shared/categories.ts`, and a new one needs a symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule, which `test/category-assets.test.ts` enforces.
 
 ## Typography
 
