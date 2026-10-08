@@ -225,6 +225,11 @@ Scout has a memory: a list of sources to check, and every page it already read.
      summarises pages, fetch the raw page (for example with curl) and copy from that.
    - `evidence_url`: the page or post the quote comes from. It defaults to `source_url`.
    - `tags`: up to 5 tags from the "Tags" section that the page states, and `tag_quotes` for the ones that need a quote. Send `tags: []` when none apply; leave `tags` out only when you did not look.
+   - `image_url`: a photo of the pop-up itself, so it does not show a plain pattern. Use the main picture
+     of the organiser page (its `og:image`) or an address from `get_social_posts` `images`. Spotted copies
+     it and credits the page, so never hotlink it yourself. Not a logo, a map or a screenshot of text.
+     Leave it out when you have none: Spotted then tries the post images and the page picture. The answer
+     says `photo` saved or why not; a missing photo never blocks a draft.
    - `source_id`: the id of the source that led you to it, so its track record counts this draft.
    - `confidence: high` when the dates and the place are confirmed by the organiser or venue page,
      or by two independent pages that agree (two articles, a listing and a ticket page). Missing

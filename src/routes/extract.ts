@@ -4,6 +4,7 @@ import { requireUser } from '../middleware';
 import { ApiError, bad, sha256 } from '../lib/util';
 import { jsonBody, text } from '../lib/validate';
 import { DAY } from '../lib/scoring';
+import { resolveImageUrl } from '../lib/photo';
 import { londonDateString } from '../lib/time';
 import {
   emptyExtraction, finalise, fromLlm, llmPrompt, llmVisionPrompt, LLM_SCHEMA, mergeInto, missing, parseJsonLdEvent,
@@ -61,6 +62,7 @@ extract.post('/', async c => {
   if (!e.title && !e.start_date) {
     throw new ApiError(422, 'unreadable_link', 'We could not find pop-up details at that link. Paste the post text, upload a screenshot, or fill in the form yourself.');
   }
+  e.image_url = resolveImageUrl(e.image_url, url.toString()); // the form copies it, so it must be an absolute public address
   await c.env.CACHE.put(key, JSON.stringify(e), { expirationTtl: 86_400 });
   return c.json({ fields: e, platform: platformOf(url), cached: false });
 });

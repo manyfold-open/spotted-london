@@ -40,7 +40,7 @@ State pairs (text on background):
 | Example data | `.t-sim` | `#553095` | `#ebe0fa` |
 | On now | `.t-new` | `--card` | `--accent` |
 
-Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top. Related categories share a tint and differ by hatch: food (diagonal) and dining (cross-hatch) are orange, exhibition (stripes) and art (dots) are blue. The eleven keys live in `src/shared/categories.ts`, and a new one needs a symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule, which `test/category-assets.test.ts` enforces.
+Category pin colours (`.cc-<key>`) are separate from the cover tints below. Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat-food`, `.pat-market`, ...), with the category icon on top. Related categories share a tint and differ by hatch: food (diagonal) and dining (cross-hatch) are orange, exhibition (stripes) and art (dots) are blue. The eleven keys live in `src/shared/categories.ts`, and a new one needs a symbol `c-<key>` in `Icon.tsx` and a `.pat-<key>` rule, which `test/category-assets.test.ts` enforces.
 
 ## Typography
 
@@ -72,9 +72,10 @@ Category covers without a photo use a soft tint plus an ink hatch pattern (`.pat
 - **Logo**: the favicon mark (paper pin on an orange dot with an ink ring and offset shadow), `Logo` in `Shell.tsx`. Used in the menu, top bar, crash page and the server sign-in page.
 - **Cards**: cover (photo or pattern) with the category tag on it, status tag, title, place and dates, footer with "% real", confidence meter and up/down score. On phones they become rows with a 100px cover on the left. The title is a stretched link; buttons sit above it.
 - **Confidence meter**: green at 75% and up, yellow from 40%, red below.
+- **Photos from the web**: a small "Photo: site" line (linked to the page, with Remove photo for the poster and admins) under the facts. On the Add form the photo from a pasted link shows first in the Photos field with a hint and an x.
 - **Pop-up sheet**: facts list, "Is this real?" panel with the verification checklist, It's real / Fake, check-in, vote weight note.
 - **Add form**: AI box first (blue border and blue offset shadow) that takes a link, pasted text (grows as you type) or a screenshot (button, drag and drop, or paste; a blue scan line runs over the preview while it reads), fields turn blue when AI filled them and get a dashed "Check this" tag when unsure, address search with a draggable pin map, trust score panel.
-- **Map pins**: 30px circles in the status colour with the category icon; live pop-ups get an orange dot; the highlighted pin scales up with an orange ring.
+- **Map pins**: 30px circles. Fill = category (`.cc-<key>` sets `--cc`, 11 colours, also used by the dot on the category chips), icon = category. Status is the ring and a small badge bottom right: admin verified = thick ink ring and ink tick, community verified = green tick, source checked = green outlined tick, being checked = dashed ring and no badge. Live pop-ups get an orange dot top right; the highlighted pin grows with an orange ring.
 - **Date picker**: a field button showing "Sat 3 Oct" (year only when not this year) that opens a month calendar: Monday first, today dashed, selected day ink with orange shadow, the start to end range shaded, quick chips Today, Tomorrow, Saturday. A popover on desktop, a bottom sheet on phones. Full keyboard support.
 - **No native browser UI**: no `type="date"`, no browser validation bubbles (forms use `noValidate` and `.ferr` text), a custom clear button in search, ink scrollbars, orange text selection, autofill kept on paper, MapLibre zoom buttons in the Sketchbook style, inputs 16px on phones so iOS does not zoom.
 - **Empty states and errors**: dashed box with a large ink3 icon, a heading, one line of help and a button. Router crashes show `CrashPage` instead of the default error screen.

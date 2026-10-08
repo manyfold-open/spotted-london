@@ -1121,3 +1121,59 @@ describe('query plans', () => {
     expect(await plan("SELECT COUNT(*) FROM scout_seen WHERE run_id = 'x'")).toMatch(/USING (COVERING )?INDEX idx_scout_seen_run/);
   });
 });
+
+describe('photos on Scout drafts', () => {
+  const jpeg = () => { const b = new Uint8Array(5000); b.set([0xff, 0xd8, 0xff, 0xe0]); return b; };
+  const web = (images: Record<string, Uint8Array | 'missing'>, html = '<html><head></head><body>x</body></html>') =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = String(input);
+      if (url in images) { const v = images[url]; return v === 'missing' ? new Response('no', { status: 404 }) : new Response(v, { headers: { 'content-type': 'image/jpeg' } }); }
+      return new Response(html, { headers: { 'content-type': 'text/html' } });
+    });
+  const stored = (id: string) => env.DB.prepare('SELECT r2_key, position, source_url, credit, origin_url, uploaded_by FROM popup_images WHERE popup_id = ?').bind(id).all<any>().then(r => r.results);
+
+  it('copies the photo the agent names, credits the source page, and the draft still goes through when it cannot', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    web({ 'https://kinfolk.test/img/hero.jpg': jpeg(), 'https://kinfolk.test/img/gone.jpg': 'missing' });
+    const ok = await tool('submit_draft', draft(runId, { title: 'Hazel Pottery Weekend', lat: 51.46, lng: -0.15, image_url: 'https://kinfolk.test/img/hero.jpg' }), key);
+    expect(ok.structuredContent).toMatchObject({ sent: true, photo: 'Photo saved.' });
+    const [img] = await stored(ok.structuredContent.id);
+    expect(img).toMatchObject({ position: 0, source_url: 'https://kinfolk.test/sale', credit: 'kinfolk.test', origin_url: 'https://kinfolk.test/img/hero.jpg' });
+    expect(img.uploaded_by).toMatch(/^agent_/);
+    expect(await env.IMAGES!.head(img.r2_key)).not.toBeNull();
+
+    const gone = await tool('submit_draft', draft(runId, { title: 'Gamboge Letterpress Fair', lat: 51.45, lng: -0.05, image_url: 'https://kinfolk.test/img/gone.jpg' }), key);
+    expect(gone.structuredContent.sent).toBe(true);
+    expect(gone.structuredContent.photo).toMatch(/^No photo/);
+    expect(await stored(gone.structuredContent.id)).toHaveLength(0);
+  });
+
+  it('refuses a picture that is not an image, a tiny one, and an address that is not public', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    web({ 'https://kinfolk.test/a.jpg': new Uint8Array(5000).fill(65), 'https://kinfolk.test/pixel.jpg': new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3]) });
+    const names = ['Alpaca Weaving Studio', 'Burrata Counter Night', 'Cobalt Kiln Open House'];
+    for (const [i, image_url] of ['https://kinfolk.test/a.jpg', 'https://kinfolk.test/pixel.jpg', 'http://127.0.0.1/x.jpg'].entries()) {
+      const r = await tool('submit_draft', draft(runId, { title: names[i], lat: 51.50 + i / 20, lng: -0.20 + i / 20, image_url }), key);
+      expect(r.structuredContent.sent).toBe(true);
+      expect(await stored(r.structuredContent.id)).toHaveLength(0);
+    }
+  });
+
+  it('uses the picture of a post Spotted fetched, then the page picture, when the agent names none', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    await env.DB.prepare("INSERT INTO social_posts (id, url, platform, source_id, body, image_urls, fetched_at) VALUES ('sp_ph1', 'https://www.instagram.com/p/photo1', 'instagram', 'src_q_instagram', 'Pop-up this weekend! 3-4 Oct, Coal Drops Yard. Free entry.', ?, ?)")
+      .bind(JSON.stringify(['https://cdn.test/ig1.jpg']), NOW).run();
+    web({ 'https://cdn.test/ig1.jpg': jpeg(), 'https://kinfolk.test/og.jpg': jpeg() }, '<html><head><meta property="og:image" content="/og.jpg"></head><body></body></html>');
+    const fromPost = await tool('submit_draft', draft(runId, { title: 'Indigo Dye Workshop Sale', lat: 51.56, lng: -0.25, evidence: '3-4 Oct, Coal Drops Yard. Free entry.', evidence_url: 'https://www.instagram.com/p/photo1' }), key);
+    expect(fromPost.structuredContent.photo).toBe('Photo saved.');
+    expect((await stored(fromPost.structuredContent.id))[0]).toMatchObject({ origin_url: 'https://cdn.test/ig1.jpg', credit: 'instagram.com' });
+
+    web({ 'https://kinfolk.test/og.jpg': jpeg() }, '<html><head><meta property="og:image" content="/og.jpg"></head><body><p>Kinfolk sample sale, 3 and 4 October at Coal Drops Yard</p></body></html>');
+    const fromPage = await tool('submit_draft', draft(runId, { title: 'Photo From Page', lat: 51.6, lng: -0.3, evidence_url: 'https://kinfolk.test/sale' }), key);
+    expect(fromPage.structuredContent.photo).toBe('Photo saved.');
+    expect((await stored(fromPage.structuredContent.id))[0]).toMatchObject({ origin_url: 'https://kinfolk.test/og.jpg', credit: 'kinfolk.test' });
+  });
+});
