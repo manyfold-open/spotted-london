@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 
-// The new code can run before migration 0019 is applied: taste routes say so, and nothing else breaks.
+// The new code can run before migration 0020 is applied: taste routes say so, and nothing else breaks.
 const NOW = Date.UTC(2026, 9, 8, 13);
 async function call(method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = { 'x-now': String(NOW), 'x-dev-user': 'old_schema_u' };
@@ -10,7 +10,7 @@ async function call(method: string, path: string, body?: unknown) {
   return { status: res.status, json: (await res.json()) as any };
 }
 
-describe('before migration 0019', () => {
+describe('before migration 0020', () => {
   it('answers 503 on /me/taste and still deletes the account', async () => {
     await env.DB.prepare("INSERT INTO users (id, email, role, created_at) VALUES ('old_schema_u', 'old_schema_u@test.dev', 'user', ?)").bind(NOW).run();
     await env.DB.exec('DROP TABLE user_taste');

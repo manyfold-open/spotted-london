@@ -69,7 +69,7 @@ me.get('/karma', async c => {
 
 /* ---------- taste ("For you"): the account copy, see CLAUDE.md "For you (taste)" ---------- */
 
-/** The table comes with migration 0019. Until it is applied, say so instead of failing with a server error. */
+/** The table comes with migration 0020. Until it is applied, say so instead of failing with a server error. */
 const noTable = (e: unknown) => e instanceof Error && /no such table/i.test(e.message);
 const tasteOff = () => new ApiError(503, 'taste_unavailable', 'Saving your picks to your account is not ready yet. They stay on this device.');
 
@@ -122,7 +122,7 @@ me.delete('/', async c => {
   const u = requireUser(c);
   if (u.role === 'admin') throw new ApiError(409, 'admin_account', 'Hand over admin access before deleting this account.');
   const db = c.env.DB;
-  // Your picks go first, in their own statement: an account can still be deleted before migration 0019 is applied,
+  // Your picks go first, in their own statement: an account can still be deleted before migration 0020 is applied,
   // and if this fails nothing else has been deleted yet, so trying again is safe.
   try { await db.prepare('DELETE FROM user_taste WHERE user_id = ?').bind(u.id).run(); } catch (e) { if (!noTable(e)) throw e; }
   await db.batch([
