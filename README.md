@@ -188,6 +188,14 @@ A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or
 - The admin sets or clears tags with `PUT /api/v1/admin/popups/:id/tags` (`{"tags": ["family"]}`, `[]` for none, `null` for not looked at yet).
 - Apply the migration before merging the pull request: `npx wrangler d1 migrations apply spotted-db --remote`. The code deployed now ignores the new column.
 
+## "For you" taste on your account
+
+- The taste ("For you", the 10 swipes) is used from the browser, in `localStorage` key `spotted.taste`, so it works signed out and offline. Signed-out people never send it anywhere.
+- Signed-in people also keep a copy on the account, so a new device gets it back: `GET /api/v1/me/taste` and `PUT /api/v1/me/taste {taste, base}` (table `user_taste`, migration 0019). `base` is the `updated_at` the browser last saw (0 for none); if the account moved on, the answer is 409 `taste_changed` with the current copy. The body is cleaned with `parseTaste` and capped at 256,000 characters. Deleting the account deletes the row.
+- Which copy wins is `decideSync` in `src/shared/taste-sync.ts` (rules in its comment and in CLAUDE.md). In short: the whole taste, the more recent change wins; an empty device takes the account's; a first sign-in with picks and an empty account uploads them; signing out clears the device so a shared browser starts empty.
+- The public list and snapshot are the same for everyone and carry no taste.
+- Migration 0019 is a new table only. Run it before merging: `npx wrangler d1 migrations apply spotted-db --remote`. The code deployed now never reads the table, and the new code answers 503 on `/me/taste` (and still deletes accounts) if it runs first.
+
 ## Instagram and Threads posts (Apify)
 
 Scout can read public Instagram and Threads posts that Spotted fetches for it. Add sources on `/admin/agent` under Scout sources, kind Social, with a real address:

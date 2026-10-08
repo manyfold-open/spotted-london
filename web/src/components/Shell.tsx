@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { useExit } from '../lib/motion';
 import { useMe, useToast } from '../lib/hooks';
+import { useTasteSync } from '../lib/taste';
 import { NavMenu } from './NavMenu';
 import { PopupSheet } from './PopupSheet';
 import { TopBar } from './TopBar';
@@ -23,6 +24,7 @@ export const useShell = () => useOutletContext<ShellContext>();
 
 export function Shell() {
   const { data: me } = useMe();
+  useTasteSync();
   const loc = useLocation();
   const [sp, setSp] = useSearchParams();
   const toast = useToast();

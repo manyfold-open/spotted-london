@@ -733,6 +733,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .td-count { margin: 10px 0 0; text-align: center; font-size: 12px; color: var(--ink3); flex: none }
 .td-end { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; text-align: center }
 .td-end h2 { margin: 0; font-size: 26px } .td-end p { margin: 0; color: var(--ink2); max-width: 32ch }
+.td-end .td-kept { font-size: 12px; color: var(--ink3); max-width: 34ch }
 .td-liked { justify-content: center }
 @media (max-width: 380px) { .td-b span { display: none } .td-b { width: 56px; padding: 0; justify-content: center } }
 @media (prefers-reduced-motion: reduce) { .td-wrap { animation: none } .td-card { transition: none !important } }
