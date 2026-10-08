@@ -7,7 +7,7 @@ import { CATS, distance, fmtDay, isLive } from '../lib/format';
 import { useFilters, useSheet, useToast } from '../lib/hooks';
 import { haptic, scrollBehavior, usePhone } from '../lib/motion';
 import { useNearMe } from '../lib/near-me';
-import { updateTaste, useTaste } from '../lib/taste';
+import { updateTaste, useKeptNote, useTaste } from '../lib/taste';
 import type { Snap } from '../lib/map-home';
 import { Icon } from '../components/Icon';
 import type { PopupMapHandle } from '../components/maps';
@@ -40,6 +40,7 @@ export default function HomePage() {
   const q = usePopups(near.filter ? near.pos : null);
   const items = q.data?.items ?? [];
   const taste = useTaste();
+  const keptNote = useKeptNote();
   const [deck, setDeck] = useState<'first' | 'retake' | null>(null); // the swipe that sets up "For you"
   const openDeck = useCallback(() => setDeck(taste.swipes > 0 ? 'retake' : 'first'), [taste.swipes]);
   const [askOpen, setAskOpen] = useState(false); // the Ask panel: a question in words, an agent answers
@@ -231,7 +232,7 @@ export default function HomePage() {
             <button className="btn primary sm" onClick={openDeck}>Start</button>
             <button className="btn sm" onClick={() => updateTaste(t => ({ ...t, seen: true }))}>Not now</button>
           </div>
-          <p className="fine"><Icon name="i-info" />Your picks stay on this device.</p>
+          <p className="fine"><Icon name="i-info" />{keptNote}</p>
         </div>
       ) : null}
 
