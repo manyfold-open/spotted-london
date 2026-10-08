@@ -335,10 +335,24 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .mini span { font-size: 12px; color: var(--ink2) }
 .pinm { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--ink); display: grid; place-items: center; box-shadow: 2px 2px 0 var(--ink); cursor: pointer; padding: 0 }
 .pinm svg.i { width: 16px; height: 16px }
-.pinm.verified_admin { background: var(--ink); color: var(--card) }
-.pinm.verified_community { background: var(--eng); color: var(--card) }
-.pinm.community { background: var(--watch-bg); color: var(--watch); border-style: dashed; border-color: var(--watch) }
-.pinm.community.checked { background: var(--eng-bg); color: var(--eng); border-style: solid; border-color: var(--eng) }
+/* Colour = category (--cc, set by .cc-<key>), outline and badge = status. Admin verified: thick ink ring and ink check.
+   Community verified: green check. Source checked: green outlined check. Still being checked: dashed ring, no badge. */
+.cc-food { --cc: #f6a04d } .cc-dining { --cc: #d9594c } .cc-market { --cc: #8fcf7a } .cc-exhibition { --cc: #6fa8f0 }
+.cc-art { --cc: #a98ae8 } .cc-event { --cc: #ec6aa0 } .cc-fashion { --cc: #4fc3c0 } .cc-sample { --cc: #f2d04a }
+.cc-beauty { --cc: #f3b6c9 } .cc-tech { --cc: #9fb0c0 } .cc-other { --cc: #d6cdbb }
+.pinm { background: var(--cc, var(--soft)); color: var(--ink) }
+.pinm.verified_admin { border-width: 3px }
+.pinm.community:not(.checked) { border-style: dashed }
+.pinm .pb { display: none; position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--ink); place-items: center; background: var(--card); color: var(--ink); box-shadow: 0 0 0 1.5px var(--card) }
+.pinm .pb svg.i { width: 8px; height: 8px }
+.pinm.verified_admin .pb, .pinm.verified_community .pb, .pinm.checked .pb { display: grid }
+.pinm.verified_admin .pb { background: var(--ink); color: var(--card) }
+.pinm.verified_community .pb { background: var(--eng); color: var(--card) }
+.pinm.checked .pb { background: var(--card); color: var(--eng); border-color: var(--eng) }
+.pinm.hl .pb { width: 17px; height: 17px } .pinm.hl .pb svg.i { width: 10px; height: 10px }
+.cdot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--cc); display: inline-grid; place-items: center; flex: none }
+.cdot svg.i { width: 12px; height: 12px; color: var(--ink) }
+.chip:has(.cdot) { padding-left: 6px }
 .pinm.live::after { content: ""; position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink) }
 /* MapLibre places a marker with an inline `transform`. The individual `scale`, `rotate` and `translate` properties
    are applied before it, so a `scale` multiplies the marker's offset from the map corner and the pin lands in the
@@ -574,6 +588,18 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-key { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 0 12px; margin-top: auto }
 .mp-key .mp-navh { padding: 0 0 2px }
 .mp-key p { margin: 4px 0 0; font-size: 13px; line-height: 1.35; color: var(--ink3) }
+.mp-key > div { display: flex; gap: 12px; align-items: flex-start }
+.mp-key > div > p { margin: 0 }
+.mp-key > p { margin: 0 0 4px }
+.keypin { position: relative; flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--ink); background: var(--soft); box-shadow: 2px 2px 0 var(--ink); margin-top: 1px }
+.keypin.verified_admin { border-width: 3px }
+.keypin.community { border-style: dashed }
+.keypin i { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--card) }
+.keypin.verified_admin i { background: var(--ink) }
+.keypin.verified_community i { background: var(--eng) }
+.keypin i { display: grid; place-items: center } .keypin i svg.i { width: 7px; height: 7px }
+.keypin.verified_admin i, .keypin.verified_community i { color: var(--card) }
+.keypin.checked i { border-color: var(--eng); color: var(--eng) }
 .mp-foot { font-size: 12px; color: var(--ink3); padding: 0 12px }
 
 @media (max-width: 899px) {

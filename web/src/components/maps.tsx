@@ -101,10 +101,10 @@ export const PopupMap = forwardRef<PopupMapHandle, {
         markers.current.set(p.id, entry);
       }
       // Keep MapLibre's own class: it carries the position:absolute the marker transform relies on.
-      entry.el.className = `maplibregl-marker pinm ${p.status} ${p.status === 'community' && p.source_checked ? 'checked' : ''} ${isLive(p) ? 'live' : ''} ${fresh ? 'in' : ''}`;
+      entry.el.className = `maplibregl-marker pinm cc-${p.category} ${p.status} ${p.status === 'community' && p.source_checked ? 'checked' : ''} ${isLive(p) ? 'live' : ''} ${fresh ? 'in' : ''}`;
       // New pins drop in one after another.
       entry.el.style.animationDelay = fresh ? `${Math.min(added++, 16) * 25}ms` : '';
-      entry.el.innerHTML = iconMarkup(catIcon(p.category));
+      entry.el.innerHTML = iconMarkup(catIcon(p.category)) + '<i class="pb"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg></i>';
     }
     for (const [id, x] of markers.current) if (!seen.has(id)) { x.m.remove(); markers.current.delete(id); }
   }, [items]);
@@ -186,7 +186,8 @@ export function PinPicker({ lat, lng, onMove }: { lat: number; lng: number; onMo
   useEffect(() => {
     const m = newMap(el.current!, [lng, lat], 15.5);
     const pin = document.createElement('div');
-    pin.className = 'pinm verified_admin';
+    pin.className = 'pinm verified_admin cc-other';
+    pin.style.setProperty('--cc', 'var(--accent)');
     pin.innerHTML = iconMarkup('i-pin');
     marker.current = new Marker({ element: pin, draggable: true }).setLngLat([lng, lat]).addTo(m);
     marker.current.on('dragend', () => { const p = marker.current!.getLngLat(); onMoveRef.current(p.lat, p.lng); });

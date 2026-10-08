@@ -64,7 +64,7 @@ export function Filters({ near, locating, onNear, inline, onPick, onAsk }: { nea
   const cats = (
     <>
       <button className="chip" aria-pressed={!f.category} onClick={() => f.set({ cat: null })}>All</button>
-      {CAT_LIST.map(c => <button key={c} className="chip" aria-pressed={f.category === c} onClick={() => f.set({ cat: f.category === c ? null : c })}><Icon name={catIcon(c)} />{CATS[c]}</button>)}
+      {CAT_LIST.map(c => <button key={c} className="chip" aria-pressed={f.category === c} onClick={() => f.set({ cat: f.category === c ? null : c })}><span className={`cdot cc-${c}`}><Icon name={catIcon(c)} /></span>{CATS[c]}</button>)}
     </>
   );
   if (inline) {
