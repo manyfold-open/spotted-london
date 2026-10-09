@@ -5,18 +5,19 @@
 import { boxAround, haversine } from '../lib/geo';
 import { windowFor, type When } from '../lib/time';
 import { CATEGORIES, isCategory } from './categories';
+import { tagFilter } from './tags';
 
 const PUBLIC = ['community', 'verified_community', 'verified_admin'];
 const VERIFIED = ['verified_community', 'verified_admin'];
 
 export interface ListItem {
-  id: string; status: string; category: string; title: string; host: string | null; hot: number;
+  id: string; status: string; category: string; tags?: string[] | null; title: string; host: string | null; hot: number;
   price: { type: string | null }; location: { borough: string | null; lat: number; lng: number };
   start_at: number; end_at: number;
 }
 
 /**
- * Same inputs as GET /popups: when, category, verified, free, borough, q, near + radius_km + sort,
+ * Same inputs as GET /popups: when, category, tag (every one must be on the pop-up), avoid (none may be), verified, free, borough, q, near + radius_km + sort,
  * bbox, limit (1 to 50, or 'all'), cursor. Returns the page, the cursor for the next one and the time window used.
  */
 export function filterPopups<T extends ListItem>(all: T[], q: Record<string, string | undefined>, now: number) {
@@ -34,6 +35,12 @@ export function filterPopups<T extends ListItem>(all: T[], q: Record<string, str
     if (!cats.length) throw new Error(`Category must be one of: ${CATEGORIES.join(', ')}.`);
     rows = rows.filter(p => cats.includes(p.category));
   }
+  const want = tagFilter(q.tag), avoid = tagFilter(q.avoid);
+  if ('error' in want) throw new Error(want.error);
+  if ('error' in avoid) throw new Error(avoid.error);
+  // An untagged pop-up (null) is not known to have any tag: it fails `tag` and passes `avoid`.
+  if (want.tags.length) rows = rows.filter(p => want.tags.every(t => p.tags?.includes(t)));
+  if (avoid.tags.length) rows = rows.filter(p => !avoid.tags.some(t => p.tags?.includes(t)));
   if (q.borough) { const b = q.borough.toLowerCase(); rows = rows.filter(p => p.location.borough?.toLowerCase() === b); }
   if (q.free === '1') rows = rows.filter(p => p.price.type === 'free');
   if (q.q) {

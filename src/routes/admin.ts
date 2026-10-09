@@ -8,6 +8,7 @@ import { onStatusChange, recompute, toPublic } from '../db/popups';
 import { awardKarma } from '../db/karma';
 import { FLAGGING_VERDICTS, isReady, publishReady } from '../db/publish';
 import { entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
+import { cleanTags, formatTagColumn, MAX_TAGS, TAGS } from '../shared/tags';
 
 export const admin = new Hono<AppEnv>();
 
@@ -134,6 +135,27 @@ async function resolveReports(db: D1Database, popupId: string, resolution: 'uphe
   }
   if (results.length) await db.prepare('UPDATE popups SET report_weight = 0 WHERE id = ?').bind(popupId).run();
 }
+
+/**
+ * Sets or clears a pop-up's tags (the one way a person overrides what an agent tagged). `tags: null` puts it back to
+ * "nobody has looked yet", `[]` says none apply. Anything that is not on the list is refused, not skipped.
+ */
+admin.put('/popups/:id/tags', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const b = await jsonBody(c.req);
+  if (!('tags' in b) || (b.tags !== null && !Array.isArray(b.tags))) throw bad('tags_invalid', 'Send tags as a list, or null to mark it as not looked at yet.');
+  const next = b.tags === null ? null : cleanTags(b.tags);
+  if (next && next.dropped.length) throw bad('tags_invalid', `Not a tag, or more than ${MAX_TAGS}: ${next.dropped.join(', ')}. Tags: ${TAGS.join(', ')}.`);
+  const db = c.env.DB;
+  const p = await db.prepare('SELECT id, status, tags FROM popups WHERE id = ?').bind(c.req.param('id')).first<Pick<PopupRow, 'id' | 'status' | 'tags'>>();
+  if (!p) throw new ApiError(404, 'not_found', 'There is no pop-up with that id.');
+  const value = next ? formatTagColumn(next.tags) : null;
+  await db.prepare('UPDATE popups SET tags = ?, updated_at = ? WHERE id = ?').bind(value, now, p.id).run();
+  await audit(db, a.id, 'popup.tags_set', 'popup', p.id, { from: p.tags ?? null, to: value }, now);
+  if (['community', 'verified_community', 'verified_admin'].includes(p.status)) rebuildSnapshotSoon(c);
+  return c.json({ id: p.id, tags: next ? next.tags : null });
+});
 
 admin.post('/reports/:id/resolve', async c => {
   const a = requireAdmin(c);

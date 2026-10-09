@@ -8,6 +8,7 @@ import { boxAround, CHECKIN_RADIUS_M, geohash, haversine, inLondon } from '../li
 import { DAY, hot, initialStatus, KARMA, PUBLIC_STATUSES, voteWeight } from '../lib/scoring';
 import { MAX_DURATION, windowFor, type When } from '../lib/time';
 import { recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
+import { tagFilter } from '../shared/tags';
 import { buildPopupSnapshot, entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 import { awardKarma } from '../db/karma';
 import { addPhotoFromUrl, resolveImageUrl } from '../lib/photo';
@@ -51,6 +52,12 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
     where.push(`category IN (${cats.map(() => '?').join(',')})`);
     args.push(...cats);
   }
+  const want = tagFilter(q.tag), avoid = tagFilter(q.avoid);
+  if ('error' in want) throw bad('tag_invalid', want.error);
+  if ('error' in avoid) throw bad('tag_invalid', avoid.error);
+  // instr, not LIKE: "_" in a tag name is a wildcard in LIKE. Untagged (NULL) fails `tag` and passes `avoid`.
+  for (const t of want.tags) { where.push('instr(COALESCE(tags, \'\'), ?) > 0'); args.push(`,${t},`); }
+  for (const t of avoid.tags) { where.push('instr(COALESCE(tags, \'\'), ?) = 0'); args.push(`,${t},`); }
   if (q.borough) { where.push('borough = ? COLLATE NOCASE'); args.push(q.borough); }
   if (q.free === '1') { where.push("price_type = 'free'"); }
   if (q.q) {

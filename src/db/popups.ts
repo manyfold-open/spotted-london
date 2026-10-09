@@ -1,6 +1,7 @@
 import type { PopupRow } from '../types';
 import { hot, KARMA, nextStatus, round, wilson, type Status } from '../lib/scoring';
 import { awardKarma } from './karma';
+import { parseTagColumn } from '../shared/tags';
 
 interface VoteRow { user_id: string; kind: 'existence' | 'quality'; value: 1 | -1; weight: number; ip_hash: string | null }
 
@@ -91,6 +92,7 @@ export function toPublic(p: PopupRow & { cover_key?: string | null; source_check
     host: p.host,
     description: p.description,
     category: p.category,
+    tags: parseTagColumn(p.tags),
     price: { type: p.price_type, text: p.price_text },
     location: { address: p.address, borough: p.borough, lat: p.lat, lng: p.lng },
     start_at: p.start_at,

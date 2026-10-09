@@ -21,6 +21,8 @@ const json = (r: { text: string }) => JSON.parse(r.text);
 const BOROUGHS = ['Soho', 'Hackney', 'Camden', 'Peckham', null];
 const CATS = ['food', 'fashion', 'art', 'market', 'tech', 'dining', 'exhibition', 'event'];
 const TITLES = ['Matcha Lab', '100% Vintage_Sale', 'CAFE Takeover', 'Night Market', 'Riso Print Day', 'Kilo sale', 'Pottery seconds', 'Sneaker drop'];
+// null: not looked at; '': none apply. Keys with an underscore make sure `_` is not read as a wildcard.
+const TAGSETS: (string | null)[] = [',family,late_night,', null, ',outdoors,', '', ',interactive,late_night,', ',family,', null];
 const STATUSES = ['community', 'community', 'verified_community', 'verified_admin', 'pending', 'hidden', 'removed', 'ended'];
 
 /** 48 deterministic pop-ups: every status, window, category, price and place the filters care about. */
@@ -34,10 +36,10 @@ async function seed() {
     const lat = 51.45 + (i % 8) * 0.012, lng = -0.2 + Math.floor(i / 8) * 0.03;
     const quality = { pos: i % 7, neg: i % 3 };
     const h = hot({ status: status as never, qualityPos: quality.pos, qualityNeg: quality.neg, startAt, endAt }, NOW);
-    stmts.push(env.DB.prepare(`INSERT INTO popups (id, slug, title, host, category, price_type, borough, lat, lng, geohash, address, start_at, end_at, status, created_by, created_at, updated_at, quality_pos, quality_neg, hot, is_example)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'gcpvj', 'A', ?, ?, ?, 'sn_user', ?, ?, ?, ?, ?, 0)`)
+    stmts.push(env.DB.prepare(`INSERT INTO popups (id, slug, title, host, category, price_type, borough, lat, lng, geohash, address, start_at, end_at, status, created_by, created_at, updated_at, quality_pos, quality_neg, hot, is_example, tags)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'gcpvj', 'A', ?, ?, ?, 'sn_user', ?, ?, ?, ?, ?, 0, ?)`)
       .bind(`sn_${String(i).padStart(2, '0')}`, `sn-${i}`, `${TITLES[i % TITLES.length]} ${i}`, i % 4 === 0 ? null : `Host ${['Alpha', 'Beta', 'Gamma'][i % 3]}`, CATS[i % CATS.length],
-        i % 3 === 0 ? 'free' : 'paid', BOROUGHS[i % BOROUGHS.length], lat, lng, startAt, endAt, status, NOW, NOW, quality.pos, quality.neg, h));
+        i % 3 === 0 ? 'free' : 'paid', BOROUGHS[i % BOROUGHS.length], lat, lng, startAt, endAt, status, NOW, NOW, quality.pos, quality.neg, h, TAGSETS[i % TAGSETS.length]));
   }
   // three pop-ups with identical inputs, so identical hot: the tie is settled by id
   const tieStart = NOW + 5 * HOUR, tieEnd = NOW + 30 * HOUR;
@@ -63,6 +65,10 @@ describe('old SQL list and new browser filter agree', () => {
     { when: 'all', bbox: '-0.2,51.45,-0.1,51.52' }, { when: 'all', bbox: '-0.12,51.5,-0.05,51.55', category: 'food' },
     { when: 'all', limit: '5' }, { when: 'all', limit: '5', cursor: '5' }, { when: 'all', limit: '5', cursor: 'a' },
     { when: 'all', near: '51.49,-0.17', radius_km: '3', sort: 'distance', limit: '4', cursor: '4' },
+    { when: 'all', tag: 'family' }, { when: 'all', tag: 'late_night' }, { when: 'all', tag: 'family,late_night' }, { when: 'all', tag: 'outdoors,family' },
+    { when: 'all', avoid: 'late_night' }, { when: 'all', avoid: 'family,outdoors' }, { when: 'all', tag: 'family', avoid: 'late_night' },
+    { when: 'week', tag: 'interactive', free: '1' }, { when: 'all', tag: 'family', category: 'food,art', verified: '1' },
+    { when: 'all', tag: 'family', limit: '3' }, { when: 'all', tag: 'family', limit: '3', cursor: '3' },
     { when: 'all', limit: '50' }, { when: 'all', limit: '0' }, { when: 'bogus' }, {},
   );
 

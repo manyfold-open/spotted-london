@@ -23,6 +23,7 @@ import { ApiError, newId, slugify } from './lib/util';
 import { publishMode, publishReady } from './db/publish';
 import { snapshotItems, type SnapshotItem } from './db/snapshot';
 import { filterPopups } from './shared/filter-popups';
+import { cleanTags, TAGS } from './shared/tags';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
 import { addPhotoFromUrl, pagePhoto, resolveImageUrl, type PhotoSource } from './lib/photo';
@@ -66,6 +67,8 @@ function brief(p: ReturnType<typeof toPublic>, origin: string) {
     title: p.title,
     url: `${origin}/p/${p.slug}`,
     category: p.category,
+    // null: nobody has tagged this one yet, so it says nothing either way
+    tags: p.tags ?? null,
     host: p.host,
     dates: `${londonDateString(p.start_at)} to ${londonDateString(p.end_at)}`,
     hours: p.hours_text,
@@ -290,6 +293,8 @@ const TOOLS: Record<string, Tool> = {
       when: S('Time window, London time. Defaults to week.', { enum: ['today', 'weekend', 'week', 'all'] }),
       category: S('Only this category. food: stalls, bars, tastings. dining: supper clubs, chef residencies, dinner series. market: markets and fairs, including art fairs. exhibition: gallery and museum shows. art: one-off installations and public art. event: lates, festivals, parties, talks.', { enum: [...CATEGORIES] }),
       query: S('Words to match in the title, host or area, like "matcha" or "Shoreditch".'),
+      tags: { type: 'array', maxItems: 5, items: { type: 'string', enum: [...TAGS] }, description: 'Only pop-ups that have every one of these tags (what the page states: interactive, late_night, family, outdoors, vintage and so on). Pop-ups nobody has tagged yet are left out, so use this for a clear wish and fall back to a search without it.' },
+      avoid_tags: { type: 'array', maxItems: 5, items: { type: 'string', enum: [...TAGS] }, description: 'Leave out pop-ups that have any of these tags, for example outdoors when it is raining.' },
       near_lat: N('Latitude to search around. Use with near_lng.'),
       near_lng: N('Longitude to search around. Use with near_lat.'),
       radius_km: N('Search radius around near_lat/near_lng, 0.1 to 20. Defaults to 2.'),
@@ -301,6 +306,13 @@ const TOOLS: Record<string, Tool> = {
       const q: Record<string, string> = { when: str(a, 'when', 10) ?? 'week', limit: String(Math.min(20, Math.max(1, numArg(a, 'limit') ?? 10))) };
       const cat = str(a, 'category', 20); if (cat) q.category = cat;
       const text = str(a, 'query', 80); if (text) q.q = text;
+      for (const [arg, key] of [['tags', 'tag'], ['avoid_tags', 'avoid']] as const) {
+        if (a[arg] === undefined || a[arg] === null) continue;
+        if (!Array.isArray(a[arg])) throw new ToolError(`${arg} must be a list of tags.`);
+        const list = cleanTags(a[arg]);
+        if (list.dropped.length) throw new ToolError(`${arg}: ${list.dropped.join(', ')} ${list.dropped.length === 1 ? 'is not a tag' : 'are not tags'}. Tags: ${TAGS.join(', ')}.`);
+        if (list.tags.length) q[key] = list.tags.join(',');
+      }
       const lat = numArg(a, 'near_lat'), lng = numArg(a, 'near_lng');
       if (lat !== null && lng !== null) { q.near = `${lat},${lng}`; q.sort = 'distance'; const r = numArg(a, 'radius_km'); if (r) q.radius_km = String(r); }
       if (a.free_only === true) q.free = '1';

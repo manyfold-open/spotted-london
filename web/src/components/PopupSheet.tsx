@@ -6,6 +6,7 @@ import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { bump, haptic, isPhone } from '../lib/motion';
+import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
@@ -253,6 +254,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           {live ? <span className="tag t-new">On now</span> : null}
         </div>
         <div><h1 style={{ fontSize: 32 }}>{p.title}</h1>{p.host ? <p className="muted" style={{ marginTop: 4 }}>by {p.host}</p> : null}</div>
+        {p.tags?.length ? <ul className="tag-row" aria-label="Tags">{p.tags.map(t => <li key={t} className="tag t-line">{TAG_LABELS[t]}</li>)}</ul> : null}
         <dl className="facts">
           <dt><Icon name="i-clock" />When</dt><dd className="num">{dateRange(p)}{p.hours_text ? <><br /><span className="muted">{p.hours_text}</span></> : null}</dd>
           <dt><Icon name="i-pin" />Where</dt><dd>{p.location.address ?? p.location.borough ?? 'London'}</dd>

@@ -1,7 +1,8 @@
 // Typed client for /api/v1. Errors keep the server's stable `code` and readable `message`.
 
 import type { Category } from '../../../src/shared/categories';
-export type { Category };
+import type { Tag } from '../../../src/shared/tags';
+export type { Category, Tag };
 export type Status = 'pending' | 'community' | 'verified_community' | 'verified_admin' | 'hidden' | 'removed' | 'ended';
 export type When = 'today' | 'weekend' | 'week' | 'all';
 
@@ -10,6 +11,8 @@ export type { MyStateMap } from '../../../src/shared/my-state';
 
 export interface Popup {
   id: string; slug: string; title: string; host: string | null; description: string | null; category: Category;
+  /** What the page states (interactive, late night...). Null: nobody has tagged it yet. */
+  tags?: Tag[] | null;
   price: { type: string | null; text: string | null };
   location: { address: string | null; borough: string | null; lat: number; lng: number };
   start_at: number; end_at: number; hours_text: string | null; source_url: string | null; status: Status;
