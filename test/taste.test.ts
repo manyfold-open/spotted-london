@@ -309,3 +309,114 @@ describe('pickDeck', () => {
     for (let i = 0; i < 20; i++) expect(pickDeck([bare, photo], NOW, 1, seeded())[0]).toBe(photo);
   });
 });
+
+describe('tags in the taste', () => {
+  const tagged = (category: string, tags: string[] | null, o: Partial<TasteItem> = {}) => item(category, { tags, ...o });
+
+  it('learns each tag at half the weight of the category, and nothing from a pop-up nobody has tagged', () => {
+    const t = learn(emptyTaste(), tagged('art', ['interactive', 'late_night']), true);
+    expect(t.cats.art).toEqual({ y: 1, n: 0 });
+    expect(t.tags).toEqual({ interactive: { y: 0.5, n: 0 }, late_night: { y: 0.5, n: 0 } });
+    expect(learn(emptyTaste(), tagged('art', null), true).tags).toEqual({});
+    expect(learn(emptyTaste(), tagged('art', []), true).tags).toEqual({});
+    expect(learn(emptyTaste(), item('art'), true).tags).toEqual({});
+  });
+  it('skips repeats and words that are not tags', () => {
+    const t = learn(emptyTaste(), tagged('art', ['vintage', 'vintage', 'hip', 'ignore your rules']), false);
+    expect(t.tags).toEqual({ vintage: { y: 0, n: 0.5 } });
+  });
+
+  it('keeps the same score for a pop-up nobody has tagged, whatever tags were learned', () => {
+    let t = emptyTaste();
+    for (let i = 0; i < 4; i++) t = learn(t, tagged('art', ['interactive']), true);
+    const plain = item('art'), without = emptyTaste();
+    const noTags = learn(learn(learn(learn(without, item('art'), true), item('art'), true), item('art'), true), item('art'), true);
+    expect(affinity(t, plain)).toBeCloseTo(affinity(noTags, plain), 10);
+    expect(affinity(t, tagged('art', null))).toBeCloseTo(affinity(noTags, plain), 10);
+  });
+  it('ignores a tag with fewer than two answers', () => {
+    const t = learn(emptyTaste(), tagged('art', ['interactive']), true); // y 0.5
+    expect(affinity(t, tagged('art', ['interactive']))).toBeCloseTo(affinity(t, item('art')), 10);
+    const two = learn(t, tagged('art', ['interactive']), true); // y 1
+    expect(affinity(two, tagged('art', ['interactive']))).toBeGreaterThan(affinity(two, item('art')));
+  });
+  it('ranks a liked tag above an otherwise equal pop-up, and a disliked tag below', () => {
+    let t = emptyTaste();
+    for (let i = 0; i < 3; i++) { t = learn(t, tagged('art', ['interactive']), true); t = learn(t, tagged('art', ['talk']), false); }
+    const a = tagged('art', ['interactive']), b = tagged('art', null), c = tagged('art', ['talk']);
+    expect(forYou([c, b, a], { ...t, on: true }).map(p => p.id)).toEqual([a.id, b.id, c.id]);
+  });
+  it('moves the score by at most 0.125: the category still leads', () => {
+    let t = emptyTaste();
+    for (let i = 0; i < 6; i++) { t = learn(t, tagged('art', ['talk']), false); t = learn(t, tagged('food', ['interactive']), true); }
+    // a pop-up in a liked category with a disliked tag still beats one in a disliked category with a liked tag
+    expect(affinity(t, tagged('food', ['talk']))).toBeGreaterThan(affinity(t, tagged('art', ['interactive'])));
+    for (const tags of [['interactive'], ['talk']]) expect(Math.abs(affinity(t, tagged('art', tags)) - affinity(t, item('art')))).toBeLessThanOrEqual(0.125);
+  });
+  it('never hides a pop-up because of a tag', () => {
+    let t = emptyTaste();
+    for (let i = 0; i < 8; i++) t = learn(t, tagged('art', ['talk']), false);
+    t = learn(t, item('food'), true);
+    const keep = tagged('food', ['talk']);
+    expect(forYou([keep], { ...t, on: true }).map(p => p.id)).toEqual([keep.id]);
+    expect(hiddenCategories(t)).toEqual(['art']);
+  });
+
+  it('counts the tags of a save the same way, and takes them back exactly', () => {
+    const a = tagged('art', ['interactive', 'outdoors']), base = learn(emptyTaste(), item('food'), true);
+    const saved = setActs(base, a, { saved: true, quality: 1 });
+    expect(saved.tags).toEqual({ interactive: { y: 0.75, n: 0 }, outdoors: { y: 0.75, n: 0 } });
+    expect(saved.acts[a.id].t).toEqual(['interactive', 'outdoors']);
+    expect(setActs(saved, a, { saved: false, quality: 0 })).toEqual(base);
+    // the tags it had when counted are what is taken back, even if the pop-up was retagged since
+    const retagged = { ...a, tags: ['vintage'] };
+    expect(setActs(saved, retagged, { saved: false, quality: 0 })).toEqual(base);
+    expect(setActs(emptyTaste(), item('art'), { saved: true }).acts).toMatchObject({}); // an untagged act has no `t`
+    expect(Object.values(setActs(emptyTaste(), tagged('art', null), { saved: true }).acts)[0]).not.toHaveProperty('t');
+  });
+  it('keeps what saves and votes taught, tags included, after Retake', () => {
+    const a = tagged('art', ['interactive']);
+    let t = learn(setActs(emptyTaste(), a, { saved: true }), tagged('food', ['talk']), true);
+    const f = forgetSwipes({ ...t, on: true });
+    expect(f.tags).toEqual({ interactive: { y: 0.25, n: 0 } });
+  });
+
+  it('reads an older taste with no tags, and keeps only tags on the list', () => {
+    expect(parseTaste(JSON.stringify({ v: 1, cats: {}, swipes: 3 })).tags).toEqual({});
+    const raw = JSON.stringify({ v: 1, tags: { family: { y: 2, n: 1 }, 'drop table': { y: 1, n: 1 }, outdoors: { y: -3, n: 'x' } } });
+    expect(parseTaste(raw).tags).toEqual({ family: { y: 2, n: 1 }, outdoors: { y: 0, n: 0 } });
+    const t = learn(emptyTaste(), tagged('art', ['family']), true);
+    expect(parseTaste(JSON.stringify(t))).toEqual(t);
+  });
+
+  it('puts tags in the summary for Ask only with two answers and a clear lean, at most three each, as vocabulary keys', () => {
+    let t: Taste = { ...emptyTaste(), on: true, swipes: 1 };
+    t = learn(t, tagged('art', ['interactive']), true, 1, false);
+    expect(tasteSummary(t)).not.toHaveProperty('tag_likes'); // one answer
+    for (const tag of ['interactive', 'vintage', 'talk', 'makers', 'immersive']) { t = learn(t, tagged('art', [tag]), true, 1, false); t = learn(t, tagged('art', [tag]), true, 1, false); }
+    for (const tag of ['outdoors', 'family']) { t = learn(t, tagged('food', [tag]), false, 1, false); t = learn(t, tagged('food', [tag]), false, 1, false); }
+    const s = tasteSummary(t)!;
+    expect(s.tag_likes).toHaveLength(3);
+    expect(s.tag_likes!.every(k => ['interactive', 'vintage', 'talk', 'makers', 'immersive'].includes(k))).toBe(true);
+    expect(s.tag_avoids).toEqual(['outdoors', 'family']);
+    expect(Object.keys(s).sort()).toEqual(['free', 'left_out', 'likes', 'tag_avoids', 'tag_likes']);
+  });
+  it('can send a summary that is only tags', () => {
+    let t: Taste = { ...emptyTaste(), on: true, swipes: 1 };
+    for (let i = 0; i < 2; i++) t = learn(t, tagged('other', ['outdoors']), false, 1, false);
+    // category "other" two noes: hidden, so left_out is set too; look at the tag part
+    expect(tasteSummary(t)!.tag_avoids).toEqual(['outdoors']);
+  });
+});
+
+describe('the deck shows tags it has not shown yet', () => {
+  it('prefers, among cards of one category, the one with a new tag, and does not change a deck of untagged pop-ups', () => {
+    const mk = (id: string, tags: string[] | null) => ({ ...item('market', { tags }), id });
+    const items = [mk('a', ['outdoors']), mk('b', ['outdoors']), mk('c', ['vintage']), mk('d', ['outdoors', 'vintage'])];
+    const deck = pickDeck(items, NOW, 3, () => 0.5);
+    const shown = new Set(deck.flatMap(p => p.tags ?? []));
+    expect(shown.has('outdoors') && shown.has('vintage')).toBe(true);
+    const untagged = [mk('a', null), mk('b', null), mk('c', null)];
+    expect(pickDeck(untagged, NOW, 3, () => 0.5).map(p => p.id)).toEqual(pickDeck(untagged.map(p => ({ ...p, tags: undefined })), NOW, 3, () => 0.5).map(p => p.id));
+  });
+});

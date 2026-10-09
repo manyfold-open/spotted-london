@@ -1,6 +1,6 @@
 ---
 name: spotted-london
-version: 1.15.0
+version: 1.16.0
 description: Work as one of Spotted London's helper agents (Scout, Triage or Checker), or answer a visitor's question as the Concierge. Spotted is a community-verified list of pop-ups in London. Scout finds new pop-ups on the public web and sends them as drafts; Triage reads posts waiting for review and leaves the admin a note on each; Checker rechecks published pop-ups against their source and flags cancellations and changes. Use this whenever a message starts with "Spotted London:" and names a run, or when you are asked to find, check or triage London pop-ups for Spotted. Everything goes through the Spotted MCP server (named "spotted", your key is already in its settings); you write drafts and notes. Triage and Checker can also make the small fixes and the removals this skill describes, with proof; nobody approves as an admin, votes or edits a post by hand. Scout, Triage and Checker also tag pop-ups (section "Tags").
 ---
 
@@ -338,7 +338,7 @@ A Concierge does not run on a schedule and has no Spotted key. A visitor of Spot
 4. Write one friendly sentence per pick saying why it fits this request, at most 160 characters, with no web addresses.
 5. Reply with only a JSON object: `{"picks":[{"id":"<id>","reason":"<sentence>"}],"note":"<optional short sentence>"}`. When your brief says the visitor's browser can order by distance and the request is about being near them ("near me", "nearby", "close"), return up to 10 candidates in any order and add `"near":true`; otherwise add `"near":false` and keep to 5. If nothing fits, return an empty `picks` list and say what you looked for in `note`. Spotted checks every id against the public list and drops the ones that are not in it.
 
-A taste summary ("Likes", "Leaves out") is a hint from the visitor's own swipes. The request wins when they disagree. You are never told where the visitor is: do not guess a place from "near me".
+A taste summary ("Likes", "Leaves out", "Leans towards (tags)", "Tends to skip (tags)") is a hint from the visitor's own swipes. The tags are the ones in the "Tags" section above; a pop-up with `tags: null` has not been tagged yet and says nothing either way. The request wins when they disagree. You are never told where the visitor is: do not guess a place from "near me".
 
 ## finish_run
 
