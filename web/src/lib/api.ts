@@ -50,6 +50,12 @@ export interface Agent {
   open_notes: number; runs: AgentRun[]; published: { published: number; undone: number; hidden_after: number };
 }
 export interface AskStats { today: number; cap: number; per_visitor: number; failed_today: number; last_error: string | null }
+export interface TagReport {
+  coverage: { live: number; tagged: number; none_apply: number; not_looked_at: number };
+  uses: { tag: Tag; n: number; share: number }[];
+  changes: { agent: string; role: string; edits: number; added: number; removed: number }[];
+  samples: { id: string; slug: string; title: string; tags: Tag[]; source_url: string | null }[];
+}
 export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; auto_publish: 'suggest' | 'auto'; ask: AskStats | null; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
 export type SourceKind = 'listing' | 'venue' | 'brand' | 'social' | 'search';
 export type SourceStatus = 'active' | 'suggested' | 'paused' | 'rejected';

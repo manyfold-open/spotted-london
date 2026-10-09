@@ -185,6 +185,8 @@ A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or
 
 - `GET /api/v1/popups?tag=family,outdoors` keeps pop-ups that have every one of the tags, `avoid=outdoors` drops any that have one. Pop-ups nobody has tagged yet fail `tag` and pass `avoid`.
 - `search_popups` (MCP) takes `tags` and `avoid_tags` and returns each pop-up's `tags` (`null` means nobody has tagged it yet).
+- **Agents set tags.** The Scout sends `tags` (and `tag_quotes`) with a draft. Triage and Checker correct them with `tags: { add, remove }` in `add_note`. Six tags (`family`, `adults_only`, `dog_friendly`, `vegan`, `late_night`, `booking_needed`) need a quote that Spotted finds on the page and that says something about the tag; without one only that tag is dropped and the draft or note goes through. A tag outside the list is dropped and reported, never stored. Agent changes are in the audit log (`popup.agent_tags`, old and new set) and limited to 60 a day per agent. After merging, reinstall the skill on each Manyfold agent (it is installed from GitHub; SKILL.md is now version 1.15.0).
+- **Check how it is going** in the Tags block on /admin/agent (`GET /api/v1/admin/agents/tag-report`): how many live pop-ups are tagged, how many pop-ups carry each tag, what Triage and Checker changed, and ten tagged pop-ups to check by eye.
 - The admin sets or clears tags with `PUT /api/v1/admin/popups/:id/tags` (`{"tags": ["family"]}`, `[]` for none, `null` for not looked at yet).
 - Apply the migration before merging the pull request: `npx wrangler d1 migrations apply spotted-db --remote`. The code deployed now ignores the new column.
 

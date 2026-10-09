@@ -23,9 +23,11 @@ import { ApiError, newId, slugify } from './lib/util';
 import { publishMode, publishReady } from './db/publish';
 import { snapshotItems, type SnapshotItem } from './db/snapshot';
 import { filterPopups } from './shared/filter-popups';
-import { cleanTags, TAGS } from './shared/tags';
+import { cleanTags, formatTagColumn, MAX_TAGS, TAG_INFO, TAGS, type Tag } from './shared/tags';
+import { AGENT_TAG_EDITS_PER_DAY, readTagChange, readTagQuotes, TagError, type TagQuote } from './lib/tagging';
+import { currentTags, mergeTags, setAgentTags, tagEditsInLastDay, vetClaimTags, type Dropped } from './db/tags';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
-import { checkEvidence, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck } from './lib/evidence';
+import { checkEvidence, checkQuotes, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck, type QuoteCheck } from './lib/evidence';
 import { addPhotoFromUrl, pagePhoto, resolveImageUrl, type PhotoSource } from './lib/photo';
 import { differentSites, FixError, OUT_OF_SCOPE_REASONS, parseFixes } from './lib/triage';
 import { applyFixes, autoRemove, overDailyCap, type AutoKind } from './db/triage';
@@ -191,6 +193,27 @@ async function verifyEvidence(db: D1Database, quote: string, url: string): Promi
   const post = await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>();
   if (!post && SOCIAL_HOSTS.test(new URL(url).hostname)) return 'unchecked';
   return checkEvidence(quote, url, post);
+}
+
+/** Several tag quotes against one page, fetched once. A page Spotted cannot read counts for nothing. */
+async function lookupQuotes(db: D1Database, quotes: string[], rawUrl: string): Promise<Map<string, QuoteCheck>> {
+  const url = normalizeUrl(rawUrl);
+  const post = url ? await db.prepare('SELECT body FROM social_posts WHERE url IN (?, ?)').bind(url, `${url}/`).first<{ body: string | null }>() : null;
+  if (!url || (!post && SOCIAL_HOSTS.test(new URL(url).hostname))) return new Map(quotes.map(q => [q, 'unchecked' as QuoteCheck]));
+  return checkQuotes(quotes, url, post);
+}
+
+/** One line per tag for the tool descriptions, so an agent sees what each one means. */
+const TAG_HELP = TAGS.map(t => `${t}: ${TAG_INFO[t].means}${TAG_INFO[t].claim ? ' (needs a quote)' : ''}`).join('; ');
+
+const TAG_QUOTES_SCHEMA = {
+  type: 'array', maxItems: MAX_TAGS + 1,
+  description: 'A quote for each tag that needs one (family, adults_only, dog_friendly, vegan, late_night, booking_needed), copied word for word from the page, 12 to 300 characters, and saying something about that tag (for example "Kids go free" for family). Spotted finds it on the page; a tag without a found quote is dropped, and the rest still goes through.',
+  items: obj({ tag: S('The tag the quote is for.', { enum: [...TAGS] }), quote: S('Word for word from the page.'), url: S('The page the quote is from. Defaults to your evidence page.') }, ['tag', 'quote']),
+};
+
+function tagQuotesArg(a: Args): TagQuote[] {
+  try { return readTagQuotes(a.tag_quotes); } catch (e) { if (e instanceof TagError) throw new ToolError(e.message); throw e; }
 }
 
 /**
@@ -539,6 +562,8 @@ const TOOLS: Record<string, Tool> = {
       confidence: S('high: dates and place confirmed by the organiser or venue page, or by two independent pages that agree; missing hours or price does not matter. check: dates or place come from one page or search snippets only, or pages disagree.', { enum: ['high', 'check'] }),
       note_for_admin: S('What you checked and anything unclear, in one or two sentences.'),
       links: LINKS_SCHEMA,
+      tags: { type: 'array', maxItems: MAX_TAGS, items: { type: 'string', enum: [...TAGS] }, description: `Up to ${MAX_TAGS} tags: facts the page states, not opinions, the most defining ones. Send an empty list when none apply, and leave it out only when you did not look. ${TAG_HELP}.` },
+      tag_quotes: TAG_QUOTES_SCHEMA,
       image_url: S('Optional. A photo of the pop-up itself: the main picture of the organiser page (its og:image), or an address from get_social_posts images. Spotted copies it, credits the page and shows it on the pop-up. Skip logos, maps and screenshots. When you leave it out, Spotted tries the post images and then the page picture.'),
       source_id: S('Id from list_sources of the source that led you here, if any.'),
     }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url', 'evidence']),
@@ -550,6 +575,8 @@ const TOOLS: Record<string, Tool> = {
       if (!seenUrl) throw new ToolError('source_url must be a public web address.');
       const links = linksArg(a, seenUrl);
       const sourceId = await sourceArg(x, a);
+      if (a.tags !== undefined && a.tags !== null && !Array.isArray(a.tags)) throw new ToolError('tags must be a list of tags.');
+      const tagQuotes = tagQuotesArg(a);
       let input: ReturnType<typeof parsePopupInput>;
       try {
         input = parsePopupInput({ ...a, borough: a.area, ...dates(a) }, x.now, true, { ongoing: true });
@@ -573,11 +600,25 @@ const TOOLS: Record<string, Tool> = {
         if (e instanceof EvidenceError) throw new ToolError(`${e.message} (checked ${evidenceUrl})`);
         throw e;
       }
+      // Tags never stop a draft: one that is not accepted is dropped and reported, and the rest goes through.
+      let tagged: { tags: Tag[]; dropped: Dropped[] } | null = null;
+      if (a.tags !== undefined && a.tags !== null) {
+        const asked = cleanTags(a.tags);
+        const dropped: Dropped[] = asked.dropped.map(tag => ({ tag, why: `not on the list of tags (${TAGS.join(', ')}), or more than ${MAX_TAGS}` }));
+        if (looksAimedAtAgents([input.title, input.description, evidence, str(a, 'note_for_admin', 600)])) {
+          tagged = { tags: [], dropped: [...dropped, { tag: 'all', why: 'the draft has text aimed at AI agents, so it is left untagged for a person' }] };
+        } else {
+          const vetted = await vetClaimTags(asked.tags, tagQuotes, evidenceUrl, (quotes, url) => lookupQuotes(db, quotes, url));
+          tagged = { tags: vetted.kept, dropped: [...dropped, ...vetted.dropped] };
+        }
+      }
       await useItem(x, run);
       const id = newId();
       const row = {
         id, slug: slugify(input.title!), ...input, geohash: geohash(input.lat!, input.lng!), status: 'pending',
         evidence, evidence_url: evidenceUrl, evidence_check: evidenceCheck,
+        // Only when the Scout looked and nothing was held back for a person: null leaves the column out, so it stays NULL (not looked at).
+        ...(tagged && !tagged.dropped.some(d => d.tag === 'all') ? { tags: formatTagColumn(tagged.tags) } : {}),
         created_by: x.agent!.user_id, quality_pos: 0, quality_neg: 0, created_at: x.now, updated_at: x.now,
         hot: hot({ status: 'pending', qualityPos: 0, qualityNeg: 0, startAt: input.start_at!, endAt: input.end_at! }, x.now),
       };
@@ -595,7 +636,7 @@ const TOOLS: Record<string, Tool> = {
       ]);
       await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
       const photo = await attachScoutPhoto(x, id, str(a, 'image_url', 2000), [seenUrl, evidenceUrl, ...links.map(l => l.url)]);
-      return { sent: true, id, status: 'pending', photo, message: 'Draft saved. It is waiting for the admin.' };
+      return { sent: true, id, status: 'pending', photo, message: 'Draft saved. It is waiting for the admin.', ...(tagged ? { tags: tagged.tags, ...(tagged.dropped.length ? { tags_dropped: tagged.dropped } : {}) } : {}) };
     },
   },
   list_review_queue: {
@@ -663,6 +704,12 @@ const TOOLS: Record<string, Tool> = {
           set: obj({ address: S('New address, as in your quote.'), price_text: S('New price text, as in your quote.'), hours_text: S('New hours, as in your quote.'), start_date: S('YYYY-MM-DD'), end_date: S('YYYY-MM-DD') }),
         },
       },
+      tags: {
+        type: 'object', additionalProperties: false,
+        description: `Correct the tags on a post you have read (Triage on waiting posts, Checker on community pop-ups; not on admin-verified ones, your own posts, or with verdict cancelled, duplicate, out_of_scope or likely_fake). add: tags the page states. remove: tags the page does not support; removing needs no quote and wins over the Scout's tag. Send add: [] and remove: [] to say you looked and none apply. At most ${MAX_TAGS} stay on a post. Tags: ${TAG_HELP}.`,
+        properties: { add: { type: 'array', items: { type: 'string', enum: [...TAGS] } }, remove: { type: 'array', items: { type: 'string', enum: [...TAGS] } } },
+      },
+      tag_quotes: TAG_QUOTES_SCHEMA,
       corroboration: {
         type: 'array', maxItems: 3,
         description: 'For a post whose source page Spotted or you cannot open (login, blocked): two or three other pages from different sites, each with a quote copied word for word that states the dates and the place. Spotted finds the quotes. Two found quotes from different sites count in place of the quote from the source page, for you and for the Scout.',
@@ -740,6 +787,28 @@ const TOOLS: Record<string, Tool> = {
         const fields = Object.keys(fixed);
         if (fields.length) fixNote = ` Spotted applied your fixes: ${fields.map(f => f.replace('_at', '')).join(', ')}.`;
       }
+      // Tag changes come after the fixes and never refuse the note. What cannot be done comes back as tags_not_changed_because.
+      const tagChange = (() => { try { return readTagChange(a.tags); } catch (e) { if (e instanceof TagError) throw new ToolError(e.message); throw e; } })();
+      const tagQuotes = tagQuotesArg(a);
+      let tagOut: { tags?: Tag[]; dropped: Dropped[]; why?: string } | null = null;
+      if (tagChange) {
+        tagOut = { dropped: tagChange.dropped.map(tag => ({ tag, why: `not on the list of tags (${TAGS.join(', ')})` })) };
+        const mine = (role === 'triage' && p.status === 'pending') || (role === 'checker' && (p.status === 'community' || p.status === 'verified_community'));
+        if (!mine) tagOut.why = 'Triage can change tags on posts waiting for review and Checker on community pop-ups; an admin-verified pop-up is the admin\'s';
+        else if (!['looks_real', 'needs_check', 'details_changed'].includes(verdict)) tagOut.why = 'tags go with a note that says the pop-up looks real, needs a check or has changed details';
+        else if (p.created_by === x.agent!.user_id) tagOut.why = 'you cannot change tags on your own post';
+        else if (looksAimedAtAgents([p.title, p.description, note, quote, p.evidence])) tagOut.why = 'the post contains text aimed at AI agents, so a person has to look';
+        else if ((await tagEditsInLastDay(db, x.agent!.user_id, x.now)) >= AGENT_TAG_EDITS_PER_DAY) tagOut.why = 'you have used your tag changes for today';
+        else {
+          const vetted = await vetClaimTags(tagChange.add, tagQuotes, evidenceUrl ?? p.source_url, (quotes, url) => lookupQuotes(db, quotes, url));
+          tagOut.dropped.push(...vetted.dropped);
+          const { next, over } = mergeTags(currentTags(p), vetted.kept, tagChange.remove);
+          tagOut.dropped.push(...over.map(tag => ({ tag, why: `a post keeps at most ${MAX_TAGS} tags. Remove one first` })));
+          if (formatTagColumn(next) === (p.tags ?? null)) tagOut.why = 'nothing to change';
+          else if (await setAgentTags(db, p, next, x.agent!, x.now)) tagOut.tags = next;
+          else tagOut.why = 'the post changed while you were checking it';
+        }
+      }
       const noteText = note + fixNote + (sourceConfirmed ? ` Confirmed on two other sites: ${corroborated.map(c => c.url).join(', ')}.` : '');
 
       const existing = await db.prepare('SELECT id FROM agent_notes WHERE run_id = ? AND popup_id = ?').bind(run.id, p.id).first();
@@ -767,7 +836,9 @@ const TOOLS: Record<string, Tool> = {
       // No snapshot rebuild here: agents publish dozens an hour, and the cron rebuilds every 10 minutes anyway.
       return {
         saved: true, publish_ready: ready, ...(published ? { published: true } : {}), ...(why.length ? { not_ready_because: why } : {}),
-        ...(Object.keys(fixed).length ? { fixed: Object.keys(fixed) } : {}), ...(auto.done ? { auto: auto.done } : {}), ...(auto.why ? { not_auto_because: auto.why } : {}),
+        ...(Object.keys(fixed).length ? { fixed: Object.keys(fixed) } : {}),
+        ...(tagOut ? { ...(tagOut.tags ? { tags: tagOut.tags } : {}), ...(tagOut.dropped.length ? { tags_dropped: tagOut.dropped } : {}), ...(tagOut.why ? { tags_not_changed_because: tagOut.why } : {}) } : {}),
+        ...(auto.done ? { auto: auto.done } : {}), ...(auto.why ? { not_auto_because: auto.why } : {}),
       };
     },
   },
