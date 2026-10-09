@@ -12,8 +12,10 @@ describe('every category has its look', () => {
     expect(styles).toMatch(new RegExp(`^\\.pat-${c} \\{`, 'm'));
   });
 
-  it.each([...CATEGORIES])('%s has a pin colour', c => {
-    expect(styles).toMatch(new RegExp(`\\.cc-${c} \\{ --cc: #[0-9a-f]{6} \\}`));
+  it.each([...CATEGORIES])('%s has one colour, used by its pin and its cover', c => {
+    expect(styles).toMatch(new RegExp(`--cc-${c}: #[0-9a-f]{6};`));
+    expect(styles).toMatch(new RegExp(`\\.cc-${c} \\{ --cc: var\\(--cc-${c}\\) \\}`));
+    expect(styles).toMatch(new RegExp(`^\\.pat-${c} \\{ background-color: color-mix\\(in srgb, var\\(--cc-${c}\\)`, 'm'));
   });
 
   it('has no symbol or pattern for a category that no longer exists', () => {
