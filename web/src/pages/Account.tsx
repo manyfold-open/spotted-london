@@ -144,6 +144,15 @@ export function MePage() {
     onSuccess: () => { forgetTaste(); qc.clear(); nav('/'); toast('Signed out'); },
     onError,
   });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const del = useMutation({
+    mutationFn: async () => {
+      await api('/me', { method: 'DELETE' });
+      await api('/auth/logout', { method: 'POST' }).catch(() => {}); // the account is gone either way: this only clears the cookie
+    },
+    onSuccess: () => { forgetTaste(); qc.clear(); nav('/'); toast('Your account is deleted', 'i-check'); },
+    onError,
+  });
   const newsletter = useMutation({ mutationFn: () => api('/newsletter/subscribe', { method: 'POST', json: { email: me!.email } }), onSuccess: () => toast('Check your inbox to confirm', 'i-mail'), onError });
 
   if (isPending) return <MeSkeleton />;
@@ -180,7 +189,18 @@ export function MePage() {
         <button className="mrow" onClick={() => newsletter.mutate()} disabled={newsletter.isPending || newsletter.isSuccess}><Icon name="i-mail" /><span>Weekend newsletter<span className="sub">{newsletter.isSuccess ? 'Confirmation email sent' : `Send it to ${me.email}`}</span></span><Icon name="i-down" className="i chev" /></button>
         <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Emailed the day before a saved pop-up starts, and on its last day</span></span></div>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
+        <button className="mrow" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(v => !v)}><Icon name="i-flag" /><span>Delete account<span className="sub">Removes your email, name and saved list</span></span></button>
       </div>
+      {confirmDelete ? (
+        <div className="notice err" role="alertdialog" aria-labelledby="del-t" style={{ marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }}>
+          <b id="del-t">Delete your account?</b>
+          <span>We remove your email, name and saved list and sign you out for good. Pop-ups you added stay on Spotted without your name, because other people have voted on them. This cannot be undone.</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn danger" disabled={del.isPending} onClick={() => del.mutate()}>{del.isPending ? <span className="spin" /> : null}Yes, delete my account</button>
+            <button className="btn" disabled={del.isPending} onClick={() => setConfirmDelete(false)}>Keep my account</button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="lh"><h2>Your pop-ups</h2></div>
       {mine.data?.items.length ? (

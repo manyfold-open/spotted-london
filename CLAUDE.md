@@ -57,7 +57,7 @@ src/routes/*.ts         auth, popups, extract, geocode, me (profile, saves, vote
 src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
 src/cron.ts             end expired, hourly recompute hot (writes only rows that moved 0.01+), settle karma, purge, reminders (stub), start/check agent runs, fetch Instagram/Threads posts
 src/mcp.ts              MCP server at POST /mcp: public search tools (limited per visitor by MCP_LIMIT, answers carry a data-not-instructions note), agent tools behind a per-agent key
-src/privacy.ts          the privacy policy at /privacy (plain HTML, served by the Worker; Google's OAuth publishing needs its URL). It describes what the code collects, keeps and shares: change it in the same PR as any change to that (tested in test/privacy.test.ts)
+src/privacy.ts          the privacy policy at /privacy, which also says the Me page has Delete account (plain HTML, served by the Worker; Google's OAuth publishing needs its URL). It describes what the code collects, keeps and shares: change it in the same PR as any change to that (tested in test/privacy.test.ts)
 src/lib/llms.ts         the text of /llms.txt, the guide for AI assistants (same facts as web/src/pages/Connect.tsx, the /connect page)
 src/db/publish.ts       publish what agents verified (batch or auto), undo by agent, per-agent publish stats, the auto_publish setting
 src/db/agents.ts        AI agents on Manyfold, many per role (scout, triage, checker, concierge): schedules, briefs, run life cycle
