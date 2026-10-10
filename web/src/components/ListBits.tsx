@@ -26,11 +26,13 @@ export function usePopups(near?: [number, number] | null) {
     staleTime: 60_000,
   });
   const mine = useMyState();
+  const { data: me } = useMe();
   const taste = useTaste();
   const picked = taste.on && taste.swipes > 0; // "For you" is on and there is something to go on
   // Saves and quality votes teach the taste too. This counts the ones you have now (also those from before this
   // existed), takes back the ones you removed, and does nothing when they are already counted.
-  useEffect(() => { const items = snap.data?.items; if (items && mine) updateTaste(t => syncActions(t, items, mine)); }, [snap.data, mine]);
+  // Only from the account: what you saved on this device while signed out only shows as bookmarks until it moves over.
+  useEffect(() => { const items = snap.data?.items; if (items && mine && me) updateTaste(t => syncActions(t, items, mine)); }, [snap.data, mine, me]);
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   useEffect(() => { const t = setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 60_000); return () => clearInterval(t); }, []); // "today" and "on now" move with the clock
   const [lat, lng] = near ?? [];

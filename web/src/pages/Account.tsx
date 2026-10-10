@@ -3,7 +3,9 @@ import { Link, useNavigate, useRouteError, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AgentNote, type Popup } from '../lib/api';
 import { dateRange, initials, looksLikeEmail } from '../lib/format';
-import { useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
+import { useErrorToast, useGate, useMe, useMyState, useSheet, useToast } from '../lib/hooks';
+import { mergeMe } from '../lib/cache';
+import { useLocalSaves } from '../lib/local-saves';
 import { Icon } from '../components/Icon';
 import { CardSkeletons, Cover, PopupCard, StatusTag } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
@@ -13,29 +15,51 @@ import { flushTaste, forgetTaste } from '../lib/taste';
 /* ---------------- Saved ---------------- */
 export function Saved() {
   const { data: me, isPending } = useMe();
+  const gate = useGate();
+  const local = useLocalSaves();
   const q = useQuery({ queryKey: ['saves'], queryFn: () => api<{ items: Popup[] }>('/me/saves'), enabled: !!me });
-  const items = (q.data?.items ?? []).map(p => ({ ...p, me: { saved: true, existence_vote: 0, quality_vote: 0, ...p.me } }));
+  // Signed out: the public list (already loaded for the map) narrowed to what you saved on this device
+  const snap = useQuery({ queryKey: ['popups', 'snapshot'], queryFn: () => api<{ items: Popup[] }>('/popups/snapshot', { cache: 'no-cache' }), staleTime: 60_000, enabled: me === null });
+  const mine = useMyState();
+  const items = me
+    ? (q.data?.items ?? []).map(p => ({ ...p, me: { saved: true, existence_vote: 0, quality_vote: 0, ...p.me } }))
+    : mergeMe((snap.data?.items ?? []).filter(p => local.some(s => s.id === p.id)), mine);
+  const loading = isPending || (me ? q.isPending : snap.isPending);
   const upcoming = items.filter(p => p.end_at >= Date.now());
   const past = items.filter(p => p.end_at < Date.now());
-  if (!isPending && !me) return <SignInPrompt title="Saved" text="Sign in to keep a list of pop-ups and get a reminder the day before each one starts." to="/saved" />;
   return (
     <>
       <div className="eyebrow">Your list</div><h1>Saved</h1>
-      <p className="intro">We remind you the day before each one starts, and again on its last day.</p>
+      {me ? <p className="intro">We remind you the day before each one starts, and again on its last day.</p> : null}
+      {me === null ? (
+        <div className="notice note" style={{ marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Icon name="i-bookmark" />
+          <span style={{ flex: 1, minWidth: 200 }}><b>Saved on this device only.</b> Sign in to keep them on every device and get a reminder the day before each one starts.</span>
+          <button className="btn primary sm" onClick={() => gate({ why: 'Sign in to keep your saved list' })}>Sign in</button>
+        </div>
+      ) : null}
       <div className="lh"><h2>{upcoming.length} coming up</h2></div>
-      {q.isPending ? <CardSkeletons n={3} /> : upcoming.length ? <div className="grid">{upcoming.map(p => <PopupCard key={p.id} p={p} />)}</div>
-        : <div className="empty"><Icon name="i-bookmark" className="i big" /><h2>Nothing saved yet</h2><p>Tap the bookmark on any pop-up to keep it here.</p><Link className="btn sm" to="/">Explore pop-ups</Link></div>}
+      {loading ? <CardSkeletons n={3} /> : upcoming.length ? <div className="grid">{upcoming.map(p => <PopupCard key={p.id} p={p} />)}</div>
+        : <div className="empty"><Icon name="i-bookmark" className="i big" /><h2>Nothing saved yet</h2><p>Tap the bookmark on any pop-up to keep it here.{me === null ? ' No account needed.' : ''}</p><Link className="btn sm" to="/">Explore pop-ups</Link></div>}
       {past.length ? <><div className="lh"><h2>Already ended</h2></div><div className="grid">{past.map(p => <PopupCard key={p.id} p={p} />)}</div></> : null}
     </>
   );
 }
 
+/** A whole page that needs an account (Add a pop-up, Me): the Google button is right here, one tap. */
 export function SignInPrompt({ title, text, to }: { title: string; text: string; to: string }) {
+  const providers = useProviders();
+  const p = providers.data;
+  const back = encodeURIComponent(to);
   return (
     <div className="auth panel">
       <h1 style={{ fontSize: 28 }}>{title}</h1>
       <p className="muted" style={{ margin: '8px 0 18px' }}>{text}</p>
-      <Link className="btn primary block" to={`/signin?return_to=${encodeURIComponent(to)}`}>Sign in</Link>
+      <div className="stack">
+        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`}>Continue with Google</a> : null}
+        {!p || p.email || !p.google ? <Link className={`btn block ${p?.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`}>{p?.google ? 'Use email instead' : 'Sign in'}</Link> : null}
+        <Link className="btn subtle block" to="/">Keep browsing</Link>
+      </div>
     </div>
   );
 }
@@ -62,7 +86,8 @@ export function SignIn() {
   return (
     <div className="auth panel">
       <h1 style={{ fontSize: 28 }}>Sign in</h1>
-      <p className="muted" style={{ margin: '8px 0 18px' }}>No password. We email you a link that signs you in.</p>
+      <p className="muted" style={{ margin: '8px 0 18px' }}>{providers.data && !providers.data.email ? 'Sign in with your Google account. No password to remember.' : 'No password. We email you a link that signs you in.'}</p>
+      {providers.isPending ? <div className="sk" style={{ height: 44, borderRadius: 999 }} /> : null}
       {providers.data && !providers.data.email && !providers.data.google ? (
         <div className="notice watch"><Icon name="i-clock" /><span>Sign in is not switched on yet. You can still browse every pop-up.</span></div>
       ) : providers.data && !providers.data.email ? null : send.isSuccess ? (
@@ -71,7 +96,7 @@ export function SignIn() {
           {send.data.dev_link ? <a className="btn block" href={send.data.dev_link}>Development: open the sign-in link</a> : null}
           <button className="btn subtle" onClick={() => send.reset()}>Use a different email</button>
         </div>
-      ) : (
+      ) : providers.data ? (
         <form className="stack" noValidate onSubmit={e => { e.preventDefault(); if (!looksLikeEmail(email)) return setBad(true); send.mutate(); }}>
           <label className="field"><span className="lbl">Email</span>
             <input className={`input ${bad ? 'bad' : ''}`} type="email" autoComplete="email" inputMode="email" value={email} onChange={e => { setEmail(e.target.value); setBad(false); }}
@@ -80,11 +105,11 @@ export function SignIn() {
           <Turnstile onToken={setBotToken} resetKey={botReset} />
           <button className="btn primary block" disabled={send.isPending || (needsBot && !botToken)}>{send.isPending ? <span className="spin" /> : <Icon name="i-mail" />}Email me a link</button>
         </form>
-      )}
+      ) : null}
       {providers.data?.google ? (
         <>
-          <div className="row" style={{ margin: '16px 0' }}><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /><span className="small muted">or</span><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /></div>
-          <a className="btn block" href={`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`}>Continue with Google</a>
+          {providers.data.email ? <div className="row" style={{ margin: '16px 0' }}><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /><span className="small muted">or</span><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /></div> : null}
+          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`}>Continue with Google</a>
         </>
       ) : null}
       <p className="small muted" style={{ marginTop: 16 }}>We never show your email to other people.</p>
