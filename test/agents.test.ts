@@ -757,7 +757,7 @@ describe('agent runs', () => {
   it('takes a quote that is not in the part of a very large page we read as unchecked, not refused', async () => {
     const key = await connect('scout');
     const runId = await startRun('scout');
-    const big = `<html><body>${'<p>filler text for a large page</p>'.repeat(30_000)}<p>Open 7 and 8 November at Coal Drops Yard</p></body></html>`;
+    const big = `<html><body>${'<p>filler text for a large page</p>'.repeat(70_000)}<p>Open 7 and 8 November at Coal Drops Yard</p></body></html>`;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(big, { headers: { 'content-type': 'text/html' } }));
     const sent = await tool('submit_draft', draft(runId, { title: 'Big Page Sale', lat: 51.47, lng: -0.2, evidence: 'Open 7 and 8 November at Coal Drops Yard', evidence_url: 'https://big.test/p', source_url: 'https://big.test/p' }), key);
     expect(sent.structuredContent.sent).toBe(true);
