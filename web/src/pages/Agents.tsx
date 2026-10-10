@@ -30,7 +30,7 @@ function hoursText(a: Agent): string {
 
 export default function AgentsPage() {
   const { data: me, isPending } = useMe();
-  const q = useQuery({ queryKey: ['agents'], queryFn: () => api<AgentsView>('/admin/agents'), enabled: me?.role === 'admin', refetchInterval: 30_000 });
+  const q = useQuery({ queryKey: ['agents'], queryFn: () => api<AgentsView>('/admin/agents'), enabled: me?.role === 'admin', refetchInterval: 120_000 });
   if (isPending) return <Skeleton />;
   if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page controls the AI agents that help run Spotted.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   return (
