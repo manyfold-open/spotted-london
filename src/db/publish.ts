@@ -31,6 +31,7 @@ export async function setPublishMode(db: D1Database, mode: PublishMode, now: num
 async function log(db: D1Database, actor: string, action: string, popupId: string, detail: unknown, now: number) {
   await db.prepare('INSERT INTO audit_log (id, admin_id, action, target_type, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(newId(), actor, action, 'popup', popupId, JSON.stringify(detail), now).run();
+  clearPublishStats(); // every row written here (publish, undo) changes the numbers
 }
 
 type OpenNote = { id: string; agent_id: string; verdict: string; publish_ready: number };
@@ -91,8 +92,25 @@ export async function undoAgent(db: D1Database, agent: { id: string; user_id: st
 }
 
 /** What each agent has published, and how much of it was taken back or went bad. */
-export async function publishStats(db: D1Database): Promise<Map<string, { published: number; undone: number; hidden_after: number }>> {
-  const stats = new Map<string, { published: number; undone: number; hidden_after: number }>();
+type Stats = Map<string, { published: number; undone: number; hidden_after: number }>;
+/**
+ * The numbers are the same for every admin and scan the audit log, so one Worker keeps them for 5 minutes.
+ * The /admin/agent page asks every couple of minutes while it is open: on 10 Oct 2026 that was 1.5 million rows read in a day.
+ * Publishing and undoing clear it in the Worker that did them; another Worker can be up to 5 minutes behind.
+ */
+export const STATS_TTL = 5 * 60_000;
+let cached: { at: number; stats: Stats } | null = null;
+export const clearPublishStats = () => { cached = null; };
+
+export async function publishStats(db: D1Database, now = Date.now(), fresh = false): Promise<Stats> {
+  if (!fresh && cached && now >= cached.at && now - cached.at < STATS_TTL) return cached.stats;
+  const stats = await computePublishStats(db);
+  cached = { at: now, stats };
+  return stats;
+}
+
+async function computePublishStats(db: D1Database): Promise<Stats> {
+  const stats: Stats = new Map();
   const get = (id: string) => stats.get(id) ?? stats.set(id, { published: 0, undone: 0, hidden_after: 0 }).get(id)!;
   const [{ results: published }, { results: undone }] = await Promise.all([
     db.prepare(

@@ -47,7 +47,7 @@ agentsAdmin.get('/', async c => {
     db.prepare('SELECT * FROM agent_runs WHERE started_at > ? ORDER BY started_at DESC LIMIT 100').bind(c.get('now') - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT agent_id, COUNT(*) AS n FROM agent_notes WHERE resolved_at IS NULL AND verdict != 'looks_real' GROUP BY agent_id").all<{ agent_id: string; n: number }>(),
     publishMode(db),
-    publishStats(db),
+    publishStats(db, c.get('now')),
     askStats(c.env, c.get('now')),
   ]);
   const origin = c.env.APP_URL ? new URL(c.env.APP_URL).origin : new URL(c.req.url).origin;
@@ -287,7 +287,7 @@ async function one(db: D1Database, id: string, now: number) {
     db.prepare('SELECT * FROM agent_runs WHERE agent_id = ? AND started_at > ? ORDER BY started_at DESC LIMIT 8').bind(id, now - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT COUNT(*) AS n FROM agent_notes WHERE agent_id = ? AND resolved_at IS NULL AND verdict != 'looks_real'").bind(id).first<{ n: number }>(),
   ]);
-  return view(a, runs, notes?.n ?? 0, (await publishStats(db)).get(id));
+  return view(a, runs, notes?.n ?? 0, (await publishStats(db, now, true)).get(id));
 }
 
 /* ---------- Scout's sources ---------- */
