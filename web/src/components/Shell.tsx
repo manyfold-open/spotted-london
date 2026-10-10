@@ -5,6 +5,9 @@ import { api, type Popup } from '../lib/api';
 import { useExit } from '../lib/motion';
 import { useMe, useToast } from '../lib/hooks';
 import { useTasteSync } from '../lib/taste';
+import { useAfterSignIn } from '../lib/after-sign-in';
+import { useLocalSaves } from '../lib/local-saves';
+import { GateProvider } from './SignInSheet';
 import { NavMenu } from './NavMenu';
 import { PopupSheet } from './PopupSheet';
 import { TopBar } from './TopBar';
@@ -25,6 +28,8 @@ export const useShell = () => useOutletContext<ShellContext>();
 export function Shell() {
   const { data: me } = useMe();
   useTasteSync();
+  useAfterSignIn();
+  const localSaves = useLocalSaves();
   const loc = useLocation();
   const [sp, setSp] = useSearchParams();
   const toast = useToast();
@@ -47,14 +52,16 @@ export function Shell() {
   }, [sp, setSp, toast]);
 
   return (
-    <div className="shell" data-home={home}>
-      {home ? null : <TopBar menuOpen={menuOpen} onMenu={openMenu} />}
-      <main className={home ? 'mp-main' : 'page'}><Outlet context={{ menuOpen, openMenu } satisfies ShellContext} /></main>
-      <NavMenu open={menuOpen} onClose={closeMenu} savedCount={saves.data?.items.length ?? 0} queueCount={queue.data?.items.length ?? 0} isAdmin={me?.role === 'admin'} />
+    <GateProvider>
+      <div className="shell" data-home={home}>
+        {home ? null : <TopBar menuOpen={menuOpen} onMenu={openMenu} />}
+        <main className={home ? 'mp-main' : 'page'}><Outlet context={{ menuOpen, openMenu } satisfies ShellContext} /></main>
+        <NavMenu open={menuOpen} onClose={closeMenu} savedCount={me ? saves.data?.items.length ?? 0 : localSaves.length} queueCount={queue.data?.items.length ?? 0} isAdmin={me?.role === 'admin'} />
 
-      {/* Each page keeps its own scroll position, so switching pages and back lands where you were. */}
-      <ScrollRestoration getKey={l => l.pathname} />
-      {shownSheet ? <PopupSheet key={shownSheet} slug={shownSheet} leaving={sheetLeaving} /> : null}
-    </div>
+        {/* Each page keeps its own scroll position, so switching pages and back lands where you were. */}
+        <ScrollRestoration getKey={l => l.pathname} />
+        {shownSheet ? <PopupSheet key={shownSheet} slug={shownSheet} leaving={sheetLeaving} /> : null}
+      </div>
+    </GateProvider>
   );
 }

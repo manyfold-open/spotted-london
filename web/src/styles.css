@@ -828,3 +828,27 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @media (min-width: 900px) {
   .ca { right: 16px; left: auto; bottom: 16px; width: 400px; height: min(580px, calc(100% - 100px)) }
 }
+
+/* Sign in on the spot (SignInSheet): a bottom sheet on phones, a card in the middle on desktop. Above the pop-up sheet. */
+.gate-scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 60; animation: fade var(--dur-2) }
+.gate { position: fixed; z-index: 61; left: 0; right: 0; bottom: 0; background: var(--paper); border: 1.5px solid var(--ink); border-bottom: 0; border-radius: 20px 20px 0 0; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 18px); display: grid; gap: 12px; max-width: 480px; margin: 0 auto; animation: rise .28s var(--ease-out) backwards }
+.gate h2 { margin: 6px 0 0; font-size: 22px }
+.gate p { margin: 0 }
+.gate .handle { display: block; justify-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--hair) }
+@media (min-width: 900px) { .gate { margin: 0; bottom: auto; left: 50%; right: auto; width: 440px; translate: -50% -50%; top: 50%; border-bottom: 1.5px solid var(--ink); border-radius: 20px; padding: 24px; box-shadow: var(--shadow) } .gate .handle { display: none } }
+
+/* Connect an AI assistant (/connect) */
+.cn { max-width: 640px; margin: 0 auto; display: grid; gap: 16px }
+.cn .intro { margin-bottom: 4px }
+.cn-sec { display: grid; gap: 12px }
+.cn-sec h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px }
+.cn-sec h2.cn-h { display: block }
+.cn-n { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--accent); color: var(--card); display: grid; place-items: center; font-size: 14px }
+.cn-sec p { margin: 0 }
+.cn-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px }
+.cn-after { font-size: 13px }
+.cn code { font-size: 12.5px; background: var(--paper); border-radius: 6px; padding: 1px 5px; overflow-wrap: anywhere }
+.cn-box { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; border: 1.5px solid var(--hair); border-radius: 12px; background: var(--paper); padding: 10px 10px 10px 14px }
+.cn-box p, .cn-box pre { margin: 0; min-width: 0; flex: 1; font-size: 14px; overflow-wrap: anywhere }
+.cn-box pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-x: auto }
+.cn-box .btn { flex: none }

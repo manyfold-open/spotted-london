@@ -9,6 +9,7 @@ import { Shell } from './components/Shell';
 import { ToastProvider } from './lib/hooks';
 import HomePage from './pages/HomePage';
 import { Submit } from './pages/Submit';
+import { Connect } from './pages/Connect';
 import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
       { path: '/map', element: <MapRedirect /> },
       { path: '/add', element: <Submit /> },
       { path: '/saved', element: <Saved /> },
+      { path: '/connect', element: <Connect /> },
       { path: '/me', element: <MePage /> },
       { path: '/signin', element: <SignIn /> },
       { path: '/admin', element: <AdminQueue /> },

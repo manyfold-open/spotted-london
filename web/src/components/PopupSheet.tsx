@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Popup } from '../lib/api';
 import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib/cache';
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { useLocalSaves } from '../lib/local-saves';
 import { bump, haptic, isPhone } from '../lib/motion';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
@@ -49,16 +50,24 @@ export function PopupSheet({ slug, leaving }: { slug: string; leaving: boolean }
   }, []);
 
   const notFound = q.error instanceof ApiError && q.error.status === 404;
+  const pop = useWithLocalSave(q.data);
   return (
     <>
       <div ref={scrim} className={`scrim ${vt ? 'vt' : ''} ${leaving ? 'out' : ''}`} onClick={close} />
       <aside ref={drawer} tabIndex={-1} className={`drawer ${vt ? 'vt' : ''} ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={q.data?.title ?? 'Pop-up'} aria-busy={q.isFetching}>
         {q.isPending ? <SheetSkeleton onClose={close} />
           : q.isError && (notFound || !q.data) ? <SheetMissing onClose={close} notFound={notFound} />
-          : <SheetBody p={q.data!} onClose={close} />}
+          : <SheetBody p={pop!} onClose={close} />}
       </aside>
     </>
   );
+}
+
+/** Signed out, the detail copy has no `me`, so what you saved on this device is laid over it. */
+function useWithLocalSave(p: Popup | undefined): Popup | undefined {
+  const { data: me } = useMe();
+  const local = useLocalSaves();
+  return useMemo(() => (p && me === null ? { ...p, me: { existence_vote: 0, quality_vote: 0, ...p.me, saved: local.some(s => s.id === p.id) } } : p), [p, me, local]);
 }
 
 /**
@@ -282,10 +291,10 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
             {own ? <p className="weightnote" style={{ marginTop: 14 }}>This is your post, so you cannot vote on it. You earn 10 karma when it is verified.</p> : (
               <>
                 <div className="split" style={{ marginTop: 14 }}>
-                  <button className={`btn yes ${mine === 1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(1), 'Sign in to vote')}><Icon name="i-check" />It's real</button>
-                  <button className={`btn no ${mine === -1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(-1), 'Sign in to vote')}><Icon name="i-x" />Fake</button>
+                  <button className={`btn yes ${mine === 1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(1), 'Sign in to vote', { then: 'vote' })}><Icon name="i-check" />It's real</button>
+                  <button className={`btn no ${mine === -1 ? 'on' : ''}`} disabled={!canVote} onClick={requireAuth(vote(-1), 'Sign in to vote', { then: 'vote' })}><Icon name="i-x" />Fake</button>
                 </div>
-                <button className="btn block" style={{ marginTop: 10 }} disabled={!live || checkin.isPending} onClick={requireAuth(() => checkin.mutate(), 'Sign in to check in')}>
+                <button className="btn block" style={{ marginTop: 10 }} disabled={!live || checkin.isPending} onClick={requireAuth(() => checkin.mutate(), 'Sign in to check in', { then: 'check in' })}>
                   {locating ? <span className="spin" /> : <Icon name="i-locate" />}
                   {locating ? 'Finding you' : live ? "I'm here, check me in" : 'Check-in opens when it starts'}
                 </button>
@@ -311,7 +320,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
               </div>
               <div style={{ marginTop: 10 }}><Turnstile onToken={setBotToken} /></div>
             </div>
-          ) : <div><button className="btn sm subtle" onClick={requireAuth(() => setReporting(true), 'Sign in to report')}><Icon name="i-flag" />Report a problem</button></div>
+          ) : <div><button className="btn sm subtle" onClick={requireAuth(() => setReporting(true), 'Sign in to report', { then: 'report a problem' })}><Icon name="i-flag" />Report a problem</button></div>
         ) : null}
       </div>
       <div className="dfoot">
