@@ -16,6 +16,17 @@ const BOT_ID = 'sys_photo_bot';
 const SOCIAL_HOSTS = /(^|\.)(instagram\.com|instagr\.am|threads\.net|threads\.com|tiktok\.com|xiaohongshu\.com|xhslink\.com|facebook\.com|fb\.com)$/;
 const NOT_A_PHOTO = /(logo|favicon|sprite|placeholder|default[-_]?(image|share|og|social)|site[-_]?icon|avatar)/i;
 
+/**
+ * A page that lists many events (a gallery's /exhibitions, a venue's /whats-on) has the site's default picture or the top
+ * event's, not this pop-up's. Only the last part of the path counts: /exhibitions/643-peter-howson is one exhibition.
+ */
+const LISTING_WORDS = new Set(['exhibitions', 'whats-on', 'what-s-on', 'whatson', 'events', 'calendar', 'programme', 'programmes', 'listings', 'upcoming', 'current', 'past', 'archive']);
+export function isListingPage(raw: string): boolean {
+  const url = safeUrl(raw);
+  const last = url?.pathname.split('/').filter(Boolean).pop()?.toLowerCase();
+  return !!last && LISTING_WORDS.has(last);
+}
+
 type Candidate = { id: string; source_url: string | null };
 
 /** The page addresses to try for one pop-up: its source link, then the other links the Scout saved. */
@@ -25,7 +36,7 @@ export async function pagesFor(db: D1Database, p: Candidate): Promise<string[]> 
   const seen = new Set<string>();
   return all.filter(u => {
     const url = safeUrl(u);
-    if (!url || SOCIAL_HOSTS.test(url.hostname) || seen.has(url.toString())) return false;
+    if (!url || SOCIAL_HOSTS.test(url.hostname) || isListingPage(u) || seen.has(url.toString())) return false;
     seen.add(url.toString());
     return true;
   }).slice(0, 2);
@@ -34,7 +45,7 @@ export async function pagesFor(db: D1Database, p: Candidate): Promise<string[]> 
 /** Try one pop-up. Returns the reason it got no photo, or null when one was saved. */
 export async function backfillOne(env: Pick<Bindings, 'DB' | 'IMAGES'>, p: Candidate, now: number, fetcher: typeof fetch = fetch): Promise<string | null> {
   const pages = await pagesFor(env.DB, p);
-  if (!pages.length) return 'No page to read: the source is a social post or there is no link.';
+  if (!pages.length) return 'No page to read: the source is a social post, a list of many events, or there is no link.';
   let why = 'The page has no main picture.';
   for (const page of pages) {
     const image = await pagePhoto(page, fetcher);
