@@ -179,6 +179,15 @@ One-time setup:
 2. In Manyfold, create an agent for it on its **own sandbox** (it reads text typed by anonymous visitors) and give it the public tools with no key: `mf mcp add spotted <APP_URL>/mcp --scope project --agent-id agt_…`.
 3. On /admin/agent press **Concierge** under Add another, press Connect with Manyfold, approve that agent, and switch it on. Ask shows for visitors only while a Concierge is on.
 
+## Use Spotted from your own AI assistant
+
+Anyone can connect ChatGPT, Claude, Codex or Gemini CLI to Spotted and ask what is on. The page for people is `/connect` (menu: "Use with AI", `web/src/pages/Connect.tsx`); the guide for assistants is `/llms.txt` (`src/lib/llms.ts`, built from `APP_URL`, so a custom domain needs no edit). Keep the two in step.
+
+- **What they get**: the keyless MCP tools `search_popups` and `get_popup` at `POST /mcp`. No sign-in, no key. Preferences stay with the assistant: it turns "I like matcha, not outdoors" into `tags` / `avoid_tags` itself. Spotted sees only the search it sends, never the chat or the person. A signed-in link to a Spotted account (personal token, `get_my_taste`) is not built.
+- **Browsing-only assistants** read `/llms.txt` and call `GET /api/v1/popups` (the filters are listed there).
+- **Limits**: keyless calls are counted per visitor (salted IP hash) by a Cloudflare rate limit binding, `MCP_LIMIT` in `wrangler.jsonc` (120 a minute, also in the `previews` block). The MCP tools and `GET /api/v1/popups` count separately; past the limit the tool answers with a message, the list answers 429. Without the binding nothing is limited. Agents with a key are not limited here. The Concierge calls `/mcp` without a key from one Manyfold address, so if Ask ever bursts past 120 searches a minute, raise the limit.
+- **Safety**: titles, hosts and descriptions are typed by the public and land in someone else's assistant. Every public answer carries a `note` saying so, descriptions are cut at 1,500 characters for keyless callers, and the MCP `instructions` say the same.
+
 ## Tags
 
 A pop-up can carry up to 5 tags such as `interactive`, `late_night`, `family` or `outdoors`: facts the organiser's page states, from a fixed list in `src/shared/tags.ts` (design: `docs/superpowers/specs/2026-10-08-scout-tags-design.md`). They are stored in `popups.tags` (migration `0020_tags.sql`, one nullable column), travel in the public snapshot, and show as small read-only labels on the pop-up sheet.

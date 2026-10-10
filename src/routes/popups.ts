@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv, PopupRow, UserRow } from '../types';
-import { ipHash, requireUser, verifyTurnstile } from '../middleware';
+import { ipHash, requireUser, verifyTurnstile, withinPublicLimit } from '../middleware';
 import { ApiError, bad, newId, slugify, titleSimilarity } from '../lib/util';
 import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { CATEGORIES, safeUrl } from '../lib/extract';
@@ -31,7 +31,11 @@ function canSee(p: PopupRow, u: UserRow | null): boolean {
 }
 
 /* ---------- GET /popups ---------- */
-popups.get('/', async c => c.json(await listPopups(c.env.DB, c.req.query(), c.get('now'))));
+// The app reads the snapshot instead; this one is for scripts and AI assistants that browse (see /llms.txt), so it is limited per visitor.
+popups.get('/', async c => {
+  if (!(await withinPublicLimit(c, 'list'))) throw new ApiError(429, 'rate_limited', 'Too many requests. Wait a minute and try again, or read /api/v1/popups/snapshot once and filter it yourself.');
+  return c.json(await listPopups(c.env.DB, c.req.query(), c.get('now')));
+});
 
 /** The public list with its filters. Same for everyone: your own votes and saves come from GET /me/state. Also used by the MCP search tool. */
 export async function listPopups(db: D1Database, q: Record<string, string>, now: number) {

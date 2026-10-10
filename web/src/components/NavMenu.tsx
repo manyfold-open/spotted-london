@@ -22,7 +22,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
   if (!shown) return null;
   const home = loc.pathname === '/' || loc.pathname.startsWith('/p/');
   const items: [string, IconName, string, number?, boolean?][] = [
-    ['/', 'i-map', 'Explore'], ['/add', 'i-plus', 'Add a pop-up'], ['/saved', 'i-bookmark', 'Saved', savedCount], ['/me', 'i-user', 'Me'],
+    ['/', 'i-map', 'Explore'], ['/add', 'i-plus', 'Add a pop-up'], ['/saved', 'i-bookmark', 'Saved', savedCount], ['/me', 'i-user', 'Me'], ['/connect', 'i-sparkle', 'Use with AI'],
   ];
   const admin: typeof items = [['/admin', 'i-inbox', 'Review queue', queueCount, true], ['/admin/agent', 'i-sparkle', 'Agents']];
   const link = ([to, icon, label, ct, hot]: (typeof items)[number], i: number) => (

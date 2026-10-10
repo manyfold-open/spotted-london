@@ -4,6 +4,8 @@ import type { Status } from './lib/scoring';
 export type Bindings = Cloudflare.Env & {
   AI?: Ai;
   IMAGES?: R2Bucket;
+  /** Calls per minute for anonymous POST /mcp (wrangler.jsonc `ratelimits`). Missing in some setups: then nothing is limited. */
+  MCP_LIMIT?: RateLimit;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;
