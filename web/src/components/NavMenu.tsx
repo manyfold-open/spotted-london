@@ -51,7 +51,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           <div><span className="keypin checked"><i><Icon name="i-check" /></i></span><p><b>Source checked.</b> A green outlined tick. A Spotted agent matched it to its source page. People have not confirmed it yet.</p></div>
           <div><span className="keypin community" /><p><b>Being checked.</b> Dashed ring, no tick. Your vote helps.</p></div>
         </div>
-        <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap.</p>
+        <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap. <a href="/privacy">Privacy</a></p>
       </aside>
     </>
   );
