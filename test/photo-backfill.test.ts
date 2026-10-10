@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { backfillPhotos, IDLE_AFTER_LAP, RETRY_AFTER } from '../src/db/photo-backfill';
+import { backfillPhotos, IDLE_AFTER_LAP, isListingPage, RETRY_AFTER } from '../src/db/photo-backfill';
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 8, 30, 13);
@@ -132,5 +132,21 @@ describe('backfillPhotos', () => {
       AND NOT EXISTS (SELECT 1 FROM popup_images i WHERE i.popup_id = p.id)
       AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?3)) ORDER BY p.id LIMIT 5`, '', 0, 0);
     expect(candidates).not.toMatch(/SCAN (i|t|popup_images|photo_tries)\b/);
+  });
+
+  it('tells a list of many events from a page about one', () => {
+    for (const u of ['https://gallery.test/exhibitions', 'https://gallery.test/exhibitions/', 'https://www.museum.test/whats-on/', 'https://venue.test/en/events?page=2', 'https://nt.test/visit/london/ham-house/events'])
+      expect(isListingPage(u), u).toBe(true);
+    for (const u of ['https://gallery.test/exhibitions/643-peter-howson-salvation/', 'https://venue.test/events/halloween-late', 'https://shop.test/', 'https://shop.test/sale', 'not a url'])
+      expect(isListingPage(u), u).toBe(false);
+  });
+
+  it('does not read a list page, and says why', async () => {
+    await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE id LIKE 'bf_%' OR id LIKE 'cur_%'").run();
+    await addPopup('lst_1', 'https://gallery.test/exhibitions');
+    const { f, asked } = web({ 'https://gallery.test/exhibitions': 'https://cdn.gallery.test/default.jpg' });
+    expect(await run(NOW, 10, f)).toBe(0);
+    expect(asked).toEqual([]);
+    expect((await tried('lst_1'))!.reason).toMatch(/list of many events/);
   });
 });
