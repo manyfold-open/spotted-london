@@ -9,7 +9,10 @@ const decodeEntities = (s: string) => decodeBasic(s).replace(/&([a-z]+);/gi, (m,
 
 export const EVIDENCE_MAX = 300;
 export const EVIDENCE_MIN = 12;
-const MAX_HTML = 600_000;
+/** Site builders such as Wix ship 1.5 MB or more, with the text far down: the Winchmore Hill Supper Club's date sat at 890 KB. */
+export const MAX_HTML = 2_000_000;
+/** Slow gallery sites take 5 to 10 seconds. Waiting on the network costs no Worker CPU, so this can be generous. */
+export const READ_TIMEOUT_MS = 15_000;
 
 export type EvidenceCheck = 'found' | 'unchecked';
 
@@ -40,10 +43,52 @@ export function unescapedHtml(html: string): string {
     .replace(/<[^>]+>/g, ' ');
 }
 
-export function quoteInHtml(html: string, quote: string): boolean {
-  const q = normalizeQuote(quote);
-  return normalizeQuote(visibleText(html)).includes(q) || normalizeQuote(unescapedHtml(html)).includes(q);
+/** Above this many characters a page is searched around the quote, not normalised whole: the Worker has about 10 ms of CPU. */
+const BIG_TEXT = 400_000;
+/** The most places a quote's anchor word is tried on a big page before the search gives up. */
+const MAX_ANCHOR_HITS = 300;
+
+/** `undefined` means the search gave up, so the quote may or may not be there. */
+type Found = boolean | undefined;
+
+/** Whether `text` holds the already normalised quote `q`. Big text is normalised in windows around the quote's longest plain word. */
+function windowedIncludes(text: string, q: string): Found {
+  const anchor = q.match(/[a-z0-9]{5,}/g)?.reduce((a, b) => (b.length > a.length ? b : a));
+  if (!anchor) return normalizeQuote(text).includes(q);
+  // The page may have runs of spaces and entities that the quote does not, so the window is generous.
+  const room = q.length * 4 + 400;
+  const re = new RegExp(anchor, 'gi');
+  let hits = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (normalizeQuote(text.slice(Math.max(0, m.index - room), m.index + anchor.length + room)).includes(q)) return true;
+    hits += 1;
+    if (hits >= MAX_ANCHOR_HITS) return undefined;
+  }
+  return false;
 }
+
+/** A test for normalised quotes against one text; a small text is normalised once however many quotes are asked. */
+function finder(text: string): (q: string) => Found {
+  if (text.length > BIG_TEXT) return q => windowedIncludes(text, q);
+  let normal: string | undefined;
+  return q => (normal ??= normalizeQuote(text)).includes(q);
+}
+
+const both = (a: Found, b: () => Found): QuoteCheck => {
+  if (a === true) return 'found';
+  const second = b();
+  return second === true ? 'found' : a === undefined || second === undefined ? 'unchecked' : 'missing';
+};
+
+export type QuoteCheck = 'found' | 'missing' | 'unchecked';
+
+/** Looks for a quote in the visible text of a page, then in the text the page ships inside JSON. `unchecked`: the search gave up on a big page. */
+export function searchHtml(html: string, quote: string): QuoteCheck {
+  const q = normalizeQuote(quote);
+  return both(finder(visibleText(html))(q), () => finder(unescapedHtml(html))(q));
+}
+
+export const quoteInHtml = (html: string, quote: string): boolean => searchHtml(html, quote) === 'found';
 
 export const quoteInText = (text: string, quote: string): boolean => normalizeQuote(text).includes(normalizeQuote(quote));
 
@@ -56,7 +101,7 @@ async function readPage(url: string, fetcher: typeof fetch): Promise<{ html: str
     res = await fetcher(url, {
       headers: { 'user-agent': 'SpottedLondonBot/0.1 (+https://spotted.london/bot)', accept: 'text/html,application/xhtml+xml' },
       redirect: 'follow',
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
   } catch {
     return null;
@@ -99,13 +144,12 @@ export async function checkEvidence(
   if (!target) throw new EvidenceError('evidence_url must be a public web address.');
   const page = await readPage(target.toString(), fetcher);
   if (!page) return 'unchecked';
-  if (quoteInHtml(page.html, quote)) return 'found';
+  const seen = searchHtml(page.html, quote);
+  if (seen === 'found') return 'found';
   // A page bigger than we read (some site builders put the text far down) may have the quote past the cut.
-  if (!page.finished) return 'unchecked';
+  if (seen === 'unchecked' || !page.finished) return 'unchecked';
   throw new EvidenceError('The page loaded but the quote is not on it. Copy a sentence from the page word for word. If your tool summarises pages, fetch the raw page.');
 }
-
-export type QuoteCheck = 'found' | 'missing' | 'unchecked';
 
 /**
  * Several quotes against one page, fetched and read once (the Worker has about 10 ms of CPU, and the page text is the
@@ -128,13 +172,12 @@ export async function checkQuotes(
   const target = safeUrl(url);
   const page = target ? await readPage(target.toString(), fetcher) : null;
   if (!page) { for (const q of quotes) out.set(q, 'unchecked'); return out; }
-  const visible = normalizeQuote(visibleText(page.html));
-  let raw: string | null = null;
+  const inVisible = finder(visibleText(page.html));
+  let inRaw: ((q: string) => Found) | null = null;
   for (const q of quotes) {
     const n = normalizeQuote(q);
-    if (visible.includes(n)) { out.set(q, 'found'); continue; }
-    raw ??= normalizeQuote(unescapedHtml(page.html));
-    out.set(q, raw.includes(n) ? 'found' : page.finished ? 'missing' : 'unchecked');
+    const seen = both(inVisible(n), () => (inRaw ??= finder(unescapedHtml(page.html)))(n));
+    out.set(q, seen === 'missing' && !page.finished ? 'unchecked' : seen);
   }
   return out;
 }
