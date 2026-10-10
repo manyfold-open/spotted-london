@@ -163,15 +163,15 @@ Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this 
 
 - https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
 - Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
-- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`. Optional: `AGENT_ADMIN_TOKEN` (see Rules), also kept in `~/.config/spotted-london/agent-admin-token` (mode 600) for Claude Code.
-- Optional secret `APIFY_TOKEN` (not set yet): turns on Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month; we cap at US$4 in any 30 days. Posts and runs are in `social_posts` and `social_runs` (migration 0006).
+- Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`, `APIFY_TOKEN`. Optional: `AGENT_ADMIN_TOKEN` (see Rules), also kept in `~/.config/spotted-london/agent-admin-token` (mode 600) for Claude Code.
+- Secret `APIFY_TOKEN` (set; fetching has run since 2026-10-01, and on 2026-10-10 there were 8 social sources, 92 posts and US$0.56 spent in 30 days): Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month; we cap at US$4 in any 30 days. Posts and runs are in `social_posts` and `social_runs` (migration 0006). A Scout draft that cites an Instagram post Apify did not fetch (found through a web search, not a source) is `evidence_check = 'unchecked'`: the fix is another Social source, not the token. Check the state with `SELECT status, COUNT(*) FROM social_runs GROUP BY status` before saying it is off.
 - AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).
 - Google OAuth app is in Testing mode: only Test users added in Google Cloud Console can sign in.
 - The fictional examples (`is_example = 1`) were cleared on 2026-10-02 with `seed/clear-examples.sql`, so production holds only real pop-ups. The column and the Example label stay.
 
 ## Status and next steps
 
-Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (migration 0005) with a Scout sources section on /admin/agent, Instagram and Threads post fetching through Apify (migration 0006, needs the `APIFY_TOKEN` secret).
+Done: API, verification and karma, admin queue, email + Google sign in, web app, deploy, Turnstile, examples, photos on R2, Workers AI autofill from links, pasted text and screenshots, MCP server, Manyfold agents (Scout, Triage, Checker) with the /admin/agent settings page, Scout source list and memory (migration 0005) with a Scout sources section on /admin/agent, Instagram and Threads post fetching through Apify (migration 0006, `APIFY_TOKEN` set).
 
 Not done yet, roughly in priority order:
 0. Agent fleet (see "Agent fleet"): built in migrations 0007 to 0011 (evidence check, many agents, leases, Triage verification, auto_publish and undo). Next: watch the numbers, then raise quality (stricter conditions, a second Triage opinion, sampling published posts).
