@@ -9,10 +9,11 @@ import { safeReturnTo } from './lib/auth';
 import { ApiError } from './lib/util';
 import { appOrigin } from './middleware';
 import { llmsText } from './lib/llms';
+import { privacyBody } from './privacy';
 
 export const pages = new Hono<AppEnv>();
 
-const shell = (title: string, body: unknown) => html`<!doctype html>
+const shell = (title: string, body: unknown, wide = false) => html`<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer"><meta name="theme-color" content="#f4efe6"><title>${title}</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -35,7 +36,12 @@ const shell = (title: string, body: unknown) => html`<!doctype html>
   input{width:100%;min-height:44px;border-radius:12px;border:1.5px solid var(--ink);padding:0 14px;font:inherit;margin-bottom:10px;background:var(--card)}
   .err{background:var(--err-bg);color:var(--err);border-radius:12px;padding:10px 12px}
   .out{word-break:break-all;font-size:13px}
-</style></head><body><main>
+  body:has(main.wide){place-items:start center}
+  main.wide{max-width:680px;margin:16px 0}
+  main.wide h1{font-size:30px} main.wide h2{font:800 18px/1.3 "Bricolage Grotesque",system-ui,sans-serif;margin:26px 0 6px}
+  main.wide p{margin:0 0 12px} main.wide ul{margin:0 0 12px;padding-left:20px} main.wide li{margin-bottom:8px;color:var(--ink2)} main.wide a{color:var(--ink)}
+  main.wide .meta{font-size:13px;margin-bottom:16px}
+</style></head><body><main class="${wide ? 'wide' : ''}">
 <div class="brand"><span class="logo"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 12c-8.3 0-14.5 6-14.5 13.9C17.5 36 32 51 32 51s14.5-15 14.5-25.1C46.5 18 40.3 12 32 12zm0 19.2a5.4 5.4 0 1 1 0-10.8 5.4 5.4 0 0 1 0 10.8z"/></svg></span>Spotted</div>
 ${body}</main></body></html>`;
 
@@ -82,6 +88,9 @@ pages.post('/login/verify', async c => {
   }
   return c.redirect(safeReturnTo(typeof form.return_to === 'string' ? form.return_to : null), 303);
 });
+
+/** The privacy policy. Plain HTML so Google's checks and crawlers can read it without running JavaScript. */
+pages.get('/privacy', c => c.html(shell('Privacy · Spotted London', privacyBody(appOrigin(c)), true), 200, { 'cache-control': 'public, max-age=3600' }));
 
 /** A guide for AI assistants (llmstxt.org). Cached for an hour: it only changes with a deploy. */
 pages.get('/llms.txt', c => c.text(llmsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600', 'content-type': 'text/plain; charset=utf-8' }));
