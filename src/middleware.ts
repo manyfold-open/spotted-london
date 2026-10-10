@@ -104,6 +104,16 @@ export async function ipHash(c: Context<AppEnv>): Promise<string | null> {
   return (await sha256(`${c.env.IP_SALT ?? ''}:${ip}`)).slice(0, 32);
 }
 
+/**
+ * False when this visitor (by IP hash) has used up the keyless public reads for the minute (wrangler.jsonc `ratelimits`).
+ * `lane` keeps the MCP tools and the public list apart. True when there is no limiter or no IP to count.
+ */
+export async function withinPublicLimit(c: Context<AppEnv>, lane: string): Promise<boolean> {
+  if (!c.env.MCP_LIMIT) return true;
+  const who = await ipHash(c);
+  return !who || (await c.env.MCP_LIMIT.limit({ key: `${lane}:${who}` })).success;
+}
+
 /** The site's own origin, from APP_URL (falls back to the request origin in development). */
 export function appOrigin(c: Context<AppEnv>): string {
   const u = c.env.APP_URL;

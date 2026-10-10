@@ -7,6 +7,8 @@ import type { AppEnv, PopupRow } from './types';
 import { consumeMagicToken, startSession, userForEmail } from './routes/auth';
 import { safeReturnTo } from './lib/auth';
 import { ApiError } from './lib/util';
+import { appOrigin } from './middleware';
+import { llmsText } from './lib/llms';
 
 export const pages = new Hono<AppEnv>();
 
@@ -80,6 +82,9 @@ pages.post('/login/verify', async c => {
   }
   return c.redirect(safeReturnTo(typeof form.return_to === 'string' ? form.return_to : null), 303);
 });
+
+/** A guide for AI assistants (llmstxt.org). Cached for an hour: it only changes with a deploy. */
+pages.get('/llms.txt', c => c.text(llmsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600', 'content-type': 'text/plain; charset=utf-8' }));
 
 /**
  * Pop-up pages get real titles, share previews and schema.org Event data, injected into the
