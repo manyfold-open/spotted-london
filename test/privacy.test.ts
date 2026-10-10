@@ -21,6 +21,11 @@ describe('/privacy', () => {
     expect(text).toMatch(/question for 7 days/);
   });
 
+  it('tells people they can delete their account from the Me page, where the button is', async () => {
+    const text = await (await exports.default.fetch(new Request('http://spotted.test/privacy'))).text();
+    expect(text).toContain('from the Me page (Delete account)');
+  });
+
   it('uses no em dashes, en dashes or spaced hyphens (UI copy rule)', async () => {
     const text = await (await exports.default.fetch(new Request('http://spotted.test/privacy'))).text();
     const body = text.slice(text.indexOf('<h1>Privacy</h1>'));

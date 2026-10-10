@@ -44,7 +44,7 @@ export const privacyBody = (origin: string) => html`
 <h2>Your choices</h2>
 <ul>
   <li><b>Sign out</b> from the Me page. It also clears your For you picks from that device.</li>
-  <li><b>Delete your account</b> by emailing <a href="mailto:${PRIVACY_CONTACT}">${PRIVACY_CONTACT}</a> from the address on the account. We remove your email, name and saved list and stop you signing in. Pop-ups you added stay on the site without your name, because other people have voted on them.</li>
+  <li><b>Delete your account</b> from the Me page (Delete account), or by emailing <a href="mailto:${PRIVACY_CONTACT}">${PRIVACY_CONTACT}</a> from the address on the account. We remove your email, name and saved list and stop you signing in. Pop-ups you added stay on the site without your name, because other people have voted on them.</li>
   <li><b>See or correct what we hold</b> about you, or ask for a photo of yours to come down: email the same address.</li>
 </ul>
 
