@@ -75,6 +75,7 @@ npm run typecheck
 - Address search: Photon (OpenStreetMap), through `/api/v1/geocode`, cached for a day.
 - Photos are resized in the browser to WebP, at most 1600 px, before upload.
 - Phone layout under 900 px: bottom tabs and bottom sheets. Desktop: sidebar and a right drawer.
+- Installable (PWA): `web/public/manifest.webmanifest`, icons in `web/public/icons/` (regenerate the PNGs from `icon.svg` with `node scripts/make-icons.mjs`) and `web/public/sw.js`. The service worker saves the page and its `/assets/*` files on first visit so the app opens offline, and never touches `/api`, `/login`, `/mcp`, `/privacy` or `/llms.txt`, so data is always live. It is only registered in the production build (`registerServiceWorker` in `web/src/lib/pwa.ts`). The menu shows "Install the app" on Chrome, Edge and Android (the browser's install prompt) and short steps on iPhone and iPad; nothing once it is installed. To test: `npm run build:web`, then `npm run dev:local`, and look under Application in the browser's dev tools. To change what is cached, edit `sw.js` and bump the cache names.
 
 ## Layout
 

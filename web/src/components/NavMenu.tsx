@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { useExit } from '../lib/motion';
+import { useInstall } from '../lib/pwa';
 import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 import { Ticker } from './PopupBits';
@@ -10,6 +11,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
   const [shown, leaving] = useExit(open ? true : null, 280);
   const loc = useLocation();
   const box = useRef<HTMLElement>(null);
+  const app = useInstall();
 
   useEffect(() => {
     if (!open) return;
@@ -43,6 +45,11 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           {items.map(link)}
           {isAdmin ? <><div className="mp-navh">Admin</div>{admin.map((a, i) => link(a, i + items.length))}</> : null}
         </nav>
+        {app.state === 'prompt' ? (
+          <button type="button" className="mp-install" onClick={() => { onClose(); app.install(); }}><Icon name="i-plus" /><span><b>Install the app</b><small>Opens full screen from your home screen</small></span></button>
+        ) : app.state === 'ios' ? (
+          <p className="mp-install ios"><Icon name="i-plus" /><span><b>Install the app</b><small>Tap Share in your browser, then Add to Home Screen.</small></span></p>
+        ) : null}
         <div className="mp-key" aria-label="Map key">
           <span className="mp-navh">Map key</span>
           <p>The colour of a pin is its kind. Pick a kind in the chips to see its colour.</p>

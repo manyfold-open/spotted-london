@@ -7,12 +7,15 @@ import './styles.css';
 import { IconSprite } from './components/Icon';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './lib/hooks';
+import { registerServiceWorker } from './lib/pwa';
 import HomePage from './pages/HomePage';
 import { Submit } from './pages/Submit';
 import { Connect } from './pages/Connect';
 import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
+
+registerServiceWorker();
 
 // iOS Safari only shows :active press states when the page listens for touches.
 document.addEventListener('touchstart', () => {}, { passive: true });
