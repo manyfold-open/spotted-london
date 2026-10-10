@@ -8,6 +8,7 @@ import { SEEN_KEEP } from './db/scout';
 import { purgeSocial, runSocial } from './db/social';
 import { buildPopupSnapshot } from './db/snapshot';
 import { purgeAsks } from './db/ask';
+import { backfillPhotos } from './db/photo-backfill';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
@@ -18,6 +19,8 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await runAgents(env, now).catch(e => console.error('agents cron failed', e));
       // Instagram and Threads posts for Scout, through Apify (does nothing until APIFY_TOKEN is set)
       await runSocial({ db: env.DB, token: env.APIFY_TOKEN }, now).catch(e => console.error('social cron failed', e));
+      // Last, and caught: before migration 0021 there is no photo_tries table, and that must not stop anything else.
+      await backfillPhotos(env, now).catch(e => console.warn('photo backfill skipped', e));
       break;
     case '0 * * * *':
       await recomputeHot(env.DB, now);
