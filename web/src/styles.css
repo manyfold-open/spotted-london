@@ -805,3 +805,19 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .gate p { margin: 0 }
 .gate .handle { display: block; justify-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--hair) }
 @media (min-width: 900px) { .gate { margin: 0; bottom: auto; left: 50%; right: auto; width: 440px; translate: -50% -50%; top: 50%; border-bottom: 1.5px solid var(--ink); border-radius: 20px; padding: 24px; box-shadow: var(--shadow) } .gate .handle { display: none } }
+
+/* Connect an AI assistant (/connect) */
+.cn { max-width: 640px; margin: 0 auto; display: grid; gap: 16px }
+.cn .intro { margin-bottom: 4px }
+.cn-sec { display: grid; gap: 12px }
+.cn-sec h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px }
+.cn-sec h2.cn-h { display: block }
+.cn-n { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--accent); color: var(--card); display: grid; place-items: center; font-size: 14px }
+.cn-sec p { margin: 0 }
+.cn-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px }
+.cn-after { font-size: 13px }
+.cn code { font-size: 12.5px; background: var(--paper); border-radius: 6px; padding: 1px 5px; overflow-wrap: anywhere }
+.cn-box { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; border: 1.5px solid var(--hair); border-radius: 12px; background: var(--paper); padding: 10px 10px 10px 14px }
+.cn-box p, .cn-box pre { margin: 0; min-width: 0; flex: 1; font-size: 14px; overflow-wrap: anywhere }
+.cn-box pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-x: auto }
+.cn-box .btn { flex: none }
