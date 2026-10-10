@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { MY_STATE_KEY, patchMe, patchPopup, prefetchPopup } from '../lib/cache';
 import { CATS, catIcon, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
-import { useErrorToast, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
 
@@ -64,13 +65,15 @@ export function Ticker({ value }: { value: number }) {
 
 /**
  * Save and quality votes. Both show the new state at once in every list and sheet, then undo
- * it if the server says no.
+ * it if the server says no. Signed out, a save is kept on this device (no sheet, no account needed) and moves
+ * to the account at sign in; a vote asks for sign in on the spot and is finished when they are back.
  */
 export function usePopupActions(p: Popup) {
   const qc = useQueryClient();
   const toast = useToast();
   const onError = useErrorToast();
   const requireAuth = useRequireAuth();
+  const { data: me } = useMe();
   const save = useMutation({
     scope: { id: `save-${p.id}` },
     mutationFn: (on: boolean) => api(`/popups/${p.id}/save`, { method: on ? 'PUT' : 'DELETE', json: on ? {} : undefined }),
@@ -93,8 +96,17 @@ export function usePopupActions(p: Popup) {
     onError: (e, _v, undo) => { undo?.(); onError(e); },
   });
   return {
-    toggleSave: requireAuth((e?: { currentTarget: Element }) => { bump(e?.currentTarget); save.mutate(!p.me?.saved); }, 'Sign in to save pop-ups'),
-    voteQuality: requireAuth((v: number, el?: Element) => { bump(el); quality.mutate(p.me?.quality_vote === v ? 0 : v); }, 'Sign in to vote'),
+    toggleSave: (e?: { currentTarget: Element }) => {
+      bump(e?.currentTarget);
+      if (me) return save.mutate(!p.me?.saved);
+      // Not signed in (or the account is still loading, in which case Shell moves it over a moment later)
+      const on = !hasLocalSave(p.id);
+      const first = on && localSaveIds().length === 0; // the first one says where it went
+      haptic();
+      setLocalSave(p.id, on);
+      toast(on ? (first ? 'Saved on this device. Sign in to keep it and get a reminder.' : 'Saved on this device') : 'Removed from saved', 'i-bookmark');
+    },
+    voteQuality: requireAuth((v: number, el?: Element) => { bump(el); quality.mutate(p.me?.quality_vote === v ? 0 : v); }, 'Sign in to vote', { then: 'vote', intent: (v: number, _el?: Element) => ({ type: 'quality', id: p.id, value: v }) }),
   };
 }
 

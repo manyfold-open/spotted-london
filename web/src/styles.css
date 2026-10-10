@@ -797,3 +797,11 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @media (prefers-reduced-motion: reduce) { .ask-wrap { animation: none } .ask-item { transition: none } }
 .linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--ink2); text-decoration: underline; cursor: pointer }
 .photo-credit { margin: -4px 0 0 }
+
+/* Sign in on the spot (SignInSheet): a bottom sheet on phones, a card in the middle on desktop. Above the pop-up sheet. */
+.gate-scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 60; animation: fade var(--dur-2) }
+.gate { position: fixed; z-index: 61; left: 0; right: 0; bottom: 0; background: var(--paper); border: 1.5px solid var(--ink); border-bottom: 0; border-radius: 20px 20px 0 0; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 18px); display: grid; gap: 12px; max-width: 480px; margin: 0 auto; animation: rise .28s var(--ease-out) backwards }
+.gate h2 { margin: 6px 0 0; font-size: 22px }
+.gate p { margin: 0 }
+.gate .handle { display: block; justify-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--hair) }
+@media (min-width: 900px) { .gate { margin: 0; bottom: auto; left: 50%; right: auto; width: 440px; translate: -50% -50%; top: 50%; border-bottom: 1.5px solid var(--ink); border-radius: 20px; padding: 24px; box-shadow: var(--shadow) } .gate .handle { display: none } }

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Extracted, type Place, type Popup } from '../lib/api';
 import { CAT_LIST, CATS, catIcon, dateRange, londonDate, londonTs } from '../lib/format';
+import { SignInPrompt } from './Account';
 import { useDebounced, useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
 import { haptic } from '../lib/motion';
 import { compressImage } from '../lib/image';
@@ -235,15 +236,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   };
 
   if (meLoading) return <div className="sk" style={{ height: 400 }} />;
-  if (!me) {
-    return (
-      <div className="auth panel">
-        <h1 style={{ fontSize: 28 }}>Add a pop-up</h1>
-        <p className="muted" style={{ margin: '8px 0 18px' }}>Sign in first, so the community knows who spotted it. You earn 10 karma when it gets verified.</p>
-        <Link className="btn primary block" to="/signin?return_to=/add">Sign in</Link>
-      </div>
-    );
-  }
+  if (!me) return <SignInPrompt title="Add a pop-up" text="Sign in first, so the community knows who spotted it. You earn 10 karma when it gets verified." to="/add" />;
 
   const lbl = (k: FieldKey, text: string, extra?: string, id?: string) => (
     <span className="lbl" id={id}>{text}{extra ? <span className="muted small">{extra}</span> : null}

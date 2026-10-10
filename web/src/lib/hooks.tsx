@@ -3,6 +3,8 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Me, type MyStateMap, type When } from './api';
 import { seedPopup } from './cache';
+import { useLocalSaves } from './local-saves';
+import type { GateAsk, GateIntent } from '../../../src/shared/gate';
 import { reducedMotion } from './motion';
 import { Icon, type IconName } from '../components/Icon';
 
@@ -17,27 +19,37 @@ export function useMe() {
   });
 }
 
-/** Your saves and votes on current pop-ups, or undefined when signed out or still loading. The public list does not carry them. */
+/**
+ * Your saves and votes on current pop-ups, or undefined while loading (and when signed out with nothing saved).
+ * Signed out, it is only what you saved on this device (no votes): enough to show the bookmarks. The public list has none.
+ */
 export function useMyState() {
   const { data: me } = useMe();
   const q = useQuery({ queryKey: ['me', 'state'], queryFn: () => api<MyStateMap>('/me/state'), enabled: !!me, staleTime: 60_000 });
-  return me ? q.data : undefined;
+  const local = useLocalSaves();
+  const mine = useMemo(() => (local.length ? { saved: local.map(s => s.id), votes: {} } : undefined), [local]);
+  if (me) return q.data;
+  return me === null ? mine : undefined;
 }
 
-/** Wraps an action so signed-out people are sent to sign in and come back here afterwards. */
+/* ---------- sign in on the spot ---------- */
+export const GateCtx = createContext<(ask: GateAsk) => void>(() => {});
+export const useGate = () => useContext(GateCtx);
+
+/**
+ * Wraps an action so signed-out people get the sign-in sheet instead of an error, right where they are. After
+ * Google sends them back, Shell finishes the action (`intent`) or says they can go ahead (`then`).
+ */
 export function useRequireAuth() {
   const { data: me } = useMe();
-  const nav = useNavigate();
-  const loc = useLocation();
-  const toast = useToast();
-  return useCallback(<A extends unknown[]>(fn: (...a: A) => unknown, why = 'Sign in to do that') => (...a: A) => {
+  const ask = useGate();
+  return useCallback(<A extends unknown[]>(fn: (...a: A) => unknown, why = 'Sign in to do that', opts: { then?: string; intent?: (...a: A) => GateIntent } = {}) => (...a: A) => {
     if (!me) {
-      toast(why, 'i-user');
-      nav(`/signin?return_to=${encodeURIComponent(loc.pathname + loc.search)}`);
+      ask({ why, then: opts.then, intent: opts.intent?.(...a) });
       return;
     }
     return fn(...a);
-  }, [me, nav, loc, toast]);
+  }, [me, ask]);
 }
 
 /* ---------- toasts ---------- */
