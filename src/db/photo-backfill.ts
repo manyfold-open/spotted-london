@@ -50,19 +50,40 @@ export async function backfillOne(env: Pick<Bindings, 'DB' | 'IMAGES'>, p: Candi
   return why;
 }
 
+const CURSOR_KEY = 'photo_backfill';
+/** After a lap through every pop-up, rest this long: new pop-ups and 14 day retries are the only work left. */
+export const IDLE_AFTER_LAP = 3_600_000;
+
+type Cursor = { after: string; idle_until: number };
+
+async function readCursor(db: D1Database): Promise<Cursor> {
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(CURSOR_KEY).first<{ value: string }>();
+  try { const c = JSON.parse(row?.value ?? ''); return { after: String(c.after ?? ''), idle_until: Number(c.idle_until) || 0 }; } catch { return { after: '', idle_until: 0 }; }
+}
+
+async function writeCursor(db: D1Database, c: Cursor, now: number) {
+  await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(CURSOR_KEY, JSON.stringify(c), now).run();
+}
+
 /**
- * One cron step. Picks the soonest-to-matter public pop-ups with no photo that nobody tried lately,
- * tries each, and records the answer. Returns how many got a photo.
+ * One cron step. Walks the public pop-ups in id order from where the last run stopped (a cursor in `settings`), so a run
+ * reads a handful of rows instead of the whole table. Tries up to `batch` pop-ups that have no photo and were not tried lately,
+ * records each answer, and returns how many got a photo. After a lap through all of them it rests for an hour.
  */
 export async function backfillPhotos(env: Pick<Bindings, 'DB' | 'IMAGES'>, now: number, batch = BACKFILL_BATCH, fetcher: typeof fetch = fetch): Promise<number> {
   if (!env.IMAGES) return 0;
+  const cursor = await readCursor(env.DB);
+  if (now < cursor.idle_until) return 0;
   const { results } = await env.DB.prepare(
     `SELECT p.id, p.source_url FROM popups p
-     WHERE p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at >= ?1
+     WHERE p.id > ?1 AND p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at >= ?2
        AND NOT EXISTS (SELECT 1 FROM popup_images i WHERE i.popup_id = p.id)
-       AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?2))
-     ORDER BY p.hot DESC LIMIT ?3`,
-  ).bind(now, now - RETRY_AFTER, batch).all<Candidate>();
+       AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?3))
+     ORDER BY p.id LIMIT ?4`,
+  ).bind(cursor.after, now, now - RETRY_AFTER, batch).all<Candidate>();
+  const lapDone = results.length < batch;
+  await writeCursor(env.DB, lapDone ? { after: '', idle_until: now + IDLE_AFTER_LAP } : { after: results[results.length - 1].id, idle_until: 0 }, now);
   if (!results.length) return 0;
   await env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES (?, 'photo-bot@system.invalid', 'Photo backfill', 'user', 0, 0, ?)").bind(BOT_ID, now).run();
   let saved = 0;

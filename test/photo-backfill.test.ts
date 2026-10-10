@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { backfillPhotos, RETRY_AFTER } from '../src/db/photo-backfill';
+import { backfillPhotos, IDLE_AFTER_LAP, RETRY_AFTER } from '../src/db/photo-backfill';
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 8, 30, 13);
@@ -28,6 +28,12 @@ async function addPopup(id: string, source: string | null, status = 'community')
 const photos = async (id: string) => (await env.DB.prepare('SELECT * FROM popup_images WHERE popup_id = ?').bind(id).all<any>()).results;
 const tried = async (id: string) => env.DB.prepare('SELECT saved, reason FROM photo_tries WHERE popup_id = ?').bind(id).first<{ saved: number; reason: string | null }>();
 
+/** A fresh walk: forget where the last run stopped, so each test starts from the first pop-up. */
+async function run(now: number, batch: number, f: typeof fetch) {
+  await env.DB.prepare("DELETE FROM settings WHERE key = 'photo_backfill'").run();
+  return backfillPhotos(env, now, batch, f);
+}
+
 describe('backfillPhotos', () => {
   beforeAll(async () => {
     await env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES ('bf_user', 'bf_user@test.dev', ?)").bind(NOW).run();
@@ -36,20 +42,20 @@ describe('backfillPhotos', () => {
   it('copies the main picture of the source page, credits the page, and does not look again', async () => {
     await addPopup('bf_a', 'https://www.shop.test/sale');
     const { f, asked } = web({ 'https://www.shop.test/sale': 'https://cdn.shop.test/hero-a.jpg' });
-    expect(await backfillPhotos(env, NOW, 10, f)).toBe(1);
+    expect(await run(NOW, 10, f)).toBe(1);
     const rows = await photos('bf_a');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ credit: 'shop.test', source_url: 'https://www.shop.test/sale', origin_url: 'https://cdn.shop.test/hero-a.jpg' });
     expect(await tried('bf_a')).toMatchObject({ saved: 1, reason: null });
     asked.length = 0;
-    expect(await backfillPhotos(env, NOW + DAY, 10, f)).toBe(0);
+    expect(await run(NOW + DAY, 10, f)).toBe(0);
     expect(asked).toEqual([]);
   });
 
   it('skips social posts without fetching them, and says why', async () => {
     await addPopup('bf_ig', 'https://www.instagram.com/p/abc/');
     const { f, asked } = web({});
-    expect(await backfillPhotos(env, NOW, 10, f)).toBe(0);
+    expect(await run(NOW, 10, f)).toBe(0);
     expect(asked).toEqual([]);
     expect((await tried('bf_ig'))!.reason).toMatch(/social post|no link/);
   });
@@ -58,7 +64,7 @@ describe('backfillPhotos', () => {
     await addPopup('bf_link', 'https://empty.test/page');
     await env.DB.prepare("INSERT INTO popup_links (popup_id, url, kind, created_at) VALUES ('bf_link', 'https://brand.test/event', 'official', ?)").bind(NOW).run();
     const { f } = web({ 'https://empty.test/page': null, 'https://brand.test/event': 'https://cdn.brand.test/event-photo.jpg' });
-    expect(await backfillPhotos(env, NOW, 10, f)).toBe(1);
+    expect(await run(NOW, 10, f)).toBe(1);
     expect((await photos('bf_link'))[0]).toMatchObject({ credit: 'brand.test' });
   });
 
@@ -71,7 +77,7 @@ describe('backfillPhotos', () => {
       'https://fest.test/bf_s2': 'https://cdn.fest.test/banner.jpg',
       'https://fest.test/bf_s3': 'https://cdn.fest.test/banner.jpg',
     });
-    await backfillPhotos(env, NOW, 10, f);
+    await run(NOW, 10, f);
     expect(await photos('bf_logo')).toHaveLength(0);
     expect((await tried('bf_logo'))!.reason).toMatch(/logo/);
     const counts = await Promise.all(['bf_s1', 'bf_s2', 'bf_s3'].map(async id => (await photos(id)).length));
@@ -80,21 +86,51 @@ describe('backfillPhotos', () => {
 
   it('retries a failure only after two weeks, and never puts back a photo someone took down', async () => {
     await addPopup('bf_retry', 'https://later.test/e');
-    expect(await backfillPhotos(env, NOW, 10, web({ 'https://later.test/e': null }).f)).toBe(0);
+    expect(await run(NOW, 10, web({ 'https://later.test/e': null }).f)).toBe(0);
     const later = web({ 'https://later.test/e': 'https://cdn.later.test/p.jpg' });
-    expect(await backfillPhotos(env, NOW + 13 * DAY, 10, later.f)).toBe(0);
+    expect(await run(NOW + 13 * DAY, 10, later.f)).toBe(0);
     expect(later.asked).toEqual([]);
-    expect(await backfillPhotos(env, NOW + RETRY_AFTER + DAY, 10, later.f)).toBe(1);
+    expect(await run(NOW + RETRY_AFTER + DAY, 10, later.f)).toBe(1);
     // an admin removes it: it stays removed
     await env.DB.prepare('DELETE FROM popup_images WHERE popup_id = ?').bind('bf_retry').run();
-    expect(await backfillPhotos(env, NOW + 40 * DAY, 10, later.f)).toBe(0);
+    expect(await run(NOW + 40 * DAY, 10, later.f)).toBe(0);
     expect(await photos('bf_retry')).toHaveLength(0);
   });
 
   it('leaves pending pop-ups alone', async () => {
     await addPopup('bf_pending', 'https://pending.test/e', 'pending');
     const { f, asked } = web({ 'https://pending.test/e': 'https://cdn.pending.test/p.jpg' });
-    await backfillPhotos(env, NOW, 10, f);
+    await run(NOW, 10, f);
     expect(asked.filter(u => u.includes('pending.test'))).toEqual([]);
+  });
+
+  it('walks the pop-ups a few at a time from a cursor, rests after a lap, and picks up new ones later', async () => {
+    await env.DB.prepare("DELETE FROM settings WHERE key = 'photo_backfill'").run();
+    await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE id LIKE 'bf_%'").run(); // only this test's pop-ups count
+    const ids = ['cur_1', 'cur_2', 'cur_3', 'cur_4', 'cur_5'];
+    for (const id of ids) await addPopup(id, `https://cur.test/${id}`);
+    const { f } = web(Object.fromEntries(ids.map(id => [`https://cur.test/${id}`, `https://cdn.cur.test/${id}.jpg`])));
+    const has = async () => (await Promise.all(ids.map(async id => (await photos(id)).length))).join('');
+    expect(await backfillPhotos(env, NOW, 2, f)).toBe(2);
+    expect(await has()).toBe('11000'); // the next run carries on after cur_2
+    expect(await backfillPhotos(env, NOW + 600_000, 2, f)).toBe(2);
+    expect(await has()).toBe('11110');
+    expect(await backfillPhotos(env, NOW + 1_200_000, 2, f)).toBe(1); // fewer than asked for: the lap is done
+    expect(await has()).toBe('11111');
+    await addPopup('cur_6', 'https://cur.test/cur_6');
+    const more = web({ 'https://cur.test/cur_6': 'https://cdn.cur.test/cur_6.jpg' });
+    expect(await backfillPhotos(env, NOW + 1_800_000, 2, more.f)).toBe(0); // resting
+    expect(more.asked).toEqual([]);
+    expect(await backfillPhotos(env, NOW + 1_200_000 + IDLE_AFTER_LAP, 2, more.f)).toBe(1);
+  });
+
+  it('uses indexes: no full scan of popup_images or photo_tries', async () => {
+    const plan = async (sql: string, ...args: unknown[]) =>
+      (await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(...args).all<{ detail: string }>()).results.map(r => r.detail).join(' | ');
+    expect(await plan('SELECT COUNT(DISTINCT popup_id) AS n FROM popup_images WHERE origin_url = ?', 'x')).toMatch(/idx_images_origin/);
+    const candidates = await plan(`SELECT p.id FROM popups p WHERE p.id > ?1 AND p.status IN ('community') AND p.end_at >= ?2
+      AND NOT EXISTS (SELECT 1 FROM popup_images i WHERE i.popup_id = p.id)
+      AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?3)) ORDER BY p.id LIMIT 5`, '', 0, 0);
+    expect(candidates).not.toMatch(/SCAN (i|t|popup_images|photo_tries)\b/);
   });
 });
