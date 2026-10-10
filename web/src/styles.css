@@ -590,6 +590,11 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-nav .ct.hot { background: var(--accent); color: var(--card) }
 .mp-nav.active .ct { background: var(--card); color: var(--ink) }
 .mp-navh { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink3); padding: 10px 12px 2px }
+.mp-install { display: flex; align-items: center; gap: 12px; margin: 14px 12px 0; padding: 10px 12px; width: calc(100% - 24px); min-height: 52px; border: 1.5px dashed var(--ink); border-radius: 12px; background: var(--accent-soft); color: var(--ink); font: inherit; text-align: left; cursor: pointer }
+.mp-install.ios { cursor: default }
+.mp-install > span { display: flex; flex-direction: column; min-width: 0 }
+.mp-install small { font-size: 12.5px; line-height: 1.35; color: var(--ink2) }
+.mp-install:active:not(.ios) { background: var(--paper2) }
 .mp-key { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 0 12px; margin-top: auto }
 .mp-key .mp-navh { padding: 0 0 2px }
 .mp-key p { margin: 4px 0 0; font-size: 13px; line-height: 1.35; color: var(--ink3) }
