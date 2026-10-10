@@ -32,7 +32,7 @@ export function Meter({ value, big }: { value: number; big?: boolean }) {
 /** Cover photo, or the category's pattern and icon when there is no photo yet. */
 export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string }) {
   return (
-    <div className={`${className} pat-${p.category}`}>
+    <div className={`${className} pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
       {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
