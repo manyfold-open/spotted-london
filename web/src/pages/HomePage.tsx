@@ -5,6 +5,7 @@ import type { Popup } from '../lib/api';
 import { prefetchPopup } from '../lib/cache';
 import { CATS, distance, fmtDay, isLive } from '../lib/format';
 import { useFilters, useSheet, useToast } from '../lib/hooks';
+import { openAsk, useAsk, useAskStatus } from '../lib/ask';
 import { haptic, scrollBehavior, usePhone } from '../lib/motion';
 import { useNearMe } from '../lib/near-me';
 import { updateTaste, useKeptNote, useTaste } from '../lib/taste';
@@ -20,7 +21,7 @@ import { TopBar } from '../components/TopBar';
 // The map code is big. The page frame (bar, chips, sheet) paints first and the map fades in when it arrives.
 const PopupMap = lazy(() => import('../components/maps').then(m => ({ default: m.PopupMap })));
 const TasteDeck = lazy(() => import('../components/TasteDeck').then(m => ({ default: m.TasteDeck })));
-const AskPanel = lazy(() => import('../components/AskPanel').then(m => ({ default: m.AskPanel })));
+const AskChat = lazy(() => import('../components/AskChat').then(m => ({ default: m.AskChat })));
 
 type View = 'map' | 'list';
 
@@ -43,7 +44,11 @@ export default function HomePage() {
   const keptNote = useKeptNote();
   const [deck, setDeck] = useState<'first' | 'retake' | null>(null); // the swipe that sets up "For you"
   const openDeck = useCallback(() => setDeck(taste.swipes > 0 ? 'retake' : 'first'), [taste.swipes]);
-  const [askOpen, setAskOpen] = useState(false); // the Ask panel: a question in words, an agent answers
+  // Ask: a chat window (bubble when minimised). It is mounted the first time it opens and then kept, so the thread and what you typed stay.
+  const asked = useAsk();
+  const askAvailable = !!useAskStatus().data?.available;
+  const [askMounted, setAskMounted] = useState(false);
+  useEffect(() => { if (asked.open) setAskMounted(true); }, [asked.open]);
   const view: View = sp.get('view') === 'list' ? 'list' : 'map';
 
   const [snap, setSnap] = useState<Snap>(view === 'list' ? 'full' : 'peek');
@@ -155,7 +160,7 @@ export default function HomePage() {
     <><div className="mp-hrow">{modeSwitch}<span className="mp-count"><b>{count}</b><small>{sub}</small></span></div>{fy}</>
   ) : (
     <>
-      <Filters near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} onAsk={() => setAskOpen(true)} />
+      <Filters near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} onAsk={openAsk} />
       {fy}
       <div className="mp-hrow">
         <span className="mp-count"><b>{count}</b><small>{sub}</small></span><span className="spacer" /><VerifiedSwitch />
@@ -197,7 +202,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="mp-home" data-view={view} data-snap={snap} data-loc={near.state} data-away={away && !!near.pos} style={{ '--mp-chips': `${top}px` } as CSSProperties}>
+    <div className="mp-home" data-view={view} data-ask={asked.open ? 'open' : undefined} data-snap={snap} data-loc={near.state} data-away={away && !!near.pos} style={{ '--mp-chips': `${top}px` } as CSSProperties}>
       <h1 className="sr">London pop-ups</h1>
       <div className="mp-map">
         <Suspense fallback={<div className="mp-mapfill" aria-busy="true" aria-label="Loading the map" />}>
@@ -208,7 +213,7 @@ export default function HomePage() {
       <TopBar floating menuOpen={menuOpen} onMenu={openMenu}>{phone ? null : modeSwitch}</TopBar>
       {phone ? (
         <div className="mp-chips" ref={chips}>
-          <Filters inline near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} onAsk={() => setAskOpen(true)} />
+          <Filters inline near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} onAsk={openAsk} />
         </div>
       ) : null}
 
@@ -242,14 +247,19 @@ export default function HomePage() {
       ) : null}
 
       {deck ? <Suspense fallback={null}><TasteDeck items={q.all ?? []} fresh={deck === 'retake'} onClose={() => setDeck(null)} /></Suspense> : null}
-      {askOpen ? (
+      {askMounted ? (
         <Suspense fallback={null}>
           {/* Your position is used here only to put the nearest first. It is never sent. */}
-          <AskPanel items={q.all ?? []} nearPos={near.pos} onClose={() => setAskOpen(false)} onOpen={slug => { setAskOpen(false); open(slug); }} />
+          <AskChat items={q.all ?? []} nearPos={near.pos} onOpen={open} />
         </Suspense>
       ) : null}
 
       <div className="mp-fabs">
+        {askAvailable ? (
+          <button type="button" id="ask-fab" className="mp-fab ask" aria-label="Ask Spotted" aria-expanded={asked.open} onClick={openAsk}>
+            <Icon name="i-bolt" />{asked.unseen ? <><span className="dot" aria-hidden="true" /><span className="sr">, new answer</span></> : null}
+          </button>
+        ) : null}
         <button type="button" className="mp-fab loc" aria-label={near.pos ? 'Back to my location' : 'Show my location'} onClick={onLocate}>
           {near.state === 'asking' ? <span className="spin" /> : <Icon name="i-locate" />}
           <span className="mp-tip">Back to you</span>
