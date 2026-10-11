@@ -84,6 +84,14 @@ describe('backfillPhotos', () => {
     expect(counts.reduce((a, b) => a + b, 0)).toBe(2); // the third one is left without
   });
 
+  it('stores why a page gave no photo: refused, or really no picture', async () => {
+    await addPopup('why_404', 'https://gone.test/e');
+    await addPopup('why_none', 'https://bare.test/e');
+    expect(await run(NOW, 10, web({ 'https://bare.test/e': null }).f)).toBe(0);
+    expect((await tried('why_404'))!.reason).toBe('The page answered HTTP 404.');
+    expect((await tried('why_none'))!.reason).toBe('The page has no main picture.');
+  });
+
   it('retries a failure only after two weeks, and never puts back a photo someone took down', async () => {
     await addPopup('bf_retry', 'https://later.test/e');
     expect(await run(NOW, 10, web({ 'https://later.test/e': null }).f)).toBe(0);

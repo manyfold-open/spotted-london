@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
-import { creditFor, fetchPhoto, pagePhoto, resolveImageUrl, sniffPhoto } from '../src/lib/photo';
+import { creditFor, fetchPhoto, pagePhoto, pagePhotoResult, resolveImageUrl, sniffPhoto } from '../src/lib/photo';
 
 const NOW = Date.UTC(2026, 8, 30, 13);
 const DAY = 86_400_000;
@@ -43,6 +43,27 @@ describe('photo helpers', () => {
     expect(await pagePhoto('https://shop.test/sale', html('<head><meta property="og:image" content="/hero.jpg"></head>'))).toBe('https://shop.test/hero.jpg');
     expect(await pagePhoto('https://shop.test/sale', html('<head><title>x</title></head>'))).toBeNull();
     expect(await pagePhoto('https://shop.test/sale', (async () => new Response('no', { status: 403 })) as unknown as typeof fetch)).toBeNull();
+  });
+
+  it('pagePhotoResult says why a page gave no picture', async () => {
+    const page = (body: BodyInit | null, init: ResponseInit = { headers: { 'content-type': 'text/html' } }) => (async () => new Response(body, init)) as unknown as typeof fetch;
+    const why = async (f: typeof fetch) => (await pagePhotoResult('https://shop.test/sale', f)).why;
+    expect(await why(page('no', { status: 403 }))).toBe('The page answered HTTP 403.');
+    expect(await why(page('x', { headers: { 'content-type': 'application/pdf' } }))).toMatch(/not a web page \(application\/pdf\)/);
+    expect(await why(page('<head><title>x</title></head>'))).toBe('The page has no main picture.');
+    expect(await why(page('<head><meta property="og:image" content=""></head>'))).toBe('The page has no main picture.');
+    expect(await why(page('<head><meta property="og:image" content="http://localhost:3000/social.png"></head>'))).toMatch(/not a public web link/);
+    expect(await why((async () => { throw new DOMException('timed out', 'TimeoutError'); }) as unknown as typeof fetch)).toMatch(/longer than 5 seconds/);
+    expect(await why((async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch)).toBe('The page did not load.');
+    expect(await pagePhotoResult('https://shop.test/sale', page('<head><meta property="og:image" content="/hero.jpg"></head>'))).toEqual({ image: 'https://shop.test/hero.jpg' });
+  });
+
+  it('pagePhoto reads past 300 KB of inline CSS to the meta tags, and ignores meta tags in the body', async () => {
+    const f = (h: string) => (async () => new Response(h, { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+    const css = `<style>${'a{color:red}'.repeat(30_000)}</style>`; // 360 KB
+    expect(css.length).toBeGreaterThan(300_000);
+    expect(await pagePhoto('https://shop.test/sale', f(`<head>${css}<meta property="og:image" content="/late.jpg"></head><body></body>`))).toBe('https://shop.test/late.jpg');
+    expect(await pagePhoto('https://shop.test/sale', f('<head><title>x</title></head><body><meta property="og:image" content="/body.jpg"></body>'))).toBeNull();
   });
 });
 
