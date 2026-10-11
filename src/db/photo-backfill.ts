@@ -4,7 +4,7 @@
 // hotlinked, credited to the page (see addPhotoFromUrl).
 
 import type { Bindings } from '../types';
-import { addPhotoFromUrl, pagePhoto, type PhotoSource } from '../lib/photo';
+import { addPhotoFromUrl, pagePhotoResult, type PhotoSource } from '../lib/photo';
 import { safeUrl } from '../lib/extract';
 
 export const BACKFILL_BATCH = 5;
@@ -48,8 +48,9 @@ export async function backfillOne(env: Pick<Bindings, 'DB' | 'IMAGES'>, p: Candi
   if (!pages.length) return 'No page to read: the source is a social post, a list of many events, or there is no link.';
   let why = 'The page has no main picture.';
   for (const page of pages) {
-    const image = await pagePhoto(page, fetcher);
-    if (!image) continue;
+    const found = await pagePhotoResult(page, fetcher);
+    if (found.image === null) { why = found.why; continue; }
+    const image = found.image;
     if (NOT_A_PHOTO.test(new URL(image).pathname)) { why = 'The page picture looks like a logo.'; continue; }
     const used = await env.DB.prepare('SELECT COUNT(DISTINCT popup_id) AS n FROM popup_images WHERE origin_url = ?').bind(image).first<{ n: number }>();
     if ((used?.n ?? 0) >= SHARED_IMAGE_LIMIT) { why = 'The page picture is the same one other pop-ups use (a logo or default image).'; continue; }

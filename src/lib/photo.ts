@@ -8,7 +8,7 @@ import { newId } from './util';
 export const MAX_PHOTOS = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 const MIN_BYTES = 3000; // below this it is a tracking pixel or an icon, not a photo
-const MAX_HTML = 300_000;
+const MAX_HTML = 500_000; // some pages inline 400 KB of CSS before the meta tags end
 const UA = 'SpottedLondonBot/0.1 (+https://spotted.london/bot)';
 
 export class PhotoError extends Error {}
@@ -64,25 +64,45 @@ export async function fetchPhoto(raw: string, fetcher: typeof fetch = fetch): Pr
   return { bytes, ...kind };
 }
 
-/** The main picture a page names (og:image, twitter:image), as an absolute address. Null when the page cannot be read. */
-export async function pagePhoto(pageUrl: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+/**
+ * The main picture a page names (og:image, twitter:image), as an absolute address, or why there is none.
+ * The reason tells "the site refused us" (HTTP 403) from "the page has no picture", which the backfill stores.
+ */
+export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = fetch): Promise<{ image: string; why?: undefined } | { image: null; why: string }> {
   const page = safeUrl(pageUrl);
-  if (!page) return null;
+  if (!page) return { image: null, why: 'The page address is not a public web link.' };
+  let res: Response;
   try {
-    const res = await fetcher(page.toString(), { headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml' }, redirect: 'follow', signal: AbortSignal.timeout(5000) });
-    if (!res.ok || !res.body || !/html/i.test(res.headers.get('content-type') ?? '')) { await res.body?.cancel(); return null; }
+    res = await fetcher(page.toString(), { headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml' }, redirect: 'follow', signal: AbortSignal.timeout(5000) });
+  } catch (e) {
+    return { image: null, why: e instanceof Error && /timeout|abort/i.test(e.name) ? 'The page took longer than 5 seconds to load.' : 'The page did not load.' };
+  }
+  try {
+    if (!res.ok || !res.body) { await res.body?.cancel(); return { image: null, why: `The page answered HTTP ${res.status}.` }; }
+    const type = res.headers.get('content-type') ?? '';
+    if (!/html/i.test(type)) { await res.body.cancel(); return { image: null, why: `The page is not a web page (${type.split(';')[0] || 'no type'}).` }; }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let html = '';
     while (html.length < MAX_HTML) {
       const { done, value } = await reader.read();
       if (done || !value) break;
+      const from = Math.max(0, html.length - 6);
       html += decoder.decode(value, { stream: true });
-      if (/<\/head>/i.test(html)) break; // the meta tags are in the head
+      if (/<\/head>/i.test(html.slice(from))) break; // the meta tags are in the head
     }
     await reader.cancel().catch(() => {});
-    return resolveImageUrl(parseOpenGraph(html).image_url, page.toString());
-  } catch { return null; }
+    const end = html.search(/<\/head>/i);
+    const raw = parseOpenGraph(end >= 0 ? html.slice(0, end) : html).image_url;
+    if (!raw) return { image: null, why: 'The page has no main picture.' };
+    const image = resolveImageUrl(raw, page.toString());
+    return image ? { image } : { image: null, why: 'The page names a picture that is not a public web link.' };
+  } catch { return { image: null, why: 'The page could not be read.' }; }
+}
+
+/** Just the address (see pagePhotoResult). Null when the page cannot be read or has no picture. */
+export async function pagePhoto(pageUrl: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+  return (await pagePhotoResult(pageUrl, fetcher)).image;
 }
 
 export type PhotoSource = { imageUrl: string; pageUrl: string | null };
