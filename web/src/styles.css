@@ -822,6 +822,9 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @media (prefers-reduced-motion: reduce) { .ca, .ca-m { animation: none } .ca-dots i { animation: none } .ask-item { transition: none } }
 .linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--ink2); text-decoration: underline; cursor: pointer }
 .photo-credit { margin: -4px 0 0 }
+.addphoto { display: grid; gap: 10px }
+.addphoto-link { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center }
+.addphoto-link .ferr, .addphoto-link .small { grid-column: 1 / -1 }
 
 /* Ask as a chat window (AskChat). A card docked bottom right on desktop, a bottom sheet on phones. Map chrome stays under 20. */
 .mp-fab.ask { background: var(--ink); color: var(--card); box-shadow: 3px 3px 0 var(--accent) }
