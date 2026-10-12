@@ -176,8 +176,8 @@ export default function HomePage() {
   const nearOn = near.filter && !!near.pos;
   const grid = view === 'list';
   const modeSwitch = <ModeSwitch view={view} onView={goView} />;
-  const count = q.isPending ? 'Loading' : nearOn ? `${items.length} near you` : `${items.length} pop-up${items.length === 1 ? '' : 's'}`;
-  const sub = q.forYou ? (nearOn ? 'picked for you, within 3 km' : 'picked for you') : nearOn ? 'within 3 km, closest first' : `London · ${fmtDay(Date.now())}`;
+  const count = q.isPending ? 'Loading' : f.saved ? `${items.length} saved` : nearOn ? `${items.length} near you` : `${items.length} pop-up${items.length === 1 ? '' : 's'}`;
+  const sub = f.saved ? (nearOn ? 'your list, within 3 km' : 'your list, on the map') : q.forYou ? (nearOn ? 'picked for you, within 3 km' : 'picked for you') : nearOn ? 'within 3 km, closest first' : `London · ${fmtDay(Date.now())}`;
   const hidden = q.hidden.map(c => CATS[c as keyof typeof CATS]);
   const fy = q.forYou ? (
     <div className="mp-fy">
@@ -204,7 +204,9 @@ export default function HomePage() {
   if (q.isPending) body = grid ? <CardSkeletons /> : <MiniSkeletons />;
   else if (q.isError) body = <div className="notice err"><Icon name="i-info" /><span>{q.error.message}</span><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>;
   else if (!items.length) {
-    body = nearOn ? (
+    body = f.saved ? (
+      <div className="empty"><Icon name="i-bookmark" className="i big" /><h2>No saved pop-ups here</h2><p>Tap the bookmark on any pop-up to keep it on your list, or try a wider date range or another category.</p><button className="btn sm" onClick={() => f.set({ saved: null })}>Show all pop-ups</button></div>
+    ) : nearOn ? (
       <div className="empty"><Icon name="i-locate" className="i big" /><h2>Nothing within 3 km</h2><p>Try a wider date range, or look at all of London.</p><button className="btn sm" onClick={() => near.setFilter(false)}>Show all London</button></div>
     ) : f.q.trim() ? (
       <div className="empty"><Icon name="i-search" className="i big" /><h2>No pop-ups match &ldquo;{f.q.trim()}&rdquo;</h2><p>Check the spelling, or try a wider date range or another category.</p><button className="btn sm" onClick={() => f.set({ q: null })}>Clear search</button></div>
@@ -215,7 +217,7 @@ export default function HomePage() {
     body = (
       <>
         {items.some(p => p.example) ? <div className="notice small" style={{ marginBottom: 14 }}><Icon name="i-info" /><span>Pop-ups marked <b>Example</b> show how Spotted works. They are not real events.</span></div> : null}
-        <CardGrid items={items} stale={q.isPlaceholderData} resetKey={`${f.when}|${f.category}|${f.verified}|${f.q}|${nearOn}|${q.forYou}`} />
+        <CardGrid items={items} stale={q.isPlaceholderData} resetKey={`${f.when}|${f.category}|${f.verified}|${f.saved}|${f.q}|${nearOn}|${q.forYou}`} />
         <Newsletter />
       </>
     );

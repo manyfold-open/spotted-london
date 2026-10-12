@@ -90,6 +90,7 @@ export function useFilters() {
   const when = (['today', 'weekend', 'week', 'all'].includes(sp.get('when') ?? '') ? sp.get('when') : 'week') as When;
   const category = (sp.get('cat') ?? '') as Category | '';
   const verified = sp.get('verified') === '1';
+  const saved = sp.get('saved') === '1'; // only what you saved; per person, so it is applied in the browser after filterPopups
   const q = sp.get('q') ?? '';
   const query = useRef(q);
   query.current = q;
@@ -102,7 +103,7 @@ export function useFilters() {
       return next;
     }, { replace: true });
   }, [setSp]);
-  return useMemo(() => ({ when, category, verified, q, set }), [when, category, verified, q, set]);
+  return useMemo(() => ({ when, category, verified, saved, q, set }), [when, category, verified, saved, q, set]);
 }
 
 /* ---------- the pop-up sheet is ?p=<slug> on any list page ---------- */
