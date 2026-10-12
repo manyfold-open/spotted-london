@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useRouteError, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AgentNote, type Popup } from '../lib/api';
@@ -364,11 +364,32 @@ export function NotFound() {
   );
 }
 
+/** Old tabs and installed apps ask for script or style files that a deploy has removed. */
+const STALE = /dynamically imported module|Importing a module script|Unable to preload|Failed to fetch|Load failed/i;
+const RELOADED = 'spotted.crash-reload';
+
+/** Forgets the service worker and its saved files, then loads the app fresh from the network. */
+async function resetAndReload() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    await Promise.all((regs ?? []).map(r => r.unregister()));
+    await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+  } catch { /* no service worker or no cache storage: a plain reload is all there is */ }
+  location.reload();
+}
+
 /** Shown instead of the router's default error screen when a page crashes. */
 export function CrashPage() {
   const err = useRouteError();
-  // After a deploy, old tabs ask for script files that no longer exist.
-  const stale = err instanceof Error && /dynamically imported module|Failed to fetch|Importing a module script/i.test(err.message);
+  const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  const stale = STALE.test(detail);
+  useEffect(() => {
+    console.error(err);
+    // Once per tab, a stale app fixes itself. If it crashes again the page below stays put.
+    if (!stale) return;
+    try { if (sessionStorage.getItem(RELOADED)) return; sessionStorage.setItem(RELOADED, '1'); } catch { return; }
+    void resetAndReload();
+  }, [err, stale]);
   return (
     <div className="crash">
       <div className="panel">
@@ -376,9 +397,10 @@ export function CrashPage() {
         <h1 style={{ fontSize: 28 }}>{stale ? 'Spotted has been updated' : 'Something went wrong'}</h1>
         <p className="muted">{stale ? 'Reload the page to get the latest version.' : 'This page hit a problem. Reload to try again. If it keeps happening, go back to Explore.'}</p>
         <div className="row">
-          <button className="btn primary" onClick={() => location.reload()}>Reload</button>
+          <button className="btn primary" onClick={() => void resetAndReload()}>Reload</button>
           <a className="btn" href="/">Back to Explore</a>
         </div>
+        <p className="small muted" style={{ overflowWrap: 'anywhere' }}>{detail.slice(0, 300)}</p>
       </div>
     </div>
   );
