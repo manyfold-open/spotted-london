@@ -46,7 +46,7 @@
 
 ```bash
 cd spotted-london
-unset CLOUDFLARE_API_TOKEN   # CLAUDE.md：Zack 的 shell 可能指向公司帳號，先確認 whoami 是 zack11712@gmail.com
+unset CLOUDFLARE_API_TOKEN   # CLAUDE.md：Zack 的 shell 可能指向公司帳號，先確認 whoami 是個人帳號
 npx wrangler whoami
 npx wrangler d1 insights spotted-db --timePeriod 7d --sort-type sum --sort-by reads --limit 20
 npx wrangler d1 insights spotted-db --timePeriod 7d --sort-type sum --sort-by writes --limit 20

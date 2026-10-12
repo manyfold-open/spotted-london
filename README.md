@@ -7,13 +7,12 @@ London pop-ups, added by locals and verified by the community. Cloudflare Worker
 - Notes for AI coding agents: [CLAUDE.md](CLAUDE.md)
 - Clickable UI prototype: [prototype/index.html](prototype/index.html)
 
-## Set up on a new computer
+## Set up locally
 
-You need Node.js 22+, git and the GitHub CLI (`gh`).
+You need Node.js 22+ and git. No Cloudflare account is needed to run it locally.
 
 ```bash
-gh auth login                                   # the GitHub account that can see tldr0810/spotted-london
-gh repo clone tldr0810/spotted-london
+git clone https://github.com/tldr0810/spotted-london.git
 cd spotted-london
 npm install
 cp .dev.vars.example .dev.vars
@@ -21,7 +20,7 @@ npm run db:reset
 npm run build:web
 ```
 
-Then `npm run dev` and `npm run dev:web` in two terminals, as below. `npm run dev` needs `npx wrangler login` (sign in as zack11712@gmail.com, check with `npx wrangler whoami`) because AI autofill always runs on Cloudflare. Without an account, use `npm run dev:local` instead: everything works except autofill from pasted text and screenshots.
+Then `npm run dev` and `npm run dev:web` in two terminals, as below. `npm run dev` needs `npx wrangler login` because AI autofill always runs on Cloudflare. Without an account, use `npm run dev:local` instead: everything works except autofill from pasted text and screenshots.
 
 ## Run it locally
 
@@ -241,7 +240,7 @@ Check the actors still return the fields we read (about US$0.05): `read -s APIFY
 
 ## Production
 
-Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zack11712@gmail.com).
+Live at **https://spotted-london.zack11712.workers.dev**. The table below describes the maintainer's deployment; to run your own, create the same resources and put your ids in `wrangler.jsonc`.
 
 | Resource | Name | Notes |
 |---|---|---|
@@ -290,3 +289,11 @@ npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # 
 
 - **Sign in**: add `RESEND_API_KEY` and `EMAIL_FROM` (email links) and/or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Until then the site is browse-only.
 - **Custom domain**: add it to the Worker, update `APP_URL`, and add the domain to the Turnstile widget.
+
+## Licence and credits
+
+Code: [MIT](LICENSE). Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The MIT licence does not cover the icons in `web/src/components/Icon.tsx`. Most are hand-drawn icons from [Koboyo](https://koboyo.com/icons), used under [their licence](https://koboyo.com/icons/license): free to use in a product, but you may not resell or redistribute them as an icon collection. If you fork this project, use your own icons or check that licence first. Map tiles come from [OpenFreeMap](https://openfreemap.org), address search from [Photon](https://photon.komoot.io), map rendering is [MapLibre](https://maplibre.org).
+
+The pop-up data in a running deployment is submitted by its users and is not part of this repository.
