@@ -12,6 +12,7 @@ import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
+import { PhotoViewer } from './PhotoViewer';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
@@ -179,6 +180,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const statusChanged = useChanged(p.status);
   useEffect(() => { track('popup_open', { slug: p.slug, detail: p.category }); }, [p.slug, p.category]);
   const partial = !p.images; // still showing the list copy while the full pop-up loads
+  const [viewing, setViewing] = useState<number | null>(null);
   const [reporting, setReporting] = useState(false);
   // The reasons open at the bottom of the sheet, under the Save and Directions bar: bring them into view.
   const reportBox = useRef<HTMLDivElement>(null);
@@ -268,7 +270,8 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
     <>
       {/* First, so it can stick to the top while the sheet scrolls. */}
       <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
-      <Cover p={p} className="dhead" />
+      <Cover p={p} className="dhead" onOpen={p.images?.length ? () => setViewing(0) : undefined} />
+      {viewing !== null && p.images?.length ? <PhotoViewer photos={p.images} start={viewing} onClose={() => setViewing(null)} /> : null}
       <span className="handle" />
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
@@ -285,7 +288,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         </dl>
         {p.images?.[0]?.credit ? <p className="small muted photo-credit">Photo: {p.images[0].credit_url ? <a href={p.images[0].credit_url} target="_blank" rel="noopener nofollow">{p.images[0].credit}</a> : p.images[0].credit}
           {me && (me.role === 'admin' || own) ? <> · <button type="button" className="linkbtn" onClick={() => removePhoto(p.images![0].id)}>Remove photo</button></> : null}</p> : null}
-        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <Img key={i.id} src={i.url} />)}</div> : null}
+        {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map((i, n) => <button key={i.id} type="button" className="gal-btn" aria-label={`View photo ${n + 1}`} onClick={() => setViewing(n)}><Img src={i.url} /></button>)}</div> : null}
         {me && (me.role === 'admin' || own) && p.images && p.images.length < MAX_PHOTOS ? <AddPhoto p={p} /> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
