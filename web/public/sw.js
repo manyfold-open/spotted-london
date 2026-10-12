@@ -3,7 +3,7 @@
 const SHELL = 'spotted-shell-v1';
 const ASSETS = 'spotted-assets-v1';
 const MAX_ASSETS = 80;
-const WORKER_PATHS = ['/api', '/login', '/mcp', '/privacy', '/llms.txt', '/sw.js'];
+const WORKER_PATHS = ['/api', '/login', '/mcp', '/privacy', '/llms.txt', '/sitemap.xml', '/robots.txt', '/sw.js'];
 
 // Save the page and the files it loads now, so the very first visit already works offline.
 async function precache() {

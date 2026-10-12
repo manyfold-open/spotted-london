@@ -889,3 +889,23 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .cn-box p, .cn-box pre { margin: 0; min-width: 0; flex: 1; font-size: 14px; overflow-wrap: anywhere }
 .cn-box pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-x: auto }
 .cn-box .btn { flex: none }
+
+/* ---------- Insights (admin) ---------- */
+.ins-bar { gap: 12px; margin-top: 16px; flex-wrap: wrap; align-items: center }
+.ins-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.ins-kpis .kpi .small { display: block; margin-top: 2px }
+.ins-panel { margin-top: 22px }
+.ins-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; margin: 14px 0 6px; border-bottom: 1.5px solid var(--ink) }
+.ins-col { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end }
+.ins-col i { display: block; width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px }
+.ins-rows { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px }
+.ins-rows li { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) auto; align-items: center; gap: 10px }
+.ins-rows .ins-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px }
+.ins-rows .meter { min-width: 0 }
+.ins-rows .ins-extra { grid-column: 1 / -1; margin-top: -4px }
+.ins-facts { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; font-size: 14px }
+.ins-steps { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; color: var(--ink2) }
+.ins-steps code { font-size: 12.5px; background: var(--paper); border-radius: 6px; padding: 1px 5px; overflow-wrap: anywhere }
+@media (max-width: 899px) {
+  .ins-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}

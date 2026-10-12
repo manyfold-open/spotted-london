@@ -7,6 +7,8 @@ import { useLocalSaves } from './local-saves';
 import type { GateAsk, GateIntent } from '../../../src/shared/gate';
 import { reducedMotion } from './motion';
 import { Icon, type IconName } from '../components/Icon';
+import { track } from './track';
+import { filterEvent } from '../../../src/shared/tracking';
 
 /* ---------- current user ---------- */
 export function useMe() {
@@ -89,7 +91,11 @@ export function useFilters() {
   const category = (sp.get('cat') ?? '') as Category | '';
   const verified = sp.get('verified') === '1';
   const q = sp.get('q') ?? '';
+  const query = useRef(q);
+  query.current = q;
   const set = useCallback((patch: Record<string, string | null>) => {
+    const seen = filterEvent(patch, query.current);
+    if (seen) track(seen.name, { detail: seen.detail || undefined });
     setSp(prev => {
       const next = new URLSearchParams(prev);
       for (const [k, v] of Object.entries(patch)) { if (v === null || v === '') next.delete(k); else next.set(k, v); }

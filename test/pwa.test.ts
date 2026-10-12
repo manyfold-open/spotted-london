@@ -40,7 +40,7 @@ describe('service worker', () => {
   it('leaves every path the Worker owns alone, so data is never served from a cache', () => {
     const list = /const WORKER_PATHS = \[([^\]]*)\]/.exec(sw)?.[1] ?? '';
     // the Worker runs first for these (wrangler.jsonc assets.run_worker_first), and the page must not cache them
-    for (const p of ['/api', '/login', '/mcp', '/privacy', '/llms.txt']) {
+    for (const p of ['/api', '/login', '/mcp', '/privacy', '/llms.txt', '/sitemap.xml', '/robots.txt']) {
       expect(list).toContain(`'${p}'`);
       expect(wrangler).toContain(p === '/api' || p === '/login' ? `"${p}/*"` : `"${p}"`);
     }

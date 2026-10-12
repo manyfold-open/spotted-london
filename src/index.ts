@@ -15,6 +15,8 @@ import { geocode } from './routes/geocode';
 import { ask } from './routes/ask';
 import { agentsAdmin } from './routes/agents';
 import { mcp } from './mcp';
+import { events } from './routes/events';
+import { insights } from './routes/insights';
 
 const app = new Hono<AppEnv>();
 app.use('*', session, sameOrigin);
@@ -27,11 +29,13 @@ api.route('/extract', extract);
 api.route('/me', me);
 api.route('/users', users);
 api.route('/admin/agents', agentsAdmin);
+api.route('/admin/insights', insights);
 api.route('/admin', admin);
 api.route('/newsletter', newsletter);
 api.route('/images', images);
 api.route('/geocode', geocode);
 api.route('/ask', ask);
+api.route('/e', events);
 
 app.route('/api/v1', api);
 app.route('/mcp', mcp);

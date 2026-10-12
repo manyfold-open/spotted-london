@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { api, ApiError, type AskPick, type AskStatus, type AskView } from './api';
 import type { TasteSummary } from '../../../src/shared/taste';
+import { track } from './track';
 
 // Ask, as a chat on this device. The conversation and its open or minimised state live in memory only (never in
 // localStorage), and the polling runs here, not in the window, so minimising or leaving the page while the agent
@@ -85,6 +86,7 @@ function apply(id: number, v: AskView, qc: QueryClient) {
 export async function ask(qc: QueryClient, o: { text: string; send: string; taste: TasteSummary | null; nearMe: boolean; token: string | null }) {
   const me = ++run;
   const id = ++turnId;
+  track('ask_send', { x: o.nearMe ? 1 : 0 }); // only that a question was asked, never what it said
   const turn: Turn = { id, question: o.text.trim(), phase: 'sending', startedAt: Date.now(), picks: [], note: '', near: false, message: null };
   set({ turns: [...state.turns, turn].slice(-MAX_TURNS), error: null, draft: null });
   let v: AskView;

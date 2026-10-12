@@ -5,6 +5,7 @@ import { api, type Popup } from '../lib/api';
 import { MY_STATE_KEY, patchMe, patchPopup, prefetchPopup } from '../lib/cache';
 import { CATS, catIcon, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
 import { useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { track } from '../lib/track';
 import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
@@ -96,7 +97,7 @@ export function usePopupActions(p: Popup) {
     scope: { id: `save-${p.id}` },
     mutationFn: (on: boolean) => api(`/popups/${p.id}/save`, { method: on ? 'PUT' : 'DELETE', json: on ? {} : undefined }),
     onMutate: on => { haptic(); return patchMe(qc, p.id, { saved: on }); },
-    onSuccess: (_d, on) => toast(on ? "Saved. We'll remind you the day before." : 'Removed from saved', 'i-bookmark'),
+    onSuccess: (_d, on) => { track('save', { slug: p.slug, detail: p.category, x: on ? 1 : 0 }); toast(on ? "Saved. We'll remind you the day before." : 'Removed from saved', 'i-bookmark'); },
     onError: (e, _on, undo) => { undo?.(); onError(e); },
     onSettled: () => { qc.invalidateQueries({ queryKey: ['saves'] }); qc.invalidateQueries({ queryKey: MY_STATE_KEY, refetchType: 'none' }); },
   });
@@ -110,7 +111,7 @@ export function usePopupActions(p: Popup) {
       const undoMe = patchMe(qc, p.id, { quality_vote: value });
       return () => { undoMe(); undoScore(); };
     },
-    onSuccess: d => { patchPopup(qc, p.id, x => ({ ...x, score: d.popup.score })); },
+    onSuccess: (d, value) => { track('vote', { slug: p.slug, detail: 'quality', x: value }); patchPopup(qc, p.id, x => ({ ...x, score: d.popup.score })); },
     onError: (e, _v, undo) => { undo?.(); onError(e); },
   });
   return {
@@ -122,6 +123,7 @@ export function usePopupActions(p: Popup) {
       const first = on && localSaveIds().length === 0; // the first one says where it went
       haptic();
       setLocalSave(p.id, on);
+      track('save', { slug: p.slug, detail: p.category, x: on ? 1 : 0 });
       toast(on ? (first ? 'Saved on this device. Sign in to keep it and get a reminder.' : 'Saved on this device') : 'Removed from saved', 'i-bookmark');
     },
     voteQuality: requireAuth((v: number, el?: Element) => { bump(el); quality.mutate(p.me?.quality_vote === v ? 0 : v); }, 'Sign in to vote', { then: 'vote', intent: (v: number, _el?: Element) => ({ type: 'quality', id: p.id, value: v }) }),

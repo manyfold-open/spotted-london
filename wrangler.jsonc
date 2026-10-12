@@ -11,7 +11,7 @@
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy"]
+    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy", "/sitemap.xml", "/robots.txt"]
   },
 
   // Safe default. Local dev switches to "development" through .dev.vars.
@@ -33,6 +33,9 @@
   // Anyone's AI assistant can call POST /mcp without a key (search_popups, get_popup). This caps those calls per
   // visitor (a salted IP hash) so one client cannot use up the free CPU. Counted by Cloudflare, no D1 or KV writes.
   "ratelimits": [{ "name": "MCP_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
+  // Anonymous usage events (src/routes/events.ts). Written with no D1 or KV cost; the Insights page reads them back
+  // through the Analytics Engine SQL API (secrets CF_ACCOUNT_ID and CF_ANALYTICS_TOKEN, see README "Insights").
+  "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "spotted_events" }],
   // Photos (R2 enabled on the account on 2026-09-30)
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
 
@@ -55,6 +58,7 @@
     "d1_databases": [{ "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a" }],
     "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
     "ratelimits": [{ "name": "MCP_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
+    "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "spotted_events" }],
     "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
     "ai": { "binding": "AI" }
   },

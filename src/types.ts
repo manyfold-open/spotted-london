@@ -6,6 +6,12 @@ export type Bindings = Cloudflare.Env & {
   IMAGES?: R2Bucket;
   /** Calls per minute for anonymous POST /mcp (wrangler.jsonc `ratelimits`). Missing in some setups: then nothing is limited. */
   MCP_LIMIT?: RateLimit;
+  /** Anonymous usage events (wrangler.jsonc `analytics_engine_datasets`). Missing: events are dropped and nothing breaks. */
+  EVENTS?: AnalyticsEngineDataset;
+  /** With CF_ANALYTICS_TOKEN, lets the Insights page read those events back. Both are optional. */
+  CF_ACCOUNT_ID?: string;
+  /** Cloudflare API token with Account Analytics: Read, for the Insights page only. */
+  CF_ANALYTICS_TOKEN?: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;
