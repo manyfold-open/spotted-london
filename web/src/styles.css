@@ -652,8 +652,12 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-main { position: relative; height: 100vh; height: 100dvh; overflow: hidden; overflow: clip }
 .mp-home { position: absolute; inset: 0; background: #ece8df; overflow: hidden; overflow: clip }
 .mp-map { position: absolute; inset: 0 }
-/* Solid strip behind the phone status bar (installed app). iOS 26 blurs the top of the page unless WebKit's hit test at the middle of the top edge, about 4 px below the status bar, lands on a fixed, opaque, nearly full-width box taller than 10 px; it then fills the status bar with that box's colour (LocalFrameView::fixedContainerEdges). So the strip reaches 10 px past the status bar and fades out there, above the floating bar, and it must be a real element (a ::before hit-tests as .mp-home, which is not fixed). The hit test ignores pointer-events, so map drags can still start on the fade. With no inset (browser, desktop) it has no height. */
+/* Paper strip behind the phone status bar, so the map stops below it (fades out over its last 10 px; no height without an inset: browser, desktop). Must be a real element, not a ::before. */
 .mp-statusbar { position: fixed; top: 0; left: 0; right: 0; height: calc(env(safe-area-inset-top, 0px) + min(10px, env(safe-area-inset-top, 0px))); background: var(--paper); z-index: 7; pointer-events: none; -webkit-mask-image: linear-gradient(#000 calc(100% - 10px), transparent); mask-image: linear-gradient(#000 calc(100% - 10px), transparent) }
+/* The installed iPhone app (iOS 26) always blurs and whitens the top of the page, down to about the middle of the search bar. A web page cannot turn it off there: WebKit only swaps it for a fixed element's colour when the status bar counts as an obscured inset (an ordinary Safari tab), and in a home screen app it does not. Other pages hide it because their top bar is one flat colour; here the map showed through the blur. So in the installed app the strip becomes a paper header down to the chips, like the top bar elsewhere, and the map starts below it. It sits under the floating bar (6). */
+@media (display-mode: standalone) and (max-width: 899px) {
+  .mp-statusbar { height: calc(env(safe-area-inset-top, 0px) + 10px + 56px + 10px); z-index: 5; border-bottom: 1.5px solid var(--ink); -webkit-mask-image: none; mask-image: none }
+}
 .mp-map .ml { position: absolute; inset: 0; animation: fade var(--dur-3) }
 .mp-mapfill { position: absolute; inset: 0; background: #ece8df radial-gradient(var(--dot) 1.1px, transparent 1.2px) 0 0 / 22px 22px }
 /* MapLibre's corners stay clear of our chrome */
