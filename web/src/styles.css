@@ -722,6 +722,11 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-prompt p { margin: 6px 0 12px; font-size: 13px; color: var(--ink2) }
 .mp-prompt .fine { margin: 10px 0 0; font-size: 11.5px; color: var(--ink3); display: flex; gap: 6px; align-items: center }
 .mp-prompt .fine svg.i { width: 14px; height: 14px }
+.mp-prompt .fine a { color: inherit; font-weight: 600; text-decoration: underline }
+.mp-welcome .row { flex-wrap: wrap }
+.mp-welcome-list { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; gap: 8px }
+.mp-welcome-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink2) }
+.mp-welcome-list svg.i { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--ink) }
 
 /* you */
 .mp-you { width: 18px; height: 18px; border-radius: 50%; background: var(--here); border: 3px solid #fff; box-shadow: 0 0 0 1.5px var(--ink); animation: pop var(--dur-3) var(--ease-spring) backwards }

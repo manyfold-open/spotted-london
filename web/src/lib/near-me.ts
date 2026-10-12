@@ -7,6 +7,8 @@ export type NearState = 'idle' | 'asking' | 'on' | 'denied' | 'unsupported';
 const KEY = 'spotted.near';
 const read = (): '1' | '0' | null => { try { const v = localStorage.getItem(KEY); return v === '1' || v === '0' ? v : null; } catch { return null; } };
 const write = (v: '1' | '0') => { try { localStorage.setItem(KEY, v); } catch { /* private window */ } };
+/** True once this device has answered the location card (agreed or not now). */
+export const nearChoiceMade = (): boolean => read() !== null;
 
 /**
  * Where you are, for the map home. The position lives in memory only and never goes to the server:
