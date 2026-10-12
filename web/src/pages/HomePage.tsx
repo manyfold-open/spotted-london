@@ -236,6 +236,7 @@ export default function HomePage() {
 
   return (
     <div className="mp-home" data-view={view} data-ask={asked.open ? 'open' : undefined} data-snap={snap} data-loc={near.state} data-away={away && !!near.pos} style={{ '--mp-chips': `${top}px` } as CSSProperties}>
+      <div className="mp-statusbar" aria-hidden="true" />
       <h1 className="sr">London pop-ups</h1>
       <div className="mp-map">
         <Suspense fallback={<div className="mp-mapfill" aria-busy="true" aria-label="Loading the map" />}>
