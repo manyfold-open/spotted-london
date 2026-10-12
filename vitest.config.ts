@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-workers';
 
 export default defineConfig(async () => {
@@ -22,6 +22,11 @@ export default defineConfig(async () => {
       }),
     ],
     // css.include lets a test read web/src/styles.css as text (`?raw`). Vitest blanks CSS files by default.
-    test: { setupFiles: ['./test/setup.ts'], css: { include: [/styles\.css/] } },
+    // .claude/** holds Claude Code worktrees: full copies of the repo whose tests would run too.
+    test: {
+      setupFiles: ['./test/setup.ts'],
+      css: { include: [/styles\.css/] },
+      exclude: [...configDefaults.exclude, '.claude/**'],
+    },
   };
 });
