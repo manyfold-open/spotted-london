@@ -55,7 +55,7 @@ export function Img({ src, fit }: { src: string; fit?: boolean | number }) {
 }
 
 /** Share of the photo that `object-fit: cover` would cut off above which the whole photo is shown instead. */
-const MAX_CROP = 0.3;
+const MAX_CROP = 0.4;
 /** For small squares (44 px rows), where a whole photo would be a few pixels: only a very wide or tall one. */
 export const MAX_CROP_SMALL = 0.5;
 
