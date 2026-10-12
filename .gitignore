@@ -6,4 +6,5 @@ node_modules
 web/dist/
 backups/
 .superpowers/
+.claude/
 tmp-places/
