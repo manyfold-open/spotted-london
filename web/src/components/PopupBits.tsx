@@ -31,10 +31,10 @@ export function Meter({ value, big }: { value: number; big?: boolean }) {
 }
 
 /** Cover photo, or the category's pattern and icon when there is no photo yet. */
-export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string }) {
+export function Cover({ p, className, fit }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string; fit?: boolean | number }) {
   return (
     <div className={`${className} pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
-      {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
+      {p.cover_url ? <Img src={p.cover_url} fit={fit} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
 }
@@ -42,21 +42,24 @@ export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url
 /**
  * A photo that fades in once it has loaded, over the category pattern. With `fit`, a photo whose shape is far from
  * its box (a tall poster in a wide card) is shown whole on a blurred copy of itself instead of being cropped.
+ * `fit` is true for the usual limit, or the share of the photo that may be cropped.
  */
-export function Img({ src, fit }: { src: string; fit?: boolean }) {
+export function Img({ src, fit }: { src: string; fit?: boolean | number }) {
   return <img src={src} alt="" loading="lazy" decoding="async" className="fade" onLoad={e => settle(e.currentTarget, fit)} onError={hideBroken}
     ref={el => { if (el?.complete && el.naturalWidth && !el.classList.contains('in')) settle(el, fit); }} />;
 }
 
 /** Share of the photo that `object-fit: cover` would cut off above which the whole photo is shown instead. */
 const MAX_CROP = 0.3;
+/** For small squares (44 px rows), where a whole photo would be a few pixels: only a very wide or tall one. */
+export const MAX_CROP_SMALL = 0.5;
 
 /** Fades the photo in. With `fit`, marks the box `data-fit="whole"` when too much would be cropped (see `.thumb[data-fit]`). */
-function settle(img: HTMLImageElement, fit?: boolean) {
+function settle(img: HTMLImageElement, fit?: boolean | number) {
   const box = img.parentElement;
   if (fit && box && img.naturalWidth && img.naturalHeight && box.clientWidth && box.clientHeight) {
     const a = img.naturalWidth / img.naturalHeight, b = box.clientWidth / box.clientHeight;
-    if (1 - Math.min(a, b) / Math.max(a, b) > MAX_CROP) box.dataset.fit = 'whole'; else delete box.dataset.fit;
+    if (1 - Math.min(a, b) / Math.max(a, b) > (typeof fit === 'number' ? fit : MAX_CROP)) box.dataset.fit = 'whole'; else delete box.dataset.fit;
   }
   img.classList.add('in');
 }

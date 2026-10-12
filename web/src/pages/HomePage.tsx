@@ -14,7 +14,7 @@ import { Icon } from '../components/Icon';
 import type { PopupMapHandle } from '../components/maps';
 import { Filters, Newsletter, usePopups, VerifiedSwitch } from '../components/ListBits';
 import { MapSheet } from '../components/MapSheet';
-import { CardSkeletons, Cover, PopupCard } from '../components/PopupBits';
+import { CardSkeletons, Cover, MAX_CROP_SMALL, PopupCard } from '../components/PopupBits';
 import { useShell } from '../components/Shell';
 import { TopBar } from '../components/TopBar';
 
@@ -218,7 +218,7 @@ export default function HomePage() {
         {items.map(p => (
           <Link key={p.id} data-id={p.id} to={`/p/${p.slug}`} className={`mini ${hl === p.id ? 'hl' : ''}`}
             onMouseEnter={() => setHl(p.id)} onPointerDown={() => prefetchPopup(qc, p.slug)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
-            <Cover p={p} className="sw" />
+            <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
             <span className="mp-mt"><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {fmtDay(p.start_at)}{isLive(p) ? ' · on now' : ''}</span></span>
             {nearOn && p.distance_m !== undefined ? <span className="mp-dist">{distance(p.distance_m)}</span> : null}
           </Link>

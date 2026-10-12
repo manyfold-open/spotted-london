@@ -9,7 +9,7 @@ import { haptic } from '../lib/motion';
 import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { Icon } from '../components/Icon';
-import { Cover } from '../components/PopupBits';
+import { Cover, MAX_CROP_SMALL } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
 
@@ -56,7 +56,7 @@ function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
         {live ? 'People can see it now, and the community starts checking it.' : 'An admin usually looks at new posts within 12 hours.'} You earn 10 karma when it is verified.
       </p>
       <Link to={`/p/${p.slug}`} className="mini" style={i(2)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
-        <Cover p={p} className="sw" />
+        <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
         <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {dateRange(p)}</span></span>
       </Link>
       <div className="acts" style={i(3)}>

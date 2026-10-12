@@ -230,7 +230,7 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 .dhead img { width: 100%; height: 100%; object-fit: cover }
 /* The sheet cover shows the whole photo (wide ones are not cut off); the sides are filled with a blurred copy. */
 .dhead::before { content: ''; position: absolute; inset: -20px; background: var(--cover) center / cover; filter: blur(24px) saturate(1.1); opacity: .9 }
-.dhead img { position: relative; object-fit: contain }
+.dhead img { position: absolute; inset: 0; object-fit: contain }
 .dhead svg.big { width: 76px; height: 76px }
 .dclose { position: absolute; top: 12px; right: 12px }
 .handle { display: none }
@@ -339,7 +339,11 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .mini:active { scale: .98 }
 .mini.hl { border-color: var(--accent); box-shadow: 3px 3px 0 var(--accent) }
 .mini .sw { width: 44px; height: 44px; border-radius: 10px; border: 1.5px solid var(--ink); display: grid; place-items: center; flex: none; overflow: hidden }
-.mini .sw img, .qitem .sw img { width: 100%; height: 100%; object-fit: cover }
+.mini .sw, .qitem .sw { position: relative }
+.mini .sw img, .qitem .sw img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25% }
+/* In a small square only a very wide or very tall photo is shown whole (see MAX_CROP_SMALL in PopupBits). */
+.mini .sw[data-fit="whole"]::before { content: ''; position: absolute; inset: -6px; background: var(--cover) center / cover; filter: blur(6px) saturate(1.1); opacity: .9 }
+.mini .sw[data-fit="whole"] img { object-fit: contain }
 .mini .sw svg.i, .qitem .sw svg.i { width: 24px; height: 24px }
 .mini b { display: block; font-size: 14px; line-height: 1.25 }
 .mini span:where(:not(.tag)) { font-size: 12px; color: var(--ink2) }
