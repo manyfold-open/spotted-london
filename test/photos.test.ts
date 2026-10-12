@@ -65,6 +65,9 @@ describe('photo helpers', () => {
     expect(await pagePhoto('https://shop.test/sale', f(`<head>${org}</head><body>${ld({ '@type': 'ExhibitionEvent', image: '/show.jpg' })}</body>`))).toBe('https://shop.test/show.jpg');
     expect(await pagePhoto('https://shop.test/sale', f(`<head></head><body>${ld({ '@graph': [{ '@type': 'Event', image: [{ '@type': 'ImageObject', url: 'https://cdn.shop.test/a.jpg' }] }] })}</body>`))).toBe('https://cdn.shop.test/a.jpg');
     expect(await pagePhoto('https://shop.test/sale', f(`<head>${org}</head><body></body>`))).toBeNull();
+    // the National Gallery writes the plus in the type as an entity, and &amp; inside the JSON
+    const ng = '<script type="application/ld&#x2B;json">{"@type":"Event","image":"https://www.ng.test/media/renoir.jpg?rmode=crop&amp;width=800"}</script>';
+    expect(await pagePhoto('https://www.ng.test/exhibitions/renoir', f(`<head></head><body>${ng}</body>`))).toBe('https://www.ng.test/media/renoir.jpg?rmode=crop&width=800');
     // the og:image in the head still wins
     expect(await pagePhoto('https://shop.test/sale', f(`<head><meta property="og:image" content="/og.jpg"></head><body>${ld({ '@type': 'Event', image: '/show.jpg' })}</body>`))).toBe('https://shop.test/og.jpg');
   });

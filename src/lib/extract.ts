@@ -51,7 +51,8 @@ export function decodeEntities(s: string): string {
 /** All JSON-LD objects in the page, flattened (handles arrays and @graph). */
 export function jsonLdObjects(html: string): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  // Some sites write the type with the plus as an HTML entity (the National Gallery: application/ld&#x2B;json).
+  const re = /<script[^>]+type=["']application\/ld(?:\+|&#x2B;|&#43;|&plus;)json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;
   const walk = (v: unknown) => {
     if (Array.isArray(v)) v.forEach(walk);
