@@ -387,11 +387,16 @@ async function resetDevice() {
   await resetAndReload();
 }
 
+/** The component stack React reports for the last crash. It arrives just after the page below renders, so it is read when copied. */
+let crashStack = '';
+export const noteCrash = (info: { componentStack?: string | null }) => { crashStack = info.componentStack ?? ''; };
+
 /** Shown instead of the router's default error screen when a page crashes. */
 export function CrashPage() {
   const err = useRouteError();
   const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   const stale = STALE.test(detail);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     console.error(err);
     // Once per tab, a stale app fixes itself. If it crashes again the page below stays put.
@@ -409,6 +414,10 @@ export function CrashPage() {
           <button className="btn primary" onClick={() => void resetAndReload()}>Reload</button>
           <a className="btn" href="/">Back to Explore</a>
         </div>
+        <button className="linkbtn small" onClick={() => {
+          const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 14).join('\n') : '';
+          void navigator.clipboard?.writeText(`${detail}\n${stack}\n${crashStack}`.slice(0, 6000)).then(() => setCopied(true), () => {});
+        }}>{copied ? 'Copied. Paste it to whoever is fixing this.' : 'Copy error details'}</button>
         {stale ? null : <button className="linkbtn small" onClick={() => void resetDevice()}>Still stuck? Reset this device (clears your For you picks and saves kept on this phone)</button>}
         <p className="small muted" style={{ overflowWrap: 'anywhere' }}>{detail.slice(0, 300)}</p>
       </div>

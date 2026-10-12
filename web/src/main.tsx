@@ -11,7 +11,7 @@ import { registerServiceWorker } from './lib/pwa';
 import HomePage from './pages/HomePage';
 import { Submit } from './pages/Submit';
 import { Connect } from './pages/Connect';
-import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
+import { AdminQueue, CrashPage, MePage, noteCrash, NotFound, Saved, SignIn } from './pages/Account';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
 const InsightsPage = lazy(() => import('./pages/Insights'));
@@ -52,7 +52,7 @@ const router = createBrowserRouter([
   },
 ]);
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById('root')!, { onCaughtError: (_e, info) => noteCrash(info) }).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <IconSprite />
