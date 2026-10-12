@@ -18,6 +18,22 @@ export function nextSheetSize(cur: SheetSize, prev: SheetSize | null, next: Shee
   return next;
 }
 
+/**
+ * A cap on how often something may update itself in a row: `max` times in `windowMs`, then a rest of `freezeMs`.
+ * The sheet's size measurement uses it as the last line of defence against an endless render loop that
+ * `nextSheetSize` does not recognise (three sizes in turn, or one that keeps drifting). Call the result with the
+ * current time before each update: false means skip it.
+ */
+export function updateBudget(max = 8, windowMs = 1000, freezeMs = 3000) {
+  let start = 0, n = 0, frozenUntil = 0;
+  return (now: number): boolean => {
+    if (now < frozenUntil) return false;
+    if (now - start > windowMs) { start = now; n = 0; }
+    if (++n > max) { frozenUntil = now + freezeMs; return false; }
+    return true;
+  };
+}
+
 /** Where a dragged sheet settles. A fast flick adds 180 ms of travel at its release speed. */
 export function pickSnap(y: number, velocity: number, heights: Record<Snap, number>): Snap {
   const landing = y + velocity * 180;

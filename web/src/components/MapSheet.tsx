@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import { nextSheetSize, pickSnap, type SheetSize, type Snap } from '../lib/map-home';
+import { nextSheetSize, pickSnap, updateBudget, type SheetSize, type Snap } from '../lib/map-home';
 
 /**
  * The list that sits on the map. On a phone it is a bottom sheet with three stops (peek, half, full) that you
@@ -17,6 +17,8 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children, col
   const sizeNow = useRef(size); sizeNow.current = size;
   const sizeBefore = useRef<SheetSize | null>(null);
   const forget = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // However the measurement loops, it never updates more than a few times a second (see updateBudget).
+  const budget = useRef(updateBudget());
   const [dragY, setDragY] = useState<number | null>(null);
   const drag = useRef<{ y: number; base: number; t: number; dy: number } | null>(null);
   const offs: Record<Snap, number> = { full: 0, half: size.half, peek: size.peek };
@@ -34,6 +36,7 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children, col
     const next = { h, peek: Math.max(0, h - Math.min(peekVisible, halfVisible)), half: Math.max(0, h - halfVisible) };
     const keep = nextSheetSize(sizeNow.current, sizeBefore.current, next);
     if (keep === sizeNow.current) return;
+    if (!budget.current(performance.now())) return;
     sizeBefore.current = sizeNow.current;
     clearTimeout(forget.current);
     forget.current = setTimeout(() => { sizeBefore.current = null; }, 2000);
