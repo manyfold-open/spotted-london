@@ -58,6 +58,17 @@ describe('photo helpers', () => {
     expect(await pagePhotoResult('https://shop.test/sale', page('<head><meta property="og:image" content="/hero.jpg"></head>'))).toEqual({ image: 'https://shop.test/hero.jpg' });
   });
 
+  it('falls back to the image of a JSON-LD Event, also in the body, but not an Organization logo', async () => {
+    const f = (h: string) => (async () => new Response(h, { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+    const ld = (o: unknown) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`;
+    const org = ld({ '@type': 'Organization', logo: '/logo.png', image: '/brand.jpg' });
+    expect(await pagePhoto('https://shop.test/sale', f(`<head>${org}</head><body>${ld({ '@type': 'ExhibitionEvent', image: '/show.jpg' })}</body>`))).toBe('https://shop.test/show.jpg');
+    expect(await pagePhoto('https://shop.test/sale', f(`<head></head><body>${ld({ '@graph': [{ '@type': 'Event', image: [{ '@type': 'ImageObject', url: 'https://cdn.shop.test/a.jpg' }] }] })}</body>`))).toBe('https://cdn.shop.test/a.jpg');
+    expect(await pagePhoto('https://shop.test/sale', f(`<head>${org}</head><body></body>`))).toBeNull();
+    // the og:image in the head still wins
+    expect(await pagePhoto('https://shop.test/sale', f(`<head><meta property="og:image" content="/og.jpg"></head><body>${ld({ '@type': 'Event', image: '/show.jpg' })}</body>`))).toBe('https://shop.test/og.jpg');
+  });
+
   it('pagePhoto reads past 300 KB of inline CSS to the meta tags, and ignores meta tags in the body', async () => {
     const f = (h: string) => (async () => new Response(h, { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
     const css = `<style>${'a{color:red}'.repeat(30_000)}</style>`; // 360 KB
