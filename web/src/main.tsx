@@ -14,6 +14,7 @@ import { Connect } from './pages/Connect';
 import { AdminQueue, CrashPage, MePage, NotFound, Saved, SignIn } from './pages/Account';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
+const InsightsPage = lazy(() => import('./pages/Insights'));
 
 registerServiceWorker();
 
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: '/signin', element: <SignIn /> },
       { path: '/admin', element: <AdminQueue /> },
       { path: '/admin/agent', element: <Suspense fallback={null}><AgentsPage /></Suspense> },
+      { path: '/admin/insights', element: <Suspense fallback={null}><InsightsPage /></Suspense> },
       { path: '*', element: <NotFound /> },
     ],
   },

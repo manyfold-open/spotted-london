@@ -11,6 +11,7 @@ import { CardSkeletons, Cover, MAX_CROP_SMALL, PopupCard, StatusTag } from '../c
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { Logo } from '../components/Shell';
 import { flushTaste, forgetTaste } from '../lib/taste';
+import { markSigningIn, setTrackingOptOut, trackingOptedOut } from '../lib/track';
 
 /* ---------------- Saved ---------------- */
 export function Saved() {
@@ -56,7 +57,7 @@ export function SignInPrompt({ title, text, to }: { title: string; text: string;
       <h1 style={{ fontSize: 28 }}>{title}</h1>
       <p className="muted" style={{ margin: '8px 0 18px' }}>{text}</p>
       <div className="stack">
-        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`}>Continue with Google</a> : null}
+        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`} onClick={() => markSigningIn('page')}>Continue with Google</a> : null}
         {!p || p.email || !p.google ? <Link className={`btn block ${p?.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`}>{p?.google ? 'Use email instead' : 'Sign in'}</Link> : null}
         <Link className="btn subtle block" to="/">Keep browsing</Link>
       </div>
@@ -78,6 +79,7 @@ export function SignIn() {
   const [botReset, setBotReset] = useState(0);
   const send = useMutation({
     mutationFn: () => api<{ message: string; dev_link?: string }>('/auth/magic-link', { method: 'POST', json: { email, return_to: returnTo, turnstile_token: botToken } }),
+    onSuccess: () => markSigningIn('email'),
     onError: e => { onError(e); setBotReset(n => n + 1); },
   });
   if (me) {
@@ -109,7 +111,7 @@ export function SignIn() {
       {providers.data?.google ? (
         <>
           {providers.data.email ? <div className="row" style={{ margin: '16px 0' }}><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /><span className="small muted">or</span><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /></div> : null}
-          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`}>Continue with Google</a>
+          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`} onClick={() => markSigningIn('page')}>Continue with Google</a>
         </>
       ) : null}
       <p className="small muted" style={{ marginTop: 16 }}>We never show your email to other people.</p>
@@ -145,6 +147,7 @@ export function MePage() {
     onError,
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [statsOff, setStatsOff] = useState(trackingOptedOut);
   const del = useMutation({
     mutationFn: async () => {
       await api('/me', { method: 'DELETE' });
@@ -185,10 +188,12 @@ export function MePage() {
       <div className="lh"><h2>Account</h2></div>
       <div className="menu">
         {me.role === 'admin' ? <Link className="mrow" to="/admin"><Icon name="i-inbox" /><span>Review queue<span className="sub">Posts waiting for a decision</span></span><Icon name="i-down" className="i chev" /></Link> : null}
+        {me.role === 'admin' ? <Link className="mrow" to="/admin/insights"><Icon name="i-list" /><span>Insights<span className="sub">Visitors, what they open and save, how they come back</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         {me.role === 'admin' ? <Link className="mrow" to="/admin/agent"><Icon name="i-sparkle" /><span>Agents<span className="sub">AI helpers that find, check and flag pop-ups</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         <Link className="mrow" to="/connect"><Icon name="i-sparkle" /><span>Use with your AI<span className="sub">Ask ChatGPT, Claude or Codex what is on</span></span><Icon name="i-down" className="i chev" /></Link>
         <button className="mrow" onClick={() => newsletter.mutate()} disabled={newsletter.isPending || newsletter.isSuccess}><Icon name="i-mail" /><span>Weekend newsletter<span className="sub">{newsletter.isSuccess ? 'Confirmation email sent' : `Send it to ${me.email}`}</span></span><Icon name="i-down" className="i chev" /></button>
         <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Emailed the day before a saved pop-up starts, and on its last day</span></span></div>
+        <button className="mrow" role="switch" aria-checked={!statsOff} onClick={() => { setTrackingOptOut(!statsOff); setStatsOff(trackingOptedOut()); }}><Icon name="i-info" /><span>Anonymous usage stats<span className="sub">{statsOff ? 'Off on this device. Nothing is counted.' : 'On. Counts visits and taps, never who you are.'}</span></span></button>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
         <button className="mrow" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(v => !v)}><Icon name="i-flag" /><span>Delete account<span className="sub">Removes your email, name and saved list</span></span></button>
       </div>

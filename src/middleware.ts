@@ -9,6 +9,8 @@ const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 
 /** GET routes that never read the user, so the session lookup is skipped for them. */
 const PUBLIC_PATHS = new Set(['/api/v1/popups', '/api/v1/popups/snapshot']);
+/** Usage events are anonymous and never read the user: no session lookup, so no D1 read per event. */
+const EVENT_PATH = '/api/v1/e';
 
 /**
  * Loads the signed-in user.
@@ -20,7 +22,8 @@ export const session = createMiddleware<AppEnv>(async (c, next) => {
   c.set('now', Number.isFinite(pinned) && pinned > 0 ? pinned : Date.now());
 
   // The public list is the same for everyone, so it does not need to know who is asking.
-  if (c.req.method === 'GET' && PUBLIC_PATHS.has(c.req.path.replace(/\/+$/, ''))) {
+  const path = c.req.path.replace(/\/+$/, '');
+  if ((c.req.method === 'GET' && PUBLIC_PATHS.has(path)) || (c.req.method === 'POST' && path === EVENT_PATH)) {
     c.set('user', null);
     return next();
   }

@@ -12,6 +12,7 @@ import { Icon } from '../components/Icon';
 import { Cover, MAX_CROP_SMALL } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
+import { track } from '../lib/track';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
@@ -223,6 +224,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
           price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force, turnstile_token: botToken,
         },
       });
+      track('submit_done', { slug: created.slug, detail: created.category });
       for (const [i, ph] of (photosOn ? photos : []).entries()) {
         setSaving(`Uploading photo ${i + 1} of ${photos.length}`);
         try {

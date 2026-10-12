@@ -10,6 +10,7 @@ import { ApiError } from './lib/util';
 import { appOrigin } from './middleware';
 import { llmsText } from './lib/llms';
 import { privacyBody } from './privacy';
+import { snapshotItems } from './db/snapshot';
 
 export const pages = new Hono<AppEnv>();
 
@@ -94,6 +95,25 @@ pages.get('/privacy', c => c.html(shell('Privacy · Spotted London', privacyBody
 
 /** A guide for AI assistants (llmstxt.org). Cached for an hour: it only changes with a deploy. */
 pages.get('/llms.txt', c => c.text(llmsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600', 'content-type': 'text/plain; charset=utf-8' }));
+
+/** What search engines may crawl. The API stays closed, except photos, which share previews and Google Images use. */
+export function robotsText(origin: string): string {
+  return ['User-agent: *', 'Allow: /', 'Allow: /api/v1/images/', 'Disallow: /api/', 'Disallow: /login/', 'Disallow: /admin', '', `Sitemap: ${origin}/sitemap.xml`, ''].join('\n');
+}
+
+/** The home page, the guide pages and every pop-up on the public list. Read from the stored list, not from `popups`. */
+export function sitemapXml(origin: string, slugs: string[]): string {
+  const urls = [`${origin}/`, `${origin}/connect`, `${origin}/privacy`, ...slugs.map(s => `${origin}/p/${encodeURIComponent(s)}`)];
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `<url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`;
+}
+
+pages.get('/robots.txt', c => c.text(robotsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600' }));
+
+pages.get('/sitemap.xml', async c => {
+  const items = await snapshotItems(c.env.DB, c.get('now'));
+  const xml = sitemapXml(appOrigin(c), items.filter(i => !i.example).map(i => i.slug));
+  return c.body(xml, 200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+});
 
 /**
  * Pop-up pages get real titles, share previews and schema.org Event data, injected into the

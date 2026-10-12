@@ -5,6 +5,7 @@ import { api, ApiError, type Popup } from '../lib/api';
 import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib/cache';
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
+import { track } from '../lib/track';
 import { useLocalSaves } from '../lib/local-saves';
 import { bump, haptic, isPhone, scrollBehavior } from '../lib/motion';
 import { compressImage } from '../lib/image';
@@ -176,6 +177,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const requireAuth = useRequireAuth();
   const { toggleSave } = usePopupActions(p);
   const statusChanged = useChanged(p.status);
+  useEffect(() => { track('popup_open', { slug: p.slug, detail: p.category }); }, [p.slug, p.category]);
   const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [reporting, setReporting] = useState(false);
   // The reasons open at the bottom of the sheet, under the Save and Directions bar: bring them into view.
@@ -220,6 +222,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
     mutationFn: (value: number) => api<{ popup: Popup; status_change: { from: string; to: string } | null }>(`/popups/${p.id}/vote`, { method: 'PUT', json: { kind: 'existence', value } }),
     onMutate: value => { haptic(); return patchMe(qc, p.id, { existence_vote: value }); },
     onSuccess: (d, value) => {
+      track('vote', { slug: p.slug, detail: 'exist', x: value });
       patchPopup(qc, p.id, x => ({ ...x, verification: d.popup.verification, status: d.popup.status }));
       if (value && !d.status_change) toast(`Vote counted at ${weight.toFixed(1)}x`);
       after(d.status_change);
@@ -235,12 +238,12 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         return await api<{ valid: boolean; message: string; status_change: { from: string; to: string } | null }>(`/popups/${p.id}/checkin`, { method: 'POST', json: { lat, lng } });
       } finally { setLocating(false); }
     },
-    onSuccess: d => { haptic(d.valid ? [10, 50, 10] : 8); toast(d.message, 'i-locate'); after(d.status_change); qc.invalidateQueries({ queryKey: ['me'] }); },
+    onSuccess: d => { track('checkin', { slug: p.slug, x: d.valid ? 1 : 0 }); haptic(d.valid ? [10, 50, 10] : 8); toast(d.message, 'i-locate'); after(d.status_change); qc.invalidateQueries({ queryKey: ['me'] }); },
     onError,
   });
   const report = useMutation({
     mutationFn: (reason: string) => api<{ status_change: { from: string; to: string } | null }>(`/popups/${p.id}/report`, { method: 'POST', json: { reason, turnstile_token: botToken } }),
-    onSuccess: d => { setReporting(false); if (d.status_change?.to !== 'hidden') toast('Report sent to the admins', 'i-flag'); after(d.status_change); },
+    onSuccess: d => { track('report', { slug: p.slug }); setReporting(false); if (d.status_change?.to !== 'hidden') toast('Report sent to the admins', 'i-flag'); after(d.status_change); },
     onError: e => { setReporting(false); onError(e); },
   });
 
@@ -257,6 +260,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
     try {
       if (navigator.share) await navigator.share({ title: p.title, url });
       else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }
+      track('share', { slug: p.slug });
     } catch { /* cancelled */ }
   };
 
@@ -277,7 +281,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           <dt><Icon name="i-clock" />When</dt><dd className="num">{dateRange(p)}{p.hours_text ? <><br /><span className="muted">{p.hours_text}</span></> : null}</dd>
           <dt><Icon name="i-pin" />Where</dt><dd>{p.location.address ?? p.location.borough ?? 'London'}</dd>
           {p.price.text ? <><dt><Icon name="i-pound" />Price</dt><dd>{p.price.text}</dd></> : null}
-          <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow">{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
+          <dt><Icon name="i-ext" />Source</dt><dd>{p.source_url ? <a href={p.source_url} target="_blank" rel="noopener nofollow" onClick={() => track('outbound', { slug: p.slug, detail: 'source' })}>{p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="muted">No link given</span>}</dd>
         </dl>
         {p.images?.[0]?.credit ? <p className="small muted photo-credit">Photo: {p.images[0].credit_url ? <a href={p.images[0].credit_url} target="_blank" rel="noopener nofollow">{p.images[0].credit}</a> : p.images[0].credit}
           {me && (me.role === 'admin' || own) ? <> · <button type="button" className="linkbtn" onClick={() => removePhoto(p.images![0].id)}>Remove photo</button></> : null}</p> : null}
@@ -337,7 +341,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       </div>
       <div className="dfoot">
         <button className="btn" aria-pressed={!!p.me?.saved} onClick={toggleSave}><Icon name="i-bookmark" />{p.me?.saved ? 'Saved' : 'Save'}</button>
-        <a className="btn primary" href={`https://www.google.com/maps/search/?api=1&query=${p.location.lat},${p.location.lng}`} target="_blank" rel="noopener"><Icon name="i-route" />Directions</a>
+        <a className="btn primary" href={`https://www.google.com/maps/search/?api=1&query=${p.location.lat},${p.location.lng}`} target="_blank" rel="noopener" onClick={() => track('outbound', { slug: p.slug, detail: 'directions' })}><Icon name="i-route" />Directions</a>
       </div>
     </>
   );

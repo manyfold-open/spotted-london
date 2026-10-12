@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { GateCtx } from '../lib/hooks';
 import type { GateAsk } from '../../../src/shared/gate';
 import { forgetGate, rememberGate } from '../lib/gate';
+import { markSigningIn } from '../lib/track';
 
 /**
  * Asks for sign in without taking you off the page. Shell wraps the app in this, and `useRequireAuth` opens it.
@@ -58,7 +59,7 @@ function SignInSheet({ ask, onClose, onLeave }: { ask: GateAsk; onClose: () => v
         <span className="handle" aria-hidden="true" />
         <h2 id="gate-t">{ask.why}</h2>
         <p className="muted">{ask.intent ? 'Sign in takes one tap, then we finish what you started.' : 'Sign in takes one tap, then you land back here.'}</p>
-        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`}>Continue with Google</a> : null}
+        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`} onClick={() => markSigningIn('sheet')}>Continue with Google</a> : null}
         {p?.email ? <Link className={`btn block ${p.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`} onClick={onLeave}><Icon name="i-mail" />{p.google ? 'Use email instead' : 'Sign in with email'}</Link> : null}
         {p && !p.google && !p.email ? <div className="notice watch"><Icon name="i-clock" /><span>Sign in is not switched on yet. You can still browse every pop-up.</span></div> : null}
         {!p ? <div className="sk" style={{ height: 44, borderRadius: 999 }} /> : null}

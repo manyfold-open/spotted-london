@@ -26,7 +26,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
   const items: [string, IconName, string, number?, boolean?][] = [
     ['/', 'i-map', 'Explore'], ['/add', 'i-plus', 'Add a pop-up'], ['/saved', 'i-bookmark', 'Saved', savedCount], ['/me', 'i-user', 'Me'], ['/connect', 'i-sparkle', 'Use with AI'],
   ];
-  const admin: typeof items = [['/admin', 'i-inbox', 'Review queue', queueCount, true], ['/admin/agent', 'i-sparkle', 'Agents']];
+  const admin: typeof items = [['/admin', 'i-inbox', 'Review queue', queueCount, true], ['/admin/agent', 'i-sparkle', 'Agents'], ['/admin/insights', 'i-list', 'Insights']];
   const link = ([to, icon, label, ct, hot]: (typeof items)[number], i: number) => (
     <NavLink key={to} to={to} end={to === '/' || to === '/admin'} viewTransition onClick={onClose} style={{ '--i': i } as React.CSSProperties}
       className={({ isActive }) => `mp-nav ${isActive || (to === '/' && home) ? 'active' : ''}`}>

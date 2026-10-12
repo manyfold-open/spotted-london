@@ -99,7 +99,7 @@ npm run typecheck
 src/
   index.ts          Hono app, error format, cron entry
   middleware.ts     session, CSRF guard, admin checks, Turnstile, IP hashing
-  pages.ts          sign-in confirm page, SEO tags for /p/:slug
+  pages.ts          sign-in confirm page, SEO tags for /p/:slug, robots.txt, sitemap.xml
   cron.ts           end expired pop-ups, settle karma, hourly hot refresh, reminders, start agent runs
   mcp.ts            MCP server at /mcp: public search, plus agent tools with a key
   lib/scoring.ts    vote weight, Wilson confidence, status rules, trust, hot (SPEC 4)
@@ -249,6 +249,19 @@ Turned on in production since 2026-10-01 (`APIFY_TOKEN` is set and migration 000
 
 Check the actors still return the fields we read (about US$0.05): `read -s APIFY_TOKEN && export APIFY_TOKEN && node scripts/apify-smoke.mjs; unset APIFY_TOKEN`.
 
+## Insights and usage stats
+
+How people use Spotted, kept anonymous. Admins open **Insights** from the menu (`/admin/insights`), a page of its own, not part of the Agents settings.
+
+- **What is counted.** The browser sends small events to `POST /api/v1/e` (`web/src/lib/track.ts`, `src/shared/tracking.ts`): page views, which pop-up was opened, saved, voted on, checked into, shared or followed to its source, which category or date filter was tapped, that someone searched or asked (never the words), that they started to sign in and came back signed in, that they posted, and the site they came from. Every event carries a random id made on the device (`localStorage spotted.vid`), signed in yes or no, phone or desktop, and the country Cloudflare reports. The id is never linked to an account, email or IP address. Admins are not counted, and neither is anyone with Do Not Track, Global Privacy Control, or the **Anonymous usage stats** switch on the Me page set to off. Only PRODUCTION builds send anything.
+- **Where it goes.** The Worker (`src/routes/events.ts`, always answers 204) writes each event to **Workers Analytics Engine**, dataset `spotted_events`, binding `EVENTS`. That costs no D1 or KV writes, and the session is not looked up. `src/lib/events.ts` is the whitelist: unknown events and any value that is not a fixed word are dropped, so typed text cannot get in. If the binding is missing, events are dropped and nothing breaks.
+- **Reading it back.** Insights reads the dataset through the Analytics Engine SQL API (`src/db/insights.ts`) and shows account counts from D1 beside it. Without the two secrets below it still shows the account counts and says what to set.
+  1. Cloudflare dashboard, Workers & Pages overview: copy your **Account ID**, then `npx wrangler secret put CF_ACCOUNT_ID`.
+  2. My Profile, API Tokens, Create Token, Create Custom Token, permission **Account / Account Analytics / Read**. Then `npx wrangler secret put CF_ANALYTICS_TOKEN`. (Preview builds have no secrets, so Insights shows the setup note there.)
+- **Quota.** Analytics Engine on the free plan has daily limits on points written and on read queries (check the current numbers in the Cloudflare docs). One Insights load makes about 17 queries and is cached in the Worker for 5 minutes.
+- **Search engines.** `/robots.txt` and `/sitemap.xml` are served by the Worker (`src/pages.ts`); the sitemap is the home page, `/connect`, `/privacy` and every pop-up in the public list. Submit the sitemap in Google Search Console after verifying the site.
+- **Privacy.** `/privacy` describes all of this. Change it in the same PR as any change to what is sent.
+
 ## What is not built yet
 
 - Emails other than sign-in: newsletter confirmation and reminders are found by the jobs but not sent yet.
@@ -266,7 +279,8 @@ Live at **https://spotted-london.zack11712.workers.dev**. The table below descri
 | KV | `CACHE` | autofill cache and rate limits |
 | R2 | `spotted-images` (WEUR) | photos, served through `/api/v1/images/...` |
 | Turnstile | "Spotted London" | site key in `wrangler.jsonc`, secret in `TURNSTILE_SECRET` |
-| Secrets | `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY` | set with `wrangler secret put`, never in the repo |
+| Analytics Engine | `spotted_events` (binding `EVENTS`) | anonymous usage events, see Insights |
+| Secrets | `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY` | set with `wrangler secret put`, never in the repo. Optional for Insights: `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN` |
 
 ### How deploys happen
 

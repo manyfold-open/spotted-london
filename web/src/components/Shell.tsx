@@ -5,6 +5,7 @@ import { api, type Popup } from '../lib/api';
 import { useExit } from '../lib/motion';
 import { useMe, useToast } from '../lib/hooks';
 import { useTasteSync } from '../lib/taste';
+import { setTrackingContext, takeSignedIn, track, usePageViews } from '../lib/track';
 import { useAfterSignIn } from '../lib/after-sign-in';
 import { useLocalSaves } from '../lib/local-saves';
 import { useAutoThumbs } from '../lib/thumbs';
@@ -30,6 +31,13 @@ export function Shell() {
   const { data: me } = useMe();
   useTasteSync();
   useAfterSignIn();
+  usePageViews();
+  // Stats leave out admins, and "signed in" is the only thing about an account they ever say
+  useEffect(() => {
+    if (me === undefined) return;
+    setTrackingContext({ signedIn: !!me, admin: me?.role === 'admin' });
+    if (me && takeSignedIn()) track('signin_done');
+  }, [me]);
   useAutoThumbs(me?.role === 'admin');
   const localSaves = useLocalSaves();
   const loc = useLocation();
