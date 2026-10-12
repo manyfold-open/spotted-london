@@ -149,7 +149,7 @@ export function currentPosition(): Promise<[number, number]> {
     if (!navigator.geolocation) return reject(new Error('This browser cannot share your location.'));
     navigator.geolocation.getCurrentPosition(
       p => resolve([p.coords.latitude, p.coords.longitude]),
-      e => reject(new Error(e.code === 1 ? 'Allow location access to use this.' : 'We could not find your location. Try again outside.')),
+      e => reject(new Error(e.code === 1 ? 'Location is blocked. Allow it in your browser settings for this site.' : 'We could not find your location. Try again outside.')),
       { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
     );
   });

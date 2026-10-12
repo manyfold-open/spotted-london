@@ -36,7 +36,7 @@ export default function AgentsPage() {
   if (me?.role !== 'admin') return <div className="empty"><Icon name="i-shield" className="i big" /><h2>Admins only</h2><p>This page controls the AI agents that help run Spotted.</p><Link className="btn sm" to="/">Back to Explore</Link></div>;
   return (
     <>
-      <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
+      <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-left" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Agents</h1>
       <p className="intro">AI agents on Manyfold help run Spotted. You can add as many Scouts, Triage and Checker agents as you like, each with its own schedule and instructions. They send drafts and leave notes, and everything they send waits in the <Link to="/admin">review queue</Link> for you. A Concierge is different: it answers the questions visitors type into Ask, using only the public list.</p>
       {q.data && !q.data.agents_key_set ? (

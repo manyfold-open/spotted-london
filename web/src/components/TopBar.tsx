@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useIsFetching } from '@tanstack/react-query';
 import { initials } from '../lib/format';
 import { useMe } from '../lib/hooks';
-import { isPhone } from '../lib/motion';
+import { isPhone, usePhone } from '../lib/motion';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { Ticker } from './PopupBits';
@@ -20,16 +20,28 @@ export function TopBar({ floating, menuOpen, onMenu, children }: { floating?: bo
   // A list is loading for new filters or a new search.
   const busy = useIsFetching({ predicate: q => q.queryKey[0] === 'popups' && q.state.data === undefined }) > 0;
   const bar = useTucked(!floating);
+  const phone = usePhone();
 
-  // Search lives in ?q; typing on another page jumps to the home page.
+  // Search lives in ?q. On the map home the list follows as you type. Elsewhere the text stays in the box
+  // until you press Search: jumping to the home page on the first letter would swap the box for the home
+  // page's own and close the phone keyboard.
   const [q, setQ] = useState(sp.get('q') ?? '');
   useEffect(() => { setQ(sp.get('q') ?? ''); }, [sp]);
-  const onSearch = (v: string) => {
-    setQ(v);
+  const go = (v: string) => {
     const home = loc.pathname === '/';
     const next = new URLSearchParams(home ? sp : undefined);
     if (v) next.set('q', v); else next.delete('q');
     nav({ pathname: '/', search: next.toString() }, { replace: home });
+  };
+  const onSearch = (v: string) => { setQ(v); if (floating) go(v); };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape' && q) onSearch('');
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!floating && q.trim()) go(q.trim());
+      // Done typing: put the keyboard away so the results show.
+      e.currentTarget.blur();
+    }
   };
 
   return (
@@ -39,8 +51,8 @@ export function TopBar({ floating, menuOpen, onMenu, children }: { floating?: bo
       <label className="search">
         {busy && q ? <span className="spin" aria-hidden="true" /> : <Icon name="i-search" />}
         <span className="sr">Search</span>
-        <input type="search" value={q} onChange={e => onSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && q) onSearch(''); }}
-          placeholder="Search pop-ups, hosts, areas" autoComplete="off" enterKeyHint="search" />
+        <input type="search" value={q} onChange={e => onSearch(e.target.value)} onKeyDown={onKey}
+          placeholder={phone ? 'Search pop-ups' : 'Search pop-ups, hosts, areas'} autoComplete="off" enterKeyHint="search" />
         {q ? <button type="button" className="clear" aria-label="Clear search" onClick={() => onSearch('')}><Icon name="i-x" /></button> : null}
       </label>
       {children}
