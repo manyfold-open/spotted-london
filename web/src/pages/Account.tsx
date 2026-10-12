@@ -378,6 +378,15 @@ async function resetAndReload() {
   location.reload();
 }
 
+/** What this device keeps for "For you" and saves. The account copy is not touched, so signing in brings the taste back. */
+const DEVICE_KEYS = ['spotted.taste', 'spotted.taste.sync', 'spotted.saved'];
+
+/** Last resort for an app that crashes as it opens: forget what this device holds, then load fresh. */
+async function resetDevice() {
+  for (const k of DEVICE_KEYS) { try { localStorage.removeItem(k); } catch { /* blocked: nothing to forget */ } }
+  await resetAndReload();
+}
+
 /** Shown instead of the router's default error screen when a page crashes. */
 export function CrashPage() {
   const err = useRouteError();
@@ -400,6 +409,7 @@ export function CrashPage() {
           <button className="btn primary" onClick={() => void resetAndReload()}>Reload</button>
           <a className="btn" href="/">Back to Explore</a>
         </div>
+        {stale ? null : <button className="linkbtn small" onClick={() => void resetDevice()}>Still stuck? Reset this device (clears your For you picks and saves kept on this phone)</button>}
         <p className="small muted" style={{ overflowWrap: 'anywhere' }}>{detail.slice(0, 300)}</p>
       </div>
     </div>
