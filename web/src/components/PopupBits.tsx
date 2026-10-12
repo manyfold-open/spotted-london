@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
@@ -32,9 +32,13 @@ export function Meter({ value, big }: { value: number; big?: boolean }) {
 }
 
 /** Cover photo, or the category's pattern and icon when there is no photo yet. */
-export function Cover({ p, className, fit }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string; fit?: boolean | number }) {
+export function Cover({ p, className, fit, onOpen }: { p: Pick<Popup, 'category' | 'cover_url'>; className: string; fit?: boolean | number; onOpen?: () => void }) {
+  const zoom = p.cover_url && onOpen ? {
+    role: 'button', tabIndex: 0, 'aria-label': 'View photo', onClick: onOpen,
+    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } },
+  } : undefined;
   return (
-    <div className={`${className} pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
+    <div className={`${className} pat-${p.category} ${zoom ? 'zoomable' : ''}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined} {...zoom}>
       {p.cover_url ? <Img src={p.cover_url} fit={fit} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
