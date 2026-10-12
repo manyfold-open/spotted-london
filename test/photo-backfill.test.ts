@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { backfillPhotos, IDLE_AFTER_LAP, isListingPage, RETRY_AFTER } from '../src/db/photo-backfill';
+import { backfillPhotos, IDLE_AFTER_LAP, isListingPage, RETRY_AFTER, RETRY_SOON, retryAfter } from '../src/db/photo-backfill';
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 8, 30, 13);
@@ -105,6 +105,24 @@ describe('backfillPhotos', () => {
     expect(await photos('bf_retry')).toHaveLength(0);
   });
 
+  it('retries a page that did not load after three days, not two weeks', async () => {
+    await addPopup('bf_down', 'https://down.test/e');
+    const down = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
+    expect(await run(NOW, 10, down)).toBe(0);
+    expect((await tried('bf_down'))!.reason).toBe('The page answered HTTP 503.');
+    const up = web({ 'https://down.test/e': 'https://cdn.down.test/p.jpg' });
+    expect(await run(NOW + 2 * DAY, 10, up.f)).toBe(0);
+    expect(up.asked).toEqual([]);
+    expect(await run(NOW + RETRY_SOON + 1, 10, up.f)).toBe(1);
+  });
+
+  it('waits three days only for reasons that can pass', () => {
+    for (const why of ['The page took longer than 5 seconds to load.', 'The page did not load.', 'The page could not be read.', 'It could not be read.', 'The page answered HTTP 502.', 'The page answered HTTP 429.', 'The photo did not load.', 'The site did not give us the photo.'])
+      expect(retryAfter(why), why).toBe(RETRY_SOON);
+    for (const why of ['The page has no main picture.', 'The page answered HTTP 403.', 'The page answered HTTP 404.', 'The page picture looks like a logo.', 'The photo is bigger than 5 MB.', 'Photos must be JPEG, PNG or WebP.'])
+      expect(retryAfter(why), why).toBe(RETRY_AFTER);
+  });
+
   it('leaves pending pop-ups alone', async () => {
     await addPopup('bf_pending', 'https://pending.test/e', 'pending');
     const { f, asked } = web({ 'https://pending.test/e': 'https://cdn.pending.test/p.jpg' });
@@ -138,7 +156,7 @@ describe('backfillPhotos', () => {
     expect(await plan('SELECT COUNT(DISTINCT popup_id) AS n FROM popup_images WHERE origin_url = ?', 'x')).toMatch(/idx_images_origin/);
     const candidates = await plan(`SELECT p.id FROM popups p WHERE p.id > ?1 AND p.status IN ('community') AND p.end_at >= ?2
       AND NOT EXISTS (SELECT 1 FROM popup_images i WHERE i.popup_id = p.id)
-      AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?3)) ORDER BY p.id LIMIT 5`, '', 0, 0);
+      AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.retry_at > ?2)) ORDER BY p.id LIMIT 5`, '', 0);
     expect(candidates).not.toMatch(/SCAN (i|t|popup_images|photo_tries)\b/);
   });
 

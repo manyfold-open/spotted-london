@@ -9,6 +9,10 @@ import { safeUrl } from '../lib/extract';
 
 export const BACKFILL_BATCH = 5;
 export const RETRY_AFTER = 14 * 86_400_000;
+/** A page or photo that did not load, timed out or hit a server error may work in a few days; no reason to wait two weeks. */
+export const RETRY_SOON = 3 * 86_400_000;
+const PASSING = /longer than 5 seconds|did not load|could not be read|answered HTTP (429|5\d\d)|did not give us the photo/;
+export const retryAfter = (why: string) => PASSING.test(why) ? RETRY_SOON : RETRY_AFTER;
 /** The same picture on this many pop-ups is a site logo or a default share image, not a photo of the pop-up. */
 export const SHARED_IMAGE_LIMIT = 2;
 const BOT_ID = 'sys_photo_bot';
@@ -80,7 +84,7 @@ async function writeCursor(db: D1Database, c: Cursor, now: number) {
 
 /**
  * One cron step. Walks the public pop-ups in id order from where the last run stopped (a cursor in `settings`), so a run
- * reads a handful of rows instead of the whole table. Tries up to `batch` pop-ups that have no photo and were not tried lately,
+ * reads a handful of rows instead of the whole table. Tries up to `batch` pop-ups that have no photo and are due a try (`retry_at`),
  * records each answer, and returns how many got a photo. After a lap through all of them it rests for an hour.
  */
 export async function backfillPhotos(env: Pick<Bindings, 'DB' | 'IMAGES'>, now: number, batch = BACKFILL_BATCH, fetcher: typeof fetch = fetch): Promise<number> {
@@ -91,9 +95,9 @@ export async function backfillPhotos(env: Pick<Bindings, 'DB' | 'IMAGES'>, now: 
     `SELECT p.id, p.source_url FROM popups p
      WHERE p.id > ?1 AND p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at >= ?2
        AND NOT EXISTS (SELECT 1 FROM popup_images i WHERE i.popup_id = p.id)
-       AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.tried_at > ?3))
-     ORDER BY p.id LIMIT ?4`,
-  ).bind(cursor.after, now, now - RETRY_AFTER, batch).all<Candidate>();
+       AND NOT EXISTS (SELECT 1 FROM photo_tries t WHERE t.popup_id = p.id AND (t.saved = 1 OR t.retry_at > ?2))
+     ORDER BY p.id LIMIT ?3`,
+  ).bind(cursor.after, now, batch).all<Candidate>();
   const lapDone = results.length < batch;
   await writeCursor(env.DB, lapDone ? { after: '', idle_until: now + IDLE_AFTER_LAP } : { after: results[results.length - 1].id, idle_until: 0 }, now);
   if (!results.length) return 0;
@@ -103,7 +107,7 @@ export async function backfillPhotos(env: Pick<Bindings, 'DB' | 'IMAGES'>, now: 
     let why: string | null;
     try { why = await backfillOne(env, p, now, fetcher); } catch (e) { console.error('photo backfill failed', p.id, e); why = 'It could not be read.'; }
     if (!why) saved++;
-    await env.DB.prepare('INSERT OR REPLACE INTO photo_tries (popup_id, tried_at, saved, reason) VALUES (?, ?, ?, ?)').bind(p.id, now, why ? 0 : 1, why).run();
+    await env.DB.prepare('INSERT OR REPLACE INTO photo_tries (popup_id, tried_at, saved, reason, retry_at) VALUES (?, ?, ?, ?, ?)').bind(p.id, now, why ? 0 : 1, why, why ? now + retryAfter(why) : null).run();
   }
   return saved;
 }

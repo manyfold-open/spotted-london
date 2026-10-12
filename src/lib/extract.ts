@@ -77,6 +77,19 @@ const str = (v: unknown): string | null => {
   return null;
 };
 
+/** A schema.org image: a plain address, an ImageObject ({ url } or { contentUrl }), or a list of either. */
+const imageOf = (v: unknown): string | null => {
+  if (Array.isArray(v)) return imageOf(v[0]);
+  if (v && typeof v === 'object') { const o = v as Record<string, unknown>; return imageOf(o.url ?? o.contentUrl); }
+  return typeof v === 'string' ? decodeEntities(v).trim() || null : null;
+};
+
+/** The image of the first JSON-LD Event on the page. Only an Event's: a page's Organization or WebSite image is its logo. */
+export function jsonLdEventImage(html: string): string | null {
+  const ev = jsonLdObjects(html).find(o => isEventType(o['@type']));
+  return ev ? imageOf(ev.image) : null;
+}
+
 export function parseJsonLdEvent(html: string, now = Date.now()): Partial<Extracted> | null {
   const ev = jsonLdObjects(html).find(o => isEventType(o['@type']));
   if (!ev) return null;
@@ -109,7 +122,7 @@ export function parseJsonLdEvent(html: string, now = Date.now()): Partial<Extrac
     hours_text: startTime && endTime ? `${startTime} to ${endTime}` : null,
     price_text: price,
     description: clip(str(ev.description), 600),
-    image_url: str(ev.image),
+    image_url: imageOf(ev.image),
   };
 }
 

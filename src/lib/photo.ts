@@ -2,7 +2,7 @@
 // into our own R2 bucket (never hotlink: Instagram addresses expire), and credit the page.
 // Used by the paste-a-link form (POST /popups/:id/images/from-url) and by the Scout's submit_draft.
 
-import { safeUrl, parseOpenGraph } from './extract';
+import { safeUrl, parseOpenGraph, jsonLdEventImage } from './extract';
 import { newId } from './util';
 
 export const MAX_PHOTOS = 5;
@@ -65,7 +65,8 @@ export async function fetchPhoto(raw: string, fetcher: typeof fetch = fetch): Pr
 }
 
 /**
- * The main picture a page names (og:image, twitter:image), as an absolute address, or why there is none.
+ * The main picture a page names (og:image, twitter:image in the head; else the image of a JSON-LD Event anywhere
+ * in the first 500 KB), as an absolute address, or why there is none.
  * The reason tells "the site refused us" (HTTP 403) from "the page has no picture", which the backfill stores.
  */
 export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = fetch): Promise<{ image: string; why?: undefined } | { image: null; why: string }> {
@@ -84,16 +85,21 @@ export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = f
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let html = '';
-    while (html.length < MAX_HTML) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
-      const from = Math.max(0, html.length - 6);
-      html += decoder.decode(value, { stream: true });
-      if (/<\/head>/i.test(html.slice(from))) break; // the meta tags are in the head
-    }
-    await reader.cancel().catch(() => {});
+    let ended = false;
+    const read = async (stopAtHead: boolean) => {
+      while (!ended && html.length < MAX_HTML) {
+        const { done, value } = await reader.read();
+        if (done || !value) { ended = true; break; }
+        const from = Math.max(0, html.length - 6);
+        html += decoder.decode(value, { stream: true });
+        if (stopAtHead && /<\/head>/i.test(html.slice(from))) break; // the meta tags are in the head
+      }
+    };
+    await read(true);
     const end = html.search(/<\/head>/i);
-    const raw = parseOpenGraph(end >= 0 ? html.slice(0, end) : html).image_url;
+    let raw = parseOpenGraph(end >= 0 ? html.slice(0, end) : html).image_url;
+    if (!raw) { await read(false); raw = jsonLdEventImage(html); } // event data often sits in the body
+    await reader.cancel().catch(() => {});
     if (!raw) return { image: null, why: 'The page has no main picture.' };
     const image = resolveImageUrl(raw, page.toString());
     return image ? { image } : { image: null, why: 'The page names a picture that is not a public web link.' };
