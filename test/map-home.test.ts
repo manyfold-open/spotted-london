@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, nearMeStart, pickSnap, pinSetKey } from '../web/src/lib/map-home';
+import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, nearMeStart, nextSheetSize, pickSnap, pinSetKey } from '../web/src/lib/map-home';
 
 const H = { peek: 434, half: 228, full: 0 };
 
@@ -114,5 +114,17 @@ describe('coreBounds', () => {
     expect(s).toBeGreaterThan(51.4);
     expect(n).toBeLessThan(51.6);
     expect(e).toBeLessThan(0);
+  });
+});
+
+describe('nextSheetSize', () => {
+  const a = { h: 600, peek: 400, half: 300 }, b = { h: 600, peek: 330, half: 300 };
+  it('takes a new measurement', () => { expect(nextSheetSize(a, null, b)).toBe(b); });
+  it('keeps the size when nothing changed', () => { expect(nextSheetSize(a, null, { ...a })).toBe(a); });
+  it('keeps the size when the measurement goes back to the one just left (a flip-flop)', () => {
+    expect(nextSheetSize(b, a, { ...a })).toBe(b);
+  });
+  it('still takes a size it has not just left', () => {
+    expect(nextSheetSize(b, a, { h: 700, peek: 500, half: 350 })).toEqual({ h: 700, peek: 500, half: 350 });
   });
 });
