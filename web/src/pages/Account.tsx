@@ -7,7 +7,7 @@ import { useErrorToast, useGate, useMe, useMyState, useSheet, useToast } from '.
 import { mergeMe } from '../lib/cache';
 import { useLocalSaves } from '../lib/local-saves';
 import { Icon } from '../components/Icon';
-import { CardSkeletons, Cover, PopupCard, StatusTag } from '../components/PopupBits';
+import { CardSkeletons, Cover, MAX_CROP_SMALL, PopupCard, StatusTag } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { Logo } from '../components/Shell';
 import { flushTaste, forgetTaste } from '../lib/taste';
@@ -206,7 +206,7 @@ export function MePage() {
       {mine.data?.items.length ? (
         <div className="stack">{mine.data.items.map(p => (
           <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
-            <Cover p={p} className="sw" />
+            <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
             <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateRange(p)}</span></span><StatusTag status={p.status} />
           </Link>
         ))}</div>
@@ -309,7 +309,7 @@ export function AdminQueue() {
       {q.isPending ? <QueueSkeleton list /> : items.length ? (
         <div className="stack">{items.map(p => (
           <div className="qitem" key={p.id}>
-            <Cover p={p} className="sw" />
+            <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.ready_to_publish ? <span className="tag t-eng"><Icon name="i-checkc" />Ready to publish</span> : null}</div>
               <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={`/p/${p.slug}`} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
