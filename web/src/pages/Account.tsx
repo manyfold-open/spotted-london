@@ -186,6 +186,7 @@ export function MePage() {
       <div className="menu">
         {me.role === 'admin' ? <Link className="mrow" to="/admin"><Icon name="i-inbox" /><span>Review queue<span className="sub">Posts waiting for a decision</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         {me.role === 'admin' ? <Link className="mrow" to="/admin/agent"><Icon name="i-sparkle" /><span>Agents<span className="sub">AI helpers that find, check and flag pop-ups</span></span><Icon name="i-down" className="i chev" /></Link> : null}
+        <Link className="mrow" to="/connect"><Icon name="i-sparkle" /><span>Use with your AI<span className="sub">Ask ChatGPT, Claude or Codex what is on</span></span><Icon name="i-down" className="i chev" /></Link>
         <button className="mrow" onClick={() => newsletter.mutate()} disabled={newsletter.isPending || newsletter.isSuccess}><Icon name="i-mail" /><span>Weekend newsletter<span className="sub">{newsletter.isSuccess ? 'Confirmation email sent' : `Send it to ${me.email}`}</span></span><Icon name="i-down" className="i chev" /></button>
         <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Emailed the day before a saved pop-up starts, and on its last day</span></span></div>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
