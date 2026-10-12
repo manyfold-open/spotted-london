@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, nearMeStart, nextSheetSize, pickSnap, pinSetKey } from '../web/src/lib/map-home';
+import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, nearMeStart, nextSheetSize, pickSnap, pinSetKey, updateBudget } from '../web/src/lib/map-home';
 
 const H = { peek: 434, half: 228, full: 0 };
 
@@ -126,5 +126,25 @@ describe('nextSheetSize', () => {
   });
   it('still takes a size it has not just left', () => {
     expect(nextSheetSize(b, a, { h: 700, peek: 500, half: 350 })).toEqual({ h: 700, peek: 500, half: 350 });
+  });
+});
+
+describe('updateBudget', () => {
+  it('allows a few updates, then refuses until the rest is over', () => {
+    const ok = updateBudget(3, 1000, 5000);
+    expect([ok(0), ok(1), ok(2)]).toEqual([true, true, true]);
+    expect(ok(3)).toBe(false); // the fourth in a row: frozen until 5003
+    expect(ok(4000)).toBe(false);
+    expect(ok(5004)).toBe(true); // rested
+  });
+  it('counts per window, so slow updates are never refused', () => {
+    const ok = updateBudget(3, 1000, 5000);
+    for (let t = 0; t < 20000; t += 600) expect(ok(t)).toBe(true);
+  });
+  it('never lets an endless loop through: the thousandth call in one tick is refused', () => {
+    const ok = updateBudget();
+    let allowed = 0;
+    for (let i = 0; i < 1000; i++) if (ok(100)) allowed++;
+    expect(allowed).toBe(8);
   });
 });
