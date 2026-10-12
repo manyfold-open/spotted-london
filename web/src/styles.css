@@ -652,8 +652,8 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-main { position: relative; height: 100vh; height: 100dvh; overflow: hidden; overflow: clip }
 .mp-home { position: absolute; inset: 0; background: #ece8df; overflow: hidden; overflow: clip }
 .mp-map { position: absolute; inset: 0 }
-/* Solid strip behind the phone status bar (installed app): the map stops below it. iOS 26 blurs the top of the page unless a hit test 8 px below the top edge lands on a fixed, opaque, full-width box, and then it uses that box's colour instead. So this must be a real element (a ::before hit-tests as .mp-home, which is not fixed) and must not have pointer-events: none (the hit test passes through it to the map). */
-.mp-statusbar { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--paper); z-index: 7 }
+/* Solid strip behind the phone status bar (installed app). iOS 26 blurs the top of the page unless WebKit's hit test at the middle of the top edge, about 4 px below the status bar, lands on a fixed, opaque, nearly full-width box taller than 10 px; it then fills the status bar with that box's colour (LocalFrameView::fixedContainerEdges). So the strip reaches 10 px past the status bar and fades out there, above the floating bar, and it must be a real element (a ::before hit-tests as .mp-home, which is not fixed). The hit test ignores pointer-events, so map drags can still start on the fade. With no inset (browser, desktop) it has no height. */
+.mp-statusbar { position: fixed; top: 0; left: 0; right: 0; height: calc(env(safe-area-inset-top, 0px) + min(10px, env(safe-area-inset-top, 0px))); background: var(--paper); z-index: 7; pointer-events: none; -webkit-mask-image: linear-gradient(#000 calc(100% - 10px), transparent); mask-image: linear-gradient(#000 calc(100% - 10px), transparent) }
 .mp-map .ml { position: absolute; inset: 0; animation: fade var(--dur-3) }
 .mp-mapfill { position: absolute; inset: 0; background: #ece8df radial-gradient(var(--dot) 1.1px, transparent 1.2px) 0 0 / 22px 22px }
 /* MapLibre's corners stay clear of our chrome */
