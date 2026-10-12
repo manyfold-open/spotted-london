@@ -232,7 +232,8 @@ img.fade { opacity: 0; transition: opacity var(--dur-3) var(--ease-out) } img.fa
 .dhead::before { content: ''; position: absolute; inset: -20px; background: var(--cover) center / cover; filter: blur(24px) saturate(1.1); opacity: .9 }
 .dhead img { position: absolute; inset: 0; object-fit: contain }
 .dhead svg.big { width: 76px; height: 76px }
-.dclose { position: absolute; top: 12px; right: 12px }
+/* stays in reach while the sheet scrolls; the negative bottom margin keeps it from taking room above the cover */
+.dclose { position: sticky; top: 12px; z-index: 3; align-self: flex-end; flex: none; margin: 12px 12px -46px 0 }
 .handle { display: none }
 .dbody { padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; flex: 1 }
 .dfoot { position: sticky; bottom: 0; display: flex; gap: 10px; padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--glass); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-top: 1.5px solid var(--ink) }
@@ -373,6 +374,9 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .pinm.hl svg.i { width: 21px; height: 21px }
 .pinm { transition: width var(--dur-2) var(--ease-spring), height var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) }
 .pinm.in { animation: pindrop .45s var(--ease-spring) backwards }
+/* several pins close together: an ink bubble with the count; tap to zoom in */
+.pinc { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--card); background: var(--ink); color: var(--card); box-shadow: 0 0 0 1.5px var(--ink), 2px 2px 0 1.5px var(--ink); display: grid; place-items: center; padding: 0; cursor: pointer; font: 800 14px/1 var(--display); font-variant-numeric: tabular-nums; animation: fade var(--dur-2) }
+.pinc.m { width: 42px; height: 42px; font-size: 15px } .pinc.l { width: 48px; height: 48px; font-size: 16px }
 @keyframes pindrop { from { translate: 0 -14px; opacity: 0 } }
 /* MapLibre controls in the Sketchbook style */
 .maplibregl-ctrl.maplibregl-ctrl-group { background: var(--card); border: 1.5px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden }
@@ -432,7 +436,7 @@ code.secret { font-size: 12.5px; padding: 6px 8px; overflow-wrap: anywhere; flex
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px }
 .steps .copyrow { margin-top: 8px }
 .anotes { display: flex; flex-direction: column; gap: 8px; margin-top: 4px }
-.anote { border: 1.5px solid var(--ai); background: var(--ai-bg); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px }
+.anote { border: 1.5px solid var(--ai); background: var(--ai-bg); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere } /* agents quote long links */
 .anote p { color: var(--ink) }
 .anote a { display: inline-flex; align-items: center; gap: 4px; font-weight: 600 }
 .anote svg.i { width: 14px; height: 14px }
@@ -616,6 +620,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .keypin i { display: grid; place-items: center } .keypin i svg.i { width: 7px; height: 7px }
 .keypin.verified_admin i, .keypin.verified_community i { color: var(--card) }
 .keypin.checked i { border-color: var(--eng); color: var(--eng) }
+.keypin.cluster { background: var(--ink); color: var(--card); display: grid; place-items: center; font: 800 11px/1 var(--display) }
 .mp-foot { font-size: 12px; color: var(--ink3); padding: 0 12px }
 
 @media (max-width: 899px) {
@@ -714,8 +719,8 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .mp-home[data-snap="half"] .mp-prompt { display: none }
   /* while you type in the search box the keyboard needs the space */
   .mp-home:has(.search input:focus) :is(.mp-sheet, .mp-fabs, .mp-prompt) { opacity: 0; pointer-events: none }
-  /* toasts stay left of the buttons and above the sheet */
-  .shell[data-home="true"] .toasts { left: 12px; translate: none; width: calc(100% - 84px); align-items: flex-start; bottom: calc(var(--mp-sheet, 0px) + 14px) }
+  /* toasts stay left of the buttons and above the sheet and the map's (i) credit (the toast layer is the shell's sibling, not inside it) */
+  .shell[data-home="true"] ~ .toasts { left: 12px; translate: none; width: calc(100% - 84px); align-items: flex-start; bottom: calc(var(--mp-sheet, 0px) + 44px) }
 }
 
 @media (min-width: 900px) {

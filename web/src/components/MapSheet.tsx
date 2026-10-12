@@ -23,10 +23,11 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children, col
     const el = box.current, hd = head.current;
     if (!phone || !el || !hd) return;
     const h = el.offsetHeight, below = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-    const card = el.querySelector<HTMLElement>('.mp-minis .mini');
+    // One row of cards, or the whole message when there is nothing to show.
+    const card = el.querySelector<HTMLElement>('.mp-minis .mini, .mp-sbody > .empty');
     const peekVisible = hd.offsetHeight + 4 + (card?.offsetHeight ?? 78) + 10 + 20 + below;
     const halfVisible = Math.round(window.innerHeight * 0.5);
-    const next = { h, peek: Math.max(0, h - peekVisible), half: Math.max(0, h - halfVisible) };
+    const next = { h, peek: Math.max(0, h - Math.min(peekVisible, halfVisible)), half: Math.max(0, h - halfVisible) };
     setSize(s => (s.h === next.h && s.peek === next.peek && s.half === next.half ? s : next));
   };
   useLayoutEffect(measure);

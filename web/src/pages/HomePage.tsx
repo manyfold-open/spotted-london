@@ -201,6 +201,8 @@ export default function HomePage() {
   else if (!items.length) {
     body = nearOn ? (
       <div className="empty"><Icon name="i-locate" className="i big" /><h2>Nothing within 3 km</h2><p>Try a wider date range, or look at all of London.</p><button className="btn sm" onClick={() => near.setFilter(false)}>Show all London</button></div>
+    ) : f.q.trim() ? (
+      <div className="empty"><Icon name="i-search" className="i big" /><h2>No pop-ups match &ldquo;{f.q.trim()}&rdquo;</h2><p>Check the spelling, or try a wider date range or another category.</p><button className="btn sm" onClick={() => f.set({ q: null })}>Clear search</button></div>
     ) : (
       <div className="empty"><Icon name="i-search" className="i big" /><h2>Nothing here yet</h2><p>Try a wider date range or another category, or be the first to add one.</p><Link className="btn sm" to="/add"><Icon name="i-plus" />Add a pop-up</Link></div>
     );

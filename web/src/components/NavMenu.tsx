@@ -57,6 +57,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           <div><span className="keypin verified_community"><i><Icon name="i-check" /></i></span><p><b>Community verified.</b> A green tick. Enough people voted or checked in.</p></div>
           <div><span className="keypin checked"><i><Icon name="i-check" /></i></span><p><b>Source checked.</b> A green outlined tick. A Spotted agent matched it to its source page. People have not confirmed it yet.</p></div>
           <div><span className="keypin community" /><p><b>Being checked.</b> Dashed ring, no tick. Your vote helps.</p></div>
+          <div><span className="keypin cluster">8</span><p><b>A number.</b> Several pop-ups close together. Tap it to zoom in.</p></div>
         </div>
         <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap. <a href="/privacy">Privacy</a></p>
       </aside>

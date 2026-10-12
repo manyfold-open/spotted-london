@@ -6,7 +6,7 @@ import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib
 import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { useLocalSaves } from '../lib/local-saves';
-import { bump, haptic, isPhone } from '../lib/motion';
+import { bump, haptic, isPhone, scrollBehavior } from '../lib/motion';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
@@ -137,9 +137,9 @@ function useDragToClose(sheet: RefObject<HTMLElement | null>, scrim: RefObject<H
 function SheetSkeleton({ onClose }: { onClose: () => void }) {
   return (
     <>
+      <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /></button>
       <div className="dhead sk" style={{ borderRadius: 0 }} />
       <span className="handle" />
-      <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /></button>
       <div className="dbody" aria-hidden="true">
         <div className="sk-block">
           <div className="row" style={{ gap: 6 }}><div className="sk skl pill" /><div className="sk skl pill" style={{ width: 70 }} /></div>
@@ -173,6 +173,9 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const statusChanged = useChanged(p.status);
   const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [reporting, setReporting] = useState(false);
+  // The reasons open at the bottom of the sheet, under the Save and Directions bar: bring them into view.
+  const reportBox = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (reporting) reportBox.current?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }); }, [reporting]);
   const [locating, setLocating] = useState(false);
   const [botToken, setBotToken] = useState<string | null>(null);
   const needsBot = useNeedsTurnstile();
@@ -254,9 +257,10 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
 
   return (
     <>
+      {/* First, so it can stick to the top while the sheet scrolls. */}
+      <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
       <Cover p={p} className="dhead" />
       <span className="handle" />
-      <button className="btn sm dclose" onClick={onClose} aria-label="Close"><Icon name="i-x" /><span className="d-only">Close</span></button>
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
           <StatusTag key={p.status} status={p.status} sourceChecked={p.source_checked} className={statusChanged ? 'stamp' : ''} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
@@ -280,8 +284,10 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         {PUBLIC.includes(p.status) ? (
           <section className="panel">
             <div className="row"><h2>Is this real?</h2><span className="spacer" /><span className="small muted num">{v.voters} voters · {v.checkins} check-ins</span></div>
-            <div className="confrow"><b className="num"><Ticker value={Math.round(v.confidence * 100)} />%</b><span className="muted small">confidence from weighted votes</span></div>
-            <Meter value={v.confidence} big />
+            {v.voters ? <>
+              <div className="confrow"><b className="num"><Ticker value={Math.round(v.confidence * 100)} />%</b><span className="muted small">confidence from weighted votes</span></div>
+              <Meter value={v.confidence} big />
+            </> : <p className="muted" style={{ marginTop: 6 }}>No votes yet</p>}
             {p.status === 'verified_admin'
               ? <div className="notice small" style={{ marginTop: 12 }}><Icon name="i-shield" /><span>An admin checked this with the host.</span></div>
               : <>
@@ -313,7 +319,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           : partial ? <div className="sk skl" style={{ width: 180 }} aria-hidden="true" /> : null}
         {!own && PUBLIC.includes(p.status) ? (
           reporting ? (
-            <div className="panel" style={{ padding: 14 }}>
+            <div className="panel" ref={reportBox} style={{ padding: 14, scrollMarginBottom: 84 }}>
               <h3>What's wrong?</h3>
               <div className="chips" style={{ marginTop: 10 }}>
                 {REASONS.map(([k, l]) => <button key={k} className="chip" disabled={report.isPending || (needsBot && !botToken)} onClick={() => report.mutate(k)}>{l}</button>)}

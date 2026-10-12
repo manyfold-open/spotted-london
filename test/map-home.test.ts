@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAway, nearMeStart, pickSnap, pinSetKey } from '../web/src/lib/map-home';
+import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, nearMeStart, pickSnap, pinSetKey } from '../web/src/lib/map-home';
 
 const H = { peek: 434, half: 228, full: 0 };
 
@@ -44,5 +44,75 @@ describe('pinSetKey', () => {
     expect(pinSetKey([{ id: 'y' }, { id: 'x' }])).toBe(pinSetKey(a));
     expect(pinSetKey([...a, { id: 'z' }])).not.toBe(pinSetKey(a));
     expect(pinSetKey([])).toBe('');
+  });
+});
+
+describe('clusterPins', () => {
+  // Soho, a few metres apart, and Greenwich, far away.
+  const soho = [
+    { id: 'a', lng: -0.1337, lat: 51.5136 },
+    { id: 'b', lng: -0.1336, lat: 51.5137 },
+    { id: 'c', lng: -0.1338, lat: 51.5135 },
+  ];
+  const far = { id: 'g', lng: -0.0098, lat: 51.4826 };
+
+  it('folds pins that would touch into one bubble and leaves far ones alone', () => {
+    const groups = clusterPins([...soho, far], 11);
+    expect(groups).toHaveLength(2);
+    const bubble = groups.find(g => g.members.length > 1)!;
+    expect(bubble.members.sort()).toEqual(['a', 'b', 'c']);
+    expect(bubble.key).toBe('c:a');
+    expect(groups.find(g => g.members[0] === 'g')).toMatchObject({ key: 'g', members: ['g'] });
+  });
+
+  it('never folds the highlighted pin', () => {
+    const groups = clusterPins([...soho, far], 11, 'b');
+    expect(groups.find(g => g.key === 'b')?.members).toEqual(['b']);
+    expect(groups.find(g => g.members.length > 1)?.members.sort()).toEqual(['a', 'c']);
+  });
+
+  it('puts every pin in exactly one group', () => {
+    const many = Array.from({ length: 300 }, (_, i) => ({ id: `p${i}`, lng: -0.2 + (i % 20) * 0.01, lat: 51.45 + Math.floor(i / 20) * 0.007 }));
+    for (const z of [10, 12, 14, 16]) {
+      const ids = clusterPins(many, z).flatMap(g => g.members).sort();
+      expect(ids).toEqual(many.map(p => p.id).sort());
+    }
+  });
+
+  it('spreads pins on one spot in a ring once it stops clustering', () => {
+    const same = [{ id: 'x', lng: -0.07, lat: 51.52 }, { id: 'y', lng: -0.07, lat: 51.52 }, { id: 'z', lng: -0.07, lat: 51.52 }];
+    const groups = clusterPins(same, CLUSTER_MAX_ZOOM);
+    expect(groups.map(g => g.members.length)).toEqual([1, 1, 1]);
+    const offs = groups.map(g => g.offset!.join(','));
+    expect(new Set(offs).size).toBe(3);
+    expect(clusterPins([same[0]], CLUSTER_MAX_ZOOM)[0].offset).toBeUndefined();
+  });
+
+  it('reclusters in half zoom steps', () => {
+    expect(clusterZoom(12.2)).toBe(12);
+    expect(clusterZoom(12.7)).toBe(12.5);
+    expect(clusterZoom(19.3)).toBe(19);
+  });
+
+  it('rings pins that are a few metres apart around the first one', () => {
+    const near = [{ id: 'm', lng: -0.1415, lat: 51.5103 }, { id: 'n', lng: -0.14145, lat: 51.51032 }];
+    const [m, n] = clusterPins(near, CLUSTER_MAX_ZOOM);
+    expect(m.offset).toBeDefined();
+    expect(n.offset).toBeDefined();
+  });
+});
+
+describe('coreBounds', () => {
+  it('keeps every pin when there are only a few', () => {
+    expect(coreBounds([{ lng: -0.1, lat: 51.5 }, { lng: -0.3, lat: 51.7 }])).toEqual([[-0.3, 51.5], [-0.1, 51.7]]);
+    expect(coreBounds([])).toBeNull();
+  });
+  it('leaves out far-off pins once there are many', () => {
+    const city = Array.from({ length: 40 }, (_, i) => ({ lng: -0.15 + i * 0.002, lat: 51.5 + i * 0.001 }));
+    const [[w, s], [e, n]] = coreBounds([...city, { lng: -0.34, lat: 51.75 }, { lng: -0.19, lat: 51.15 }])!;
+    expect(w).toBeGreaterThan(-0.2);
+    expect(s).toBeGreaterThan(51.4);
+    expect(n).toBeLessThan(51.6);
+    expect(e).toBeLessThan(0);
   });
 });

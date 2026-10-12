@@ -161,8 +161,11 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
       </div>
       <div className="cfoot">
-        <span className="small muted num">{Math.round(p.verification.confidence * 100)}% real</span>
-        <Meter value={p.verification.confidence} />
+        {/* 0% on a red bar reads as "fake" next to a Verified tag; with no votes there is nothing to measure yet. */}
+        {p.verification.voters ? <>
+          <span className="small muted num">{Math.round(p.verification.confidence * 100)}% real</span>
+          <Meter value={p.verification.confidence} />
+        </> : <span className="small muted" style={{ flex: 1 }}>No votes yet</span>}
         <ScoreVotes p={p} />
       </div>
     </article>

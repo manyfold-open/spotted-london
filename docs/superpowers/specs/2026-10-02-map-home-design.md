@@ -46,7 +46,7 @@ These are requirements, not polish. Check each at 375 x 667 and 375 x 812 (with 
 - MapLibre zoom buttons are removed on phone (pinch works). On desktop they sit below the top bar, not under it.
 - Map attribution sits bottom left, above the sheet, so it never goes under the right-hand buttons.
 - Locate/Add column rides above the sheet top with a 14 px gap and never overlaps the attribution.
-- Toasts are left-aligned and leave the right 72 px free, so they never cover the buttons, and sit above the sheet.
+- Toasts are left-aligned and leave the right 72 px free, so they never cover the buttons, and sit above the sheet and the attribution button (sheet top + 44 px). The toast layer is a sibling of `.shell`, so the rule is `.shell[data-home="true"] ~ .toasts`.
 - The pop-up sheet (z-index 20 and 21) and the menu (22 and 23) cover all map chrome. Map chrome stays under z-index 20.
 - iOS: the bar uses `env(safe-area-inset-top)`, the sheet uses `env(safe-area-inset-bottom)`, inputs stay 16 px.
 - Keyboard open: the sheet and buttons hide while search is focused so the keyboard never pushes them over the field.

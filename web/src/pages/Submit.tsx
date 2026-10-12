@@ -5,7 +5,7 @@ import { api, ApiError, type Category, type Extracted, type Place, type Popup } 
 import { CAT_LIST, CATS, catIcon, dateRange, londonDate, londonTs } from '../lib/format';
 import { SignInPrompt } from './Account';
 import { useDebounced, useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
-import { haptic } from '../lib/motion';
+import { haptic, scrollBehavior } from '../lib/motion';
 import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { Icon } from '../components/Icon';
@@ -202,7 +202,16 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   };
 
   const submit = async (force = false) => {
-    if (!validate()) { toast('A few fields need attention', 'i-info', true); return; }
+    if (!validate()) {
+      toast('A few fields need attention', 'i-info', true);
+      // The first problem may be far above the button on a phone: bring it into view.
+      requestAnimationFrame(() => {
+        const field = document.querySelector('.fields .ferr')?.closest<HTMLElement>('.field');
+        field?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+        field?.querySelector<HTMLElement>('input, .datebtn')?.focus({ preventScroll: true });
+      });
+      return;
+    }
     setSaving('Posting');
     try {
       const created = await api<Popup>('/popups', {

@@ -295,7 +295,7 @@ export function AdminQueue() {
   const ready = items.filter(p => p.ready_to_publish).length;
   return (
     <>
-      <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-down" className="i" />Back to Me</Link>
+      <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-left" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Review queue</h1>
       <p className="intro">New posts below trust 50, posts the community voted down, posts with several reports, and anything an <Link to="/admin/agent">agent</Link> flagged. Your decision overrides community votes.</p>
       <div className="lh"><h2>{items.length} to review</h2><span className="muted small">Target: under 12 hours</span></div>
