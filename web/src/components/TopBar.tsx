@@ -47,7 +47,7 @@ export function TopBar({ floating, menuOpen, onMenu, children }: { floating?: bo
   return (
     <header className={`mp-bar ${floating ? 'floating' : ''}`} ref={bar}>
       <button type="button" id="mp-menubtn" className="mp-menubtn" aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onMenu}><Icon name="i-menu" /></button>
-      <NavLink to="/" className="mp-brand"><Logo /><b>Spotted</b></NavLink>
+      <NavLink to="/" className="mp-brand"><Logo /><b>Spotted London</b></NavLink>
       <label className="search">
         {busy && q ? <span className="spin" aria-hidden="true" /> : <Icon name="i-search" />}
         <span className="sr">Search</span>
