@@ -33,6 +33,7 @@ describe('tracking helpers', () => {
     expect(filterEvent({ cat: 'food' }, '')).toEqual({ name: 'filter', detail: 'cat:food' });
     expect(filterEvent({ when: 'today' }, '')).toEqual({ name: 'filter', detail: 'when:today' });
     expect(filterEvent({ verified: '1' }, '')).toEqual({ name: 'filter', detail: 'verified:1' });
+    expect(filterEvent({ saved: '1', when: 'all' }, '')).toEqual({ name: 'filter', detail: 'saved:1' }); // the Saved chip also widens the dates
     expect(filterEvent({ cat: null }, '')).toBeNull(); // clearing is not a use
     // a search counts once when it starts, with no detail, not for every letter
     expect(filterEvent({ q: 'denim' }, '')).toEqual({ name: 'search', detail: '' });

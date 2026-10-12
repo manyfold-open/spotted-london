@@ -3,7 +3,7 @@
 
 import { html } from 'hono/html';
 
-export const PRIVACY_UPDATED = '10 October 2026';
+export const PRIVACY_UPDATED = '12 October 2026';
 export const PRIVACY_CONTACT = 'zack11712@gmail.com';
 
 export const privacyBody = (origin: string) => html`
@@ -24,7 +24,7 @@ export const privacyBody = (origin: string) => html`
   <li><b>Ask.</b> The question you type, plus a short summary of what you like (categories and a few tags), is sent to an AI helper that picks pop-ups for you. We keep the question for 7 days, with a scrambled version of your IP address, to count daily limits and catch abuse.</li>
   <li><b>Adding a pop-up from a link, text or screenshot.</b> What you paste is read by an AI model to fill in the form.</li>
   <li><b>Visitors.</b> To stop abuse we keep a salted, scrambled version of your IP address, never the address itself.</li>
-  <li><b>Anonymous usage stats.</b> So we can see what people use and improve it, your browser sends small events: which page you opened, which pop-up you opened, saved, voted on or shared, which category or date filter you tapped, that you searched or asked a question (never the words), that you started to sign in, and the site you came from. Each one carries a random ID your browser makes up and keeps on your device, whether you were signed in (yes or no), a phone or desktop screen size, and your country. The ID is never linked to your account, email or IP address. Admins are not counted. We do not use these stats for advertising or share them. To stop them, turn off Anonymous usage stats on the Me page, turn on Do Not Track or Global Privacy Control in your browser, or clear this site's data.</li>
+  <li><b>Anonymous usage stats.</b> So we can see what people use and improve it, your browser sends small events: which page you opened, which pop-up you opened, saved, voted on or shared, which category, date or Saved filter you tapped, that you searched or asked a question (never the words), that you started to sign in, and the site you came from. Each one carries a random ID your browser makes up and keeps on your device, whether you were signed in (yes or no), a phone or desktop screen size, and your country. The ID is never linked to your account, email or IP address. Admins are not counted. We do not use these stats for advertising or share them. To stop them, turn off Anonymous usage stats on the Me page, turn on Do Not Track or Global Privacy Control in your browser, or clear this site's data.</li>
 </ul>
 
 <h2>Cookies and storage</h2>

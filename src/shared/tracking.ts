@@ -28,7 +28,7 @@ export function referrerHost(referrer: string, ownHost: string): string {
 
 /** What a filter change says, as one fixed word like `cat:food`. Never the text someone typed. Null: nothing to count. */
 export function filterEvent(patch: Record<string, string | null>, currentQuery: string): { name: 'filter' | 'search'; detail: string } | null {
-  for (const key of ['cat', 'when', 'verified'] as const) {
+  for (const key of ['saved', 'cat', 'when', 'verified'] as const) {
     const v = patch[key];
     if (typeof v === 'string' && v) return { name: 'filter', detail: `${key}:${v}`.toLowerCase().replace(/[^a-z0-9_:.-]/g, '').slice(0, 40) };
   }
