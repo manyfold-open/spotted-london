@@ -2,6 +2,22 @@
 
 export type Snap = 'peek' | 'half' | 'full';
 
+/** The three stops of the phone sheet, in px (see MapSheet). */
+export interface SheetSize { h: number; peek: number; half: number }
+
+const sameSize = (a: SheetSize | null, b: SheetSize) => !!a && a.h === b.h && a.peek === b.peek && a.half === b.half;
+
+/**
+ * Which size the sheet keeps after a new measurement. The sheet measures itself after every render, and what it
+ * measures can depend on the size it has (a scrollbar, a wrapped line, safe-area padding), so two values can
+ * undo each other for ever: React stops that with error 185 and the app shows its crash page. A measurement that
+ * is the size just left (`prev`) is such a flip-flop: keep what we have, which ends it.
+ */
+export function nextSheetSize(cur: SheetSize, prev: SheetSize | null, next: SheetSize): SheetSize {
+  if (sameSize(cur, next) || sameSize(prev, next)) return cur;
+  return next;
+}
+
 /** Where a dragged sheet settles. A fast flick adds 180 ms of travel at its release speed. */
 export function pickSnap(y: number, velocity: number, heights: Record<Snap, number>): Snap {
   const landing = y + velocity * 180;

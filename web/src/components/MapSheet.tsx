@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import { pickSnap, type Snap } from '../lib/map-home';
+import { nextSheetSize, pickSnap, type SheetSize, type Snap } from '../lib/map-home';
 
 /**
  * The list that sits on the map. On a phone it is a bottom sheet with three stops (peek, half, full) that you
@@ -12,7 +12,11 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children, col
 }) {
   const box = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ h: 600, peek: 400, half: 200 });
+  const [size, setSize] = useState<SheetSize>({ h: 600, peek: 400, half: 200 });
+  // The size before this one, for a short while: a measurement that goes back to it is a flip-flop (see nextSheetSize).
+  const sizeNow = useRef(size); sizeNow.current = size;
+  const sizeBefore = useRef<SheetSize | null>(null);
+  const forget = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [dragY, setDragY] = useState<number | null>(null);
   const drag = useRef<{ y: number; base: number; t: number; dy: number } | null>(null);
   const offs: Record<Snap, number> = { full: 0, half: size.half, peek: size.peek };
@@ -28,7 +32,12 @@ export function MapSheet({ phone, snap, onSnap, onVisible, header, children, col
     const peekVisible = hd.offsetHeight + 4 + (card?.offsetHeight ?? 78) + 10 + 20 + below;
     const halfVisible = Math.round(window.innerHeight * 0.5);
     const next = { h, peek: Math.max(0, h - Math.min(peekVisible, halfVisible)), half: Math.max(0, h - halfVisible) };
-    setSize(s => (s.h === next.h && s.peek === next.peek && s.half === next.half ? s : next));
+    const keep = nextSheetSize(sizeNow.current, sizeBefore.current, next);
+    if (keep === sizeNow.current) return;
+    sizeBefore.current = sizeNow.current;
+    clearTimeout(forget.current);
+    forget.current = setTimeout(() => { sizeBefore.current = null; }, 2000);
+    setSize(keep);
   };
   useLayoutEffect(measure);
   useLayoutEffect(() => {
