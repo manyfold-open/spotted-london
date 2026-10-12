@@ -7,7 +7,9 @@ import { CATS, distance, fmtDay, isLive } from '../lib/format';
 import { useFilters, useSheet, useToast } from '../lib/hooks';
 import { openAsk, useAsk, useAskStatus } from '../lib/ask';
 import { haptic, scrollBehavior, usePhone } from '../lib/motion';
-import { useNearMe } from '../lib/near-me';
+import { nearChoiceMade, useNearMe } from '../lib/near-me';
+import { useWelcome } from '../lib/onboarding';
+import { nextStep } from '../../../src/shared/onboarding';
 import { updateTaste, useKeptNote, useTaste } from '../lib/taste';
 import type { Snap } from '../lib/map-home';
 import { Icon } from '../components/Icon';
@@ -76,6 +78,9 @@ export default function HomePage() {
   const [askMounted, setAskMounted] = useState(false);
   useEffect(() => { if (asked.open) setAskMounted(true); }, [asked.open]);
   const view: View = sp.get('view') === 'list' ? 'list' : 'map';
+  // First-visit cards come one at a time: welcome, then location, then the swipe invite.
+  const welcome = useWelcome(taste.seen || nearChoiceMade());
+  const step = view === 'map' ? nextStep({ welcome: welcome.due, location: near.prompt, taste: !taste.seen && !deck && (q.all?.length ?? 0) >= 4 }) : null;
 
   const [snap, setSnap] = useState<Snap>(view === 'list' ? 'full' : 'peek');
   const [hl, setHl] = useState<string | null>(null);
@@ -245,7 +250,24 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {near.prompt && view === 'map' ? (
+      {step === 'welcome' ? (
+        <div className="mp-prompt mp-welcome" role="dialog" aria-label="Welcome to Spotted">
+          <h2><Icon name="i-sparkle" />Welcome to Spotted</h2>
+          <ul className="mp-welcome-list">
+            <li><Icon name="i-map" /><span>Every pin is a pop-up in London, on now or coming soon.</span></li>
+            <li><Icon name="i-check" /><span>Locals vote and check in, so you can see what is real.</span></li>
+            <li><Icon name="i-plus" /><span>Know one we are missing? Add it.</span></li>
+          </ul>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn primary sm" onClick={welcome.finish}>Explore the map</button>
+            {askAvailable ? <button className="btn sm" onClick={() => { welcome.finish(); openAsk(); }}><Icon name="i-bolt" />Ask Spotted</button> : null}
+            <button className="btn sm" onClick={() => { welcome.finish(); openDeck(); }}>Pick what you like</button>
+          </div>
+          <p className="fine"><Icon name="i-sparkle" /><span>Got ChatGPT or Claude? <Link to="/connect" onClick={welcome.finish}>Ask it about Spotted</Link></span></p>
+        </div>
+      ) : null}
+
+      {step === 'location' ? (
         <div className="mp-prompt" role="dialog" aria-label="Share your location">
           <h2><Icon name="i-locate" />Pop-ups near you?</h2>
           <p>Share your location and we show what is on within 3 km, closest first.</p>
@@ -257,7 +279,7 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {!taste.seen && !near.prompt && !deck && view === 'map' && (q.all?.length ?? 0) >= 4 ? (
+      {step === 'taste' ? (
         <div className="mp-prompt" role="dialog" aria-label="Pick what you like">
           <h2><Icon name="i-sparkle" />Pop-ups for you?</h2>
           <p>Swipe through 10 pop-ups. We put the ones you like first. You can always see everything.</p>

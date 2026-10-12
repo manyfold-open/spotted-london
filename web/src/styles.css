@@ -722,6 +722,11 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-prompt p { margin: 6px 0 12px; font-size: 13px; color: var(--ink2) }
 .mp-prompt .fine { margin: 10px 0 0; font-size: 11.5px; color: var(--ink3); display: flex; gap: 6px; align-items: center }
 .mp-prompt .fine svg.i { width: 14px; height: 14px }
+.mp-prompt .fine a { color: inherit; font-weight: 600; text-decoration: underline }
+.mp-welcome .row { flex-wrap: wrap }
+.mp-welcome-list { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; gap: 8px }
+.mp-welcome-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink2) }
+.mp-welcome-list svg.i { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--ink) }
 
 /* you */
 .mp-you { width: 18px; height: 18px; border-radius: 50%; background: var(--here); border: 3px solid #fff; box-shadow: 0 0 0 1.5px var(--ink); animation: pop var(--dur-3) var(--ease-spring) backwards }
@@ -822,6 +827,9 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @media (prefers-reduced-motion: reduce) { .ca, .ca-m { animation: none } .ca-dots i { animation: none } .ask-item { transition: none } }
 .linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--ink2); text-decoration: underline; cursor: pointer }
 .photo-credit { margin: -4px 0 0 }
+.addphoto { display: grid; gap: 10px }
+.addphoto-link { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center }
+.addphoto-link .ferr, .addphoto-link .small { grid-column: 1 / -1 }
 
 /* Ask as a chat window (AskChat). A card docked bottom right on desktop, a bottom sheet on phones. Map chrome stays under 20. */
 .mp-fab.ask { background: var(--ink); color: var(--card); box-shadow: 3px 3px 0 var(--accent) }
@@ -889,6 +897,10 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .cn-box p, .cn-box pre { margin: 0; min-width: 0; flex: 1; font-size: 14px; overflow-wrap: anywhere }
 .cn-box pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-x: auto }
 .cn-box .btn { flex: none }
+.cn-dev > summary, .cn-help > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0 }
+.cn-dev[open] > .chips, .cn-help[open] > .cn-steps { margin-top: 8px }
+.cn-link { justify-self: start }
+.cn-phone > span { display: grid; gap: 8px; justify-items: start }
 
 /* ---------- Insights (admin) ---------- */
 .ins-bar { gap: 12px; margin-top: 16px; flex-wrap: wrap; align-items: center }
