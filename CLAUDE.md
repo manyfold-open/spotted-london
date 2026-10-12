@@ -159,14 +159,14 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 - After `npm run build:web`, a running `wrangler dev` can serve 404s for every page. Restart it.
 - Tests share one D1 per file, so give each test its own titles and coordinates or the duplicate check (same place, similar title) returns 409.
 - Address search uses Photon (photon.komoot.io), a free fair-use service. Move to Mapbox's free tier if traffic grows.
-- On Zack's first Mac, `~/.zshrc` exports a `CLOUDFLARE_API_TOKEN` for a different (work) Cloudflare account. If `npx wrangler whoami` does not say zack11712@gmail.com, run `unset CLOUDFLARE_API_TOKEN` in that shell first.
+- On Zack's first Mac, `~/.zshrc` exports a `CLOUDFLARE_API_TOKEN` for a different (work) Cloudflare account. If `npx wrangler whoami` does not show the personal account, run `unset CLOUDFLARE_API_TOKEN` in that shell first.
 
 ## Production
 
 Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this repo (no GitHub Actions minutes available). Push to `main` deploys production; other branches get preview versions that share production D1/KV/R2. Work on a branch and open a PR; Zack merges. The build token has no D1 access: if a PR adds a migration, say so in the PR and ask Zack to run `npx wrangler d1 migrations apply spotted-db --remote` before merging (migrations must not break the currently deployed code). Build settings are listed in README "How deploys happen".
 
-- https://spotted-london.zack11712.workers.dev, Cloudflare account zack11712@gmail.com (`d6f9da63682de8b145e22e38bc511416`).
-- Admin: zack11712@gmail.com (promoted 2026-09-30, recorded in audit_log).
+- https://spotted-london.zack11712.workers.dev. The maintainer's Cloudflare account, admin email and account id are in Zack's private notes, not in this public repo.
+- Admin: the maintainer (promoted 2026-09-30, recorded in audit_log).
 - Secrets set: `IP_SALT`, `TURNSTILE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AGENTS_KEY`, `APIFY_TOKEN`. Optional: `AGENT_ADMIN_TOKEN` (see Rules), also kept in `~/.config/spotted-london/agent-admin-token` (mode 600) for Claude Code.
 - Secret `APIFY_TOKEN` (set; fetching has run since 2026-10-01, and on 2026-10-10 there were 8 social sources, 92 posts and US$0.56 spent in 30 days): Instagram and Threads fetching for Scout. Free Apify plan, US$5 a month; we cap at US$4 in any 30 days. Posts and runs are in `social_posts` and `social_runs` (migration 0006). A Scout draft that cites an Instagram post Apify did not fetch (found through a web search, not a source) is `evidence_check = 'unchecked'`: the fix is another Social source, not the token. Check the state with `SELECT status, COUNT(*) FROM social_runs GROUP BY status` before saying it is off.
 - AI agents run on Manyfold (not Cloudflare), set up at /admin/agent. See README "AI agents and MCP". Scout, Triage and Checker were connected and tested on 1 Oct 2026; all three share Manyfold sandbox-008, so each agent's key must be added with `mf mcp add ... --scope project` (the default scope is shared by the whole sandbox).

@@ -2,6 +2,7 @@
   "name": "spotted-london",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 8787",

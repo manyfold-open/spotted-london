@@ -1,29 +1,45 @@
 # Spotted London
 
-London pop-ups, added by locals and verified by the community. Cloudflare Workers + D1 + R2 + KV, all on the free tier.
+**Pop-ups in London, added by locals and verified by the community.** Live at [spotted-london.zack11712.workers.dev](https://spotted-london.zack11712.workers.dev).
 
-- Product and technical spec: [SPEC.md](SPEC.md)
-- Design system: [docs/DESIGN.md](docs/DESIGN.md)
-- Notes for AI coding agents: [CLAUDE.md](CLAUDE.md)
-- Clickable UI prototype: [prototype/index.html](prototype/index.html)
+Anyone can add a pop-up. The community decides whether it is real with weighted votes and check-ins (Reddit-style), and admins can override. AI agents help find and check pop-ups, and people can ask their own AI assistant what is on through an MCP server. Mobile first.
 
-## Set up on a new computer
+## What is inside
 
-You need Node.js 22+, git and the GitHub CLI (`gh`).
+- **Map home** with a bottom sheet list, filters, "near me" (your position never leaves the browser) and a "For you" taste that learns from swipes.
+- **Community verification**: vote weight from karma and account age, Wilson score, check-ins, rate limits and a daily abuse scan. All rules live in one file, `src/lib/scoring.ts`.
+- **Paste a link to add a pop-up**: Workers AI reads the page, a screenshot or pasted text and fills the form.
+- **An agent fleet** (Scout, Triage, Checker) that finds pop-ups, verifies drafts against the source page with word-for-word evidence quotes, and clears most of the review queue on its own.
+- **MCP server and `/llms.txt`** so ChatGPT, Claude or Gemini can search the list.
+- **Runs entirely on free tiers**: one Cloudflare Worker (Hono), D1, KV, R2, Cron, Turnstile; Vite + React 19, TanStack Query, MapLibre with OpenFreeMap tiles.
+
+## Documents
+
+- [SPEC.md](SPEC.md): product and technical spec (in Chinese), with the decision log.
+- [docs/DESIGN.md](docs/DESIGN.md): design system.
+- [CLAUDE.md](CLAUDE.md): architecture notes and the rules that are easy to break. Written for AI coding agents, useful for people too.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to send a pull request.
+- [prototype/index.html](prototype/index.html): the original clickable prototype.
+
+## Quick start
+
+You need Node.js 22+ and git. No Cloudflare account is needed.
 
 ```bash
-gh auth login                                   # the GitHub account that can see tldr0810/spotted-london
-gh repo clone tldr0810/spotted-london
+git clone https://github.com/tldr0810/spotted-london.git
 cd spotted-london
 npm install
 cp .dev.vars.example .dev.vars
 npm run db:reset
 npm run build:web
+npm run dev:local      # Worker on :8787 (AI autofill from pasted text is off without a login)
 ```
 
-Then `npm run dev` and `npm run dev:web` in two terminals, as below. `npm run dev` needs `npx wrangler login` (sign in as zack11712@gmail.com, check with `npx wrangler whoami`) because AI autofill always runs on Cloudflare. Without an account, use `npm run dev:local` instead: everything works except autofill from pasted text and screenshots.
+Open `http://localhost:8787`, then sign in at `/signin` as `new@spotted.dev` (the page shows the link on screen, no email is sent). For hot reload of the web app run `npm run dev:web` in a second terminal and use `http://localhost:5173`.
 
-## Run it locally
+The rest of this file is reference for running and deploying your own copy.
+
+## Local development in detail
 
 D1, KV and R2 are simulated on your machine. Workers AI cannot be, so `npm run dev` connects to Cloudflare for it and needs `npx wrangler login`. `npm run dev:local` skips that; autofill from links still works, pasted text and screenshots show a friendly error.
 
@@ -241,7 +257,7 @@ Check the actors still return the fields we read (about US$0.05): `read -s APIFY
 
 ## Production
 
-Live at **https://spotted-london.zack11712.workers.dev** (Cloudflare account zack11712@gmail.com).
+Live at **https://spotted-london.zack11712.workers.dev**. The table below describes the maintainer's deployment; to run your own, create the same resources and put your ids in `wrangler.jsonc`.
 
 | Resource | Name | Notes |
 |---|---|---|
@@ -290,3 +306,11 @@ npx wrangler d1 execute spotted-db --remote --file=./seed/clear-examples.sql  # 
 
 - **Sign in**: add `RESEND_API_KEY` and `EMAIL_FROM` (email links) and/or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Until then the site is browse-only.
 - **Custom domain**: add it to the Worker, update `APP_URL`, and add the domain to the Turnstile widget.
+
+## Licence and credits
+
+Code: [MIT](LICENSE). Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The MIT licence does not cover the icons in `web/src/components/Icon.tsx`. Most are hand-drawn icons from [Koboyo](https://koboyo.com/icons), used under [their licence](https://koboyo.com/icons/license): free to use in a product, but you may not resell or redistribute them as an icon collection. If you fork this project, use your own icons or check that licence first. Map tiles come from [OpenFreeMap](https://openfreemap.org), address search from [Photon](https://photon.komoot.io), map rendering is [MapLibre](https://maplibre.org).
+
+The pop-up data in a running deployment is submitted by its users and is not part of this repository.

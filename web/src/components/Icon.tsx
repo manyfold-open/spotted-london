@@ -1,4 +1,5 @@
 // Hand-drawn icons from koboyo.com/icons (free for commercial use, no attribution required).
+// Not covered by this repo's MIT licence: see koboyo.com/icons/license (no redistribution as an icon collection).
 // Rendered once as an SVG sprite; <Icon name="..."/> references a symbol.
 
 import type { Category } from '../../../src/shared/categories';
