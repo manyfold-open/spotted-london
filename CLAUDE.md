@@ -60,7 +60,8 @@ src/pages.ts            magic-link confirm page, SEO injection for /p/:slug
 src/cron.ts             end expired, hourly recompute hot (writes only rows that moved 0.01+), settle karma, purge, reminders (stub), start/check agent runs, fetch Instagram/Threads posts
 src/mcp.ts              MCP server at POST /mcp: public search tools (limited per visitor by MCP_LIMIT, answers carry a data-not-instructions note), agent tools behind a per-agent key
 src/privacy.ts          the privacy policy at /privacy, which also says the Me page has Delete account (plain HTML, served by the Worker; Google's OAuth publishing needs its URL). It describes what the code collects, keeps and shares: change it in the same PR as any change to that (tested in test/privacy.test.ts)
-src/lib/llms.ts         the text of /llms.txt, the guide for AI assistants (same facts as web/src/pages/Connect.tsx, the /connect page)
+src/lib/llms.ts         the text of /llms.txt, the guide for AI assistants
+src/shared/connect.ts   the words for connecting an assistant (setup per app, test prompt, troubleshooting), read by both /llms.txt and web/src/pages/Connect.tsx (the /connect page, which also takes `?app=codex`); tested in test/connect.test.ts
 src/db/publish.ts       publish what agents verified (batch or auto), undo by agent, per-agent publish stats, the auto_publish setting
 src/db/agents.ts        AI agents on Manyfold, many per role (scout, triage, checker, concierge): schedules, briefs, run life cycle
 src/lib/ask.ts          Ask, pure parts: clean the question, taste summary, the brief for the Concierge, read and check its answer (tested in test/ask.test.ts)
@@ -79,7 +80,7 @@ migrations/             D1 schema, applied in order
 test/                   vitest-pool-workers tests; api.test.ts and auth.test.ts cover whole flows
 web/src/components/     SignInSheet (GateProvider: the sign-in bottom sheet), Shell (menu + bar per route), TopBar, NavMenu, MapSheet, ListBits (usePopups, Filters), PopupSheet, PopupBits, maps, Icon, Turnstile
 web/src/pages/          HomePage (full-screen map + list, `/`, `/p/:slug`; `/map` redirects here), Submit, Account (Saved, Me, SignIn, AdminQueue), Agents (lazy, /admin/agent, with ScoutSources)
-web/src/lib/            local-saves (pop-ups saved while signed out, localStorage `spotted.saved`), gate + after-sign-in (what the sign-in sheet remembers and finishes once you are back; the pure parts are in src/shared/local-saves.ts and src/shared/gate.ts, tested in test/gate-saves.test.ts), map-home (pure: sheet snap, away check, location start, pin clustering and the first fit; tested in test/map-home.test.ts), near-me (useNearMe), taste (localStorage `spotted.taste` store, useTaste, and the sync with the account), ask (in-memory store of the chat: turns, open or minimised, sends the question, polls, `useAskStatus`)
+web/src/lib/            onboarding (useWelcome: localStorage `spotted.welcome`; which first-visit card shows is decided by `nextStep` in src/shared/onboarding.ts, welcome then location then taste, one at a time; tested in test/onboarding.test.ts), local-saves (pop-ups saved while signed out, localStorage `spotted.saved`), gate + after-sign-in (what the sign-in sheet remembers and finishes once you are back; the pure parts are in src/shared/local-saves.ts and src/shared/gate.ts, tested in test/gate-saves.test.ts), map-home (pure: sheet snap, away check, location start, pin clustering and the first fit; tested in test/map-home.test.ts), near-me (useNearMe), taste (localStorage `spotted.taste` store, useTaste, and the sync with the account), ask (in-memory store of the chat: turns, open or minimised, sends the question, polls, `useAskStatus`)
 ```
 
 ## Agent fleet (quantity first, quality later)

@@ -199,7 +199,7 @@ One-time setup:
 
 ## Use Spotted from your own AI assistant
 
-Anyone can connect ChatGPT, Claude, Codex or Gemini CLI to Spotted and ask what is on. The page for people is `/connect` (menu: "Use with AI", `web/src/pages/Connect.tsx`); the guide for assistants is `/llms.txt` (`src/lib/llms.ts`, built from `APP_URL`, so a custom domain needs no edit). Keep the two in step.
+Anyone can connect ChatGPT, Claude, Codex or Gemini CLI to Spotted and ask what is on. The page for people is `/connect` (menu: "Use with AI", `web/src/pages/Connect.tsx`); the guide for assistants is `/llms.txt` (`src/lib/llms.ts`, built from `APP_URL`, so a custom domain needs no edit). Both read the setup words from `src/shared/connect.ts`. The page opens on one app with `/connect?app=chatgpt|claude|claude-code|codex|cursor|gemini`; check the steps in the real apps when you change them, because their menus move.
 
 - **What they get**: the keyless MCP tools `search_popups` and `get_popup` at `POST /mcp`. No sign-in, no key. Preferences stay with the assistant: it turns "I like matcha, not outdoors" into `tags` / `avoid_tags` itself. Spotted sees only the search it sends, never the chat or the person. A signed-in link to a Spotted account (personal token, `get_my_taste`) is not built.
 - **Browsing-only assistants** read `/llms.txt` and call `GET /api/v1/popups` (the filters are listed there).
