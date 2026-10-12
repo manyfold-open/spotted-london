@@ -7,6 +7,8 @@ import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { useLocalSaves } from '../lib/local-saves';
 import { bump, haptic, isPhone, scrollBehavior } from '../lib/motion';
+import { compressImage } from '../lib/image';
+import { makeThumb } from '../lib/thumbs';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
@@ -14,6 +16,9 @@ import { Turnstile, useNeedsTurnstile } from './Turnstile';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
 const VERIFY_CONFIDENCE = 0.75, VERIFY_MIN_WEIGHT = 8;
+
+/** Same cap as MAX_PHOTOS in src/lib/photo.ts. */
+const MAX_PHOTOS = 5;
 
 const REASONS: [string, string][] = [
   ['not_exist', 'It does not exist'], ['cancelled', 'Cancelled or closed'], ['wrong_details', 'Wrong details'],
@@ -277,6 +282,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         {p.images?.[0]?.credit ? <p className="small muted photo-credit">Photo: {p.images[0].credit_url ? <a href={p.images[0].credit_url} target="_blank" rel="noopener nofollow">{p.images[0].credit}</a> : p.images[0].credit}
           {me && (me.role === 'admin' || own) ? <> · <button type="button" className="linkbtn" onClick={() => removePhoto(p.images![0].id)}>Remove photo</button></> : null}</p> : null}
         {p.images && p.images.length > 1 ? <div className="gallery noscroll">{p.images.map(i => <Img key={i.id} src={i.url} />)}</div> : null}
+        {me && (me.role === 'admin' || own) && p.images && p.images.length < MAX_PHOTOS ? <AddPhoto p={p} /> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
         <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /><span className="spacer" /><button className="btn sm subtle" onClick={share}><Icon name="i-link" />Share</button></div>
@@ -334,5 +340,66 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         <a className="btn primary" href={`https://www.google.com/maps/search/?api=1&query=${p.location.lat},${p.location.lng}`} target="_blank" rel="noopener"><Icon name="i-route" />Directions</a>
       </div>
     </>
+  );
+}
+
+/**
+ * The poster or an admin adds a photo after posting: a file from the device, or the address of a picture on the web
+ * (copied into our storage and credited to the pop-up's source page, or the picture's own site when there is none).
+ * For pages the photo backfill cannot read, such as ones behind a bot check.
+ */
+function AddPhoto({ p }: { p: Popup }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const onError = useErrorToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [link, setLink] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ['popup'] }); qc.invalidateQueries({ queryKey: ['popups'] });
+    toast('Photo added. Lists show it within 10 minutes.', 'i-check');
+  };
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy('Uploading photo');
+    try {
+      const blob = await compressImage(file);
+      const photo = await api<{ id: string }>(`/popups/${p.id}/images`, { method: 'POST', body: blob, headers: { 'content-type': blob.type } });
+      await makeThumb(p.id, photo.id, blob).catch(() => {}); // optional: lists fall back to the full photo
+      done();
+    } catch (e) { onError(e); } finally { setBusy(null); }
+  };
+  const copy = async () => {
+    const url = link.trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) { setErr('Paste the address of a picture, starting with https://'); return; }
+    setErr(null); setBusy('Copying photo');
+    try {
+      const photo = await api<{ id: string; url: string }>(`/popups/${p.id}/images/from-url`, { method: 'POST', json: { image_url: url, page_url: p.source_url ?? url } });
+      await fetch(photo.url).then(r => r.blob()).then(b => makeThumb(p.id, photo.id, b)).catch(() => {});
+      setLink(''); setLinking(false); done();
+    } catch (e) {
+      // The server says why (too big, not a photo, the site refused); the pop-up itself is fine.
+      setErr(e instanceof ApiError && e.code === 'photo_not_saved' ? e.message.replace(/ Your pop-up was saved without it\.$/, '') : e instanceof Error ? e.message : 'The photo could not be copied. Try another address.');
+    } finally { setBusy(null); }
+  };
+
+  if (busy) return <p className="small muted row" style={{ gap: 8 }}><span className="spin" />{busy}</p>;
+  return (
+    <div className="addphoto">
+      <div className="row" style={{ gap: 8 }}>
+        <span className="btn sm subtle filebtn"><Icon name="i-image" />Add a photo<input type="file" accept="image/*" aria-label="Add a photo from this device" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} /></span>
+        <button type="button" className="btn sm subtle" aria-expanded={linking} onClick={() => { setLinking(!linking); setErr(null); }}><Icon name="i-link" />From a link</button>
+      </div>
+      {linking ? (
+        <form className="addphoto-link" noValidate onSubmit={e => { e.preventDefault(); copy(); }}>
+          <input className={`input ${err ? 'bad' : ''}`} type="url" inputMode="url" placeholder="Picture address" aria-label="Picture address" value={link} onChange={e => setLink(e.target.value)} />
+          <button className="btn sm" type="submit">Copy photo</button>
+          {err ? <span className="ferr" role="alert">{err}</span> : null}
+          <span className="small muted">Credited to {p.source_url ? 'the source link above' : 'the site the picture is on'}.</span>
+        </form>
+      ) : null}
+    </div>
   );
 }
