@@ -159,8 +159,8 @@ function TasteCard({ p, behind, style, lean = 0, onDown, onMove, onUp }: {
   const price = p.price.type === 'free' ? 'Free' : p.price.text || null;
   return (
     <article className={`td-card ${behind ? 'behind' : ''}`} style={style} aria-hidden={behind} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-      <div className={`td-pic pat-${p.category}`}>
-        {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
+      <div className={`td-pic pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
+        {p.cover_url ? <Img src={p.cover_url} fit /> : <Icon name={catIcon(p.category)} className="i big" />}
         <span className="tag cattag">{CATS[p.category]}</span>
         {isLive(p) ? <span className="tag t-new live">On now</span> : null}
         <span className="td-stamp yes" style={{ opacity: Math.max(0, lean) }}>I would go</span>

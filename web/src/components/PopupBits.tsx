@@ -39,12 +39,27 @@ export function Cover({ p, className }: { p: Pick<Popup, 'category' | 'cover_url
   );
 }
 
-/** A photo that fades in once it has loaded, over the category pattern. */
-export function Img({ src }: { src: string }) {
-  return <img src={src} alt="" loading="lazy" decoding="async" className="fade" onLoad={shown} onError={hideBroken}
-    ref={el => { if (el?.complete && el.naturalWidth) el.classList.add('in'); }} />;
+/**
+ * A photo that fades in once it has loaded, over the category pattern. With `fit`, a photo whose shape is far from
+ * its box (a tall poster in a wide card) is shown whole on a blurred copy of itself instead of being cropped.
+ */
+export function Img({ src, fit }: { src: string; fit?: boolean }) {
+  return <img src={src} alt="" loading="lazy" decoding="async" className="fade" onLoad={e => settle(e.currentTarget, fit)} onError={hideBroken}
+    ref={el => { if (el?.complete && el.naturalWidth && !el.classList.contains('in')) settle(el, fit); }} />;
 }
-const shown = (e: { currentTarget: HTMLImageElement }) => e.currentTarget.classList.add('in');
+
+/** Share of the photo that `object-fit: cover` would cut off above which the whole photo is shown instead. */
+const MAX_CROP = 0.3;
+
+/** Fades the photo in. With `fit`, marks the box `data-fit="whole"` when too much would be cropped (see `.thumb[data-fit]`). */
+function settle(img: HTMLImageElement, fit?: boolean) {
+  const box = img.parentElement;
+  if (fit && box && img.naturalWidth && img.naturalHeight && box.clientWidth && box.clientHeight) {
+    const a = img.naturalWidth / img.naturalHeight, b = box.clientWidth / box.clientHeight;
+    if (1 - Math.min(a, b) / Math.max(a, b) > MAX_CROP) box.dataset.fit = 'whole'; else delete box.dataset.fit;
+  }
+  img.classList.add('in');
+}
 
 /** A photo that fails to load is hidden, so the category pattern shows instead of a broken image. */
 export const hideBroken = (e: { currentTarget: HTMLImageElement }) => { e.currentTarget.style.display = 'none'; };
@@ -130,8 +145,8 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
   const warm = () => prefetchPopup(qc, p.slug);
   return (
     <article className="card" style={{ '--i': Math.min(i, 8) } as CSSProperties}>
-      <div className={`thumb pat-${p.category}`}>
-        {p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i big" />}
+      <div className={`thumb pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
+        {p.cover_url ? <Img src={p.cover_url} fit /> : <Icon name={catIcon(p.category)} className="i big" />}
         <span className="tag cattag">{CATS[p.category]}</span>
         {live ? <span className="tag t-new live">On now</span> : startsTomorrow(p) ? <span className="tag t-out live">Tomorrow</span> : null}
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
