@@ -54,6 +54,8 @@ export function Turnstile({ onToken, resetKey = 0 }: { onToken: (t: string | nul
       id.current = window.turnstile.render(el.current, {
         sitekey: siteKey,
         theme: 'light',
+        // The normal widget is a fixed 300 px; on a narrow phone (or in the Ask panel) it would stick out of its box.
+        size: el.current.clientWidth < 300 ? 'compact' : 'normal',
         callback: (t: string) => cb.current(t),
         'expired-callback': () => cb.current(null),
         'error-callback': () => cb.current(null),

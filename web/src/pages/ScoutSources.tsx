@@ -13,6 +13,8 @@ const KINDS: [SourceKind, string, string][] = [
 const kindName = (k: SourceKind) => KINDS.find(x => x[0] === k)![2];
 const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' });
 const KEY = ['scout-sources'];
+// Hundreds of sources make a page tens of thousands of pixels tall on a phone: show them a page at a time.
+const PAGE = 25;
 
 type SourcesData = { sources: ScoutSource[]; apify?: ApifySummary };
 
@@ -25,10 +27,17 @@ export function ScoutSources() {
   const [kind, setKind] = useState<SourceKind | null>(null);
   const [paused, setPaused] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [find, setFind] = useState('');
+  const [limit, setLimit] = useState(PAGE);
+  const [sugLimit, setSugLimit] = useState(PAGE);
+  // A new filter starts again from the first page.
+  const refilter = (change: () => void) => { change(); setLimit(PAGE); };
   const all = q.data?.sources ?? [];
+  const needle = find.trim().toLowerCase();
+  const matches = (s: ScoutSource) => !needle || s.label.toLowerCase().includes(needle) || s.target.toLowerCase().includes(needle);
   const suggested = all.filter(s => s.status === 'suggested');
   const pausedCount = all.filter(s => s.status === 'paused').length;
-  const shown = all.filter(s => (s.status === 'active' || (paused && s.status === 'paused')) && (!kind || s.kind === kind));
+  const shown = all.filter(s => (s.status === 'active' || (paused && s.status === 'paused')) && (!kind || s.kind === kind) && matches(s));
   const on = all.filter(s => s.status === 'active').length;
 
   return (
@@ -45,26 +54,44 @@ export function ScoutSources() {
             {suggested.length ? (
               <section className="panel" aria-labelledby="src-sug">
                 <div className="row"><h3 id="src-sug">Suggested by Scout</h3><span className="tag t-ai"><Icon name="i-sparkle" />{suggested.length}</span></div>
-                <ul className="srcs">{suggested.map(s => <SourceRow key={s.id} s={s} />)}</ul>
+                <ul className="srcs">{suggested.slice(0, sugLimit).map(s => <SourceRow key={s.id} s={s} />)}</ul>
+                <More shown={sugLimit} total={suggested.length} onMore={() => setSugLimit(n => n + PAGE)} />
               </section>
             ) : null}
             <section className="panel" aria-label="Sources">
               <div className="row srcbar">
                 <div className="chips">
-                  <button className="chip" aria-pressed={!kind} onClick={() => setKind(null)}>All</button>
-                  {KINDS.map(([k, label]) => <button key={k} className="chip" aria-pressed={kind === k} onClick={() => setKind(kind === k ? null : k)}>{label}</button>)}
-                  {pausedCount ? <button className="chip" aria-pressed={paused} onClick={() => setPaused(p => !p)}>Show paused</button> : null}
+                  <button className="chip" aria-pressed={!kind} onClick={() => refilter(() => setKind(null))}>All</button>
+                  {KINDS.map(([k, label]) => <button key={k} className="chip" aria-pressed={kind === k} onClick={() => refilter(() => setKind(kind === k ? null : k))}>{label}</button>)}
+                  {pausedCount ? <button className="chip" aria-pressed={paused} onClick={() => refilter(() => setPaused(p => !p))}>Show paused</button> : null}
                 </div>
                 <span className="spacer" />
                 <button className="btn sm" aria-expanded={adding} onClick={() => setAdding(a => !a)}><Icon name="i-plus" />Add a source</button>
               </div>
               {adding ? <AddSource onDone={() => setAdding(false)} /> : null}
-              {shown.length ? <ul className="srcs">{shown.map(s => <SourceRow key={s.id} s={s} />)}</ul>
-                : <p className="small muted" style={{ marginTop: 14 }}>No sources here yet. Add one, or pick another filter.</p>}
+              {all.length > PAGE ? (
+                <input className="input srcfind" type="search" value={find} onChange={e => refilter(() => setFind(e.target.value))}
+                  placeholder="Find a source by name or address" aria-label="Find a source" autoComplete="off" enterKeyHint="search" />
+              ) : null}
+              {shown.length ? <>
+                <ul className="srcs">{shown.slice(0, limit).map(s => <SourceRow key={s.id} s={s} />)}</ul>
+                <More shown={limit} total={shown.length} onMore={() => setLimit(n => n + PAGE)} />
+              </> : <p className="small muted" style={{ marginTop: 14 }}>{needle ? `No source matches \u201c${find.trim()}\u201d. Check the spelling, or clear the box.` : 'No sources here yet. Add one, or pick another filter.'}</p>}
             </section>
           </div>
         )}
     </>
+  );
+}
+
+/** "Show 25 more" under a list that is cut to a page. */
+function More({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
+  if (total <= shown) return null;
+  return (
+    <div className="row srcmore">
+      <span className="small muted">Showing {shown} of {total}</span>
+      <button type="button" className="btn sm" onClick={onMore}>Show {Math.min(PAGE, total - shown)} more</button>
+    </div>
   );
 }
 

@@ -68,7 +68,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: currentColor }
 .busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; background: var(--accent); border-radius: 999px; animation: busy 1.1s var(--ease-out) infinite }
 @keyframes busy { from { translate: -100% 0 } to { translate: 260% 0 } }
 .search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--card) }
-.search input { border: 0; outline: 0; background: none; font: inherit; flex: 1; min-width: 0; color: var(--ink) }
+.search input { border: 0; outline: 0; background: none; font: inherit; flex: 1; min-width: 0; color: var(--ink); text-overflow: ellipsis }
 .search:focus-within { outline: 3px solid var(--accent); outline-offset: 2px }
 .search input::-webkit-search-cancel-button, .search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none }
 .search .clear { width: 26px; height: 26px; margin-right: -6px; border-radius: 50%; border: 0; background: var(--soft); display: grid; place-items: center; padding: 0; cursor: pointer; flex: none }
@@ -422,6 +422,8 @@ code.secret { font-size: 12.5px; padding: 6px 8px; overflow-wrap: anywhere; flex
 .srcs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column }
 .srcs li { padding: 12px 0; border-top: 1.5px dashed var(--hair); display: flex; flex-direction: column; gap: 6px; min-width: 0 }
 .srcs li:first-child { border-top: 0 }
+.srcfind { margin-top: 12px; max-width: 420px }
+.srcmore { justify-content: space-between; padding-top: 12px; border-top: 1.5px dashed var(--hair) }
 .srcs li.src { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 18px }
 .srcinfo { display: flex; flex-direction: column; gap: 6px; min-width: 0 }
 .srcs li.off .srcinfo { opacity: .6 }
@@ -506,6 +508,9 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .grid .cbody h3 { font-size: 16px }
   .grid .cattag { display: none }
   .grid .cfoot { padding: 4px 8px 8px 12px; border-top: 0; gap: 6px }
+  .grid .cfoot > .small { white-space: nowrap }
+  /* The dates are the point of a card: on a narrow phone they wrap instead of losing the end date. */
+  .grid .meta .t.num { white-space: normal }
   .drawer { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 92%; border-left: 0; border-top: 1.5px solid var(--ink); border-radius: 24px 24px 0 0; animation: up var(--dur-3) var(--ease-out); transition: translate var(--dur-3) var(--ease-out) }
   @keyframes up { from { translate: 0 100% } }
   .drawer.out { animation: down var(--dur-2) var(--ease-in) forwards }
@@ -549,6 +554,17 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .calpop { overscroll-behavior: contain }
   .calday { width: 44px; height: 44px; font-size: 15px }
   .calquick .chip { min-height: 38px; flex: 1; justify-content: center }
+  /* Fingers need about 40 px. Small buttons and chips grow a little; the tiny icon buttons and the switches
+     keep their look and get a bigger invisible hit area instead. */
+  .btn.sm:not(.dclose) { min-height: 38px }
+  .stepper .btn { width: 38px }
+  .chip { min-height: 38px }
+  .switch { min-height: 40px }
+  .search .clear { position: relative }
+  .search .clear::before, .thumbs button::before, .dclose::before { content: ""; position: absolute; inset: -9px }
+  .dclose::before { inset: -5px }
+  /* Pins are 30 px but at least a cluster radius apart, so each can take a 40 px tap. (::after is the live dot.) */
+  .pinm::before { content: ""; position: absolute; inset: -5px; border-radius: 50% }
 }
 @media (min-width: 900px) { .m-only { display: none !important } }
 /* Reduced motion: things still fade in and out, but nothing slides, grows, bounces or loops. */
@@ -625,6 +641,8 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 
 @media (max-width: 899px) {
   .mp-bar { padding: 8px 12px; gap: 8px; padding-top: calc(8px + env(safe-area-inset-top, 0px)) }
+  /* Under 360 px the search box needs the room more than the karma number (it is on the Me page). */
+  @media (max-width: 359px) { .mp-bar .kpill { padding-right: 4px } .mp-bar .kpill .tick { display: none } }
   .mp-brand { display: none }
   .mp-bar .search { max-width: none }
 }
@@ -711,6 +729,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @keyframes mppulse { from { scale: .35; opacity: 1 } to { scale: 1; opacity: 0 } }
 
 @media (max-width: 899px) {
+  .mp-mode button { height: 36px }
   /* peek: the cards are one row you swipe sideways */
   .mp-home[data-snap="peek"] .mp-sbody { overflow-y: hidden }
   .mp-home[data-snap="peek"] .mp-minis { flex-direction: row; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -14px; padding: 4px 14px 10px; scroll-padding: 0 14px }
