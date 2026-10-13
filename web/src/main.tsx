@@ -51,7 +51,10 @@ const router = createBrowserRouter([
       { path: '*', element: <NotFound /> },
     ],
   },
-], { basename: BASE || undefined });
+// The trailing slash matters: with basename '/spotted-london' React Router writes the home page as
+// '/spotted-london' (no slash), which is outside the manifest scope '/spotted-london/', so the iOS home screen
+// app shows its browser bar. With '/spotted-london/' every address keeps its slash.
+], { basename: BASE ? `${BASE}/` : undefined });
 
 createRoot(document.getElementById('root')!, { onCaughtError: (_e, info) => noteCrash(info) }).render(
   <StrictMode>
