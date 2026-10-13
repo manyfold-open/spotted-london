@@ -23,7 +23,7 @@ import { snapshotStats } from '../db/snapshot';
 
 export const agentsAdmin = new Hono<AppEnv>();
 
-export const SKILL_URL = 'https://github.com/tldr0810/spotted-london/tree/main/skills/spotted-london';
+export const SKILL_URL = 'https://github.com/manyfold-open/spotted-london/tree/main/skills/spotted-london';
 
 const hint = (s: string) => `…${s.slice(-4)}`;
 

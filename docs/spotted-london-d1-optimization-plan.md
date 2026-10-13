@@ -1,6 +1,6 @@
 # spotted-london：降低 D1 讀寫用量計畫
 
-> 範圍：`tldr0810/spotted-london`（Cloudflare Worker + D1 + KV + R2，Workers 免費方案）。
+> 範圍：`manyfold-open/spotted-london`（Cloudflare Worker + D1 + KV + R2，Workers 免費方案）。
 > 本計畫依 2026-10-02 `main` 的程式碼寫成，**沒有看過 D1 實際用量**，所以第 0 步先量測。
 > 參考範本：`manyfold-open/manyfold-data` 裡 Ying 的三個 commit（`52f07e3` 邊緣快取、`51e96d3` 整包資料集、`c760bce` 預先存好的資料集）。
 > 專案規則（`CLAUDE.md`）：開分支、開 PR，由 Zack merge；有 migration 要在 PR 寫明，並先跑 `npx wrangler d1 migrations apply spotted-db --remote` 再 merge。
