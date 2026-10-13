@@ -13,9 +13,9 @@ import { makeThumb } from '../lib/thumbs';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
 import { PhotoViewer } from './PhotoViewer';
-import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
+import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions, useShare } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
-import { appUrl, shareUrl } from '../lib/base';
+import { appUrl } from '../lib/base';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
 const VERIFY_CONFIDENCE = 0.75, VERIFY_MIN_WEIGHT = 8;
@@ -258,14 +258,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       : { ok: v.voters >= 5, text: `Not started yet, so 5 voters needed (now ${v.voters})` },
   ];
 
-  const share = async () => {
-    const url = shareUrl(`/p/${p.slug}`);
-    try {
-      if (navigator.share) await navigator.share({ title: p.title, url });
-      else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }
-      track('share', { slug: p.slug });
-    } catch { /* cancelled */ }
-  };
+  const share = useShare(p);
 
   return (
     <>
@@ -293,7 +286,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
         {me && (me.role === 'admin' || own) && p.images && p.images.length < MAX_PHOTOS ? <AddPhoto p={p} /> : null}
         {p.example ? <div className="notice small"><Icon name="i-info" /><span>This is an example pop-up that shows how Spotted works. It is not a real event.</span></div> : null}
         {p.description ? <p style={{ whiteSpace: 'pre-line' }}>{p.description}</p> : null}
-        <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /><span className="spacer" /><button className="btn sm subtle" onClick={share}><Icon name="i-link" />Share</button></div>
+        <div className="row"><span className="small muted">Worth going?</span><ScoreVotes p={p} /></div>
 
         {PUBLIC.includes(p.status) ? (
           <section className="panel">
@@ -345,6 +338,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       </div>
       <div className="dfoot">
         <button className="btn" aria-pressed={!!p.me?.saved} onClick={toggleSave}><Icon name="i-bookmark" />{p.me?.saved ? 'Saved' : 'Save'}</button>
+        <button className="btn" onClick={share}><Icon name="i-share" />Share</button>
         <a className="btn primary" href={`https://www.google.com/maps/search/?api=1&query=${p.location.lat},${p.location.lng}`} target="_blank" rel="noopener" onClick={() => track('outbound', { slug: p.slug, detail: 'directions' })}><Icon name="i-route" />Directions</a>
       </div>
     </>
