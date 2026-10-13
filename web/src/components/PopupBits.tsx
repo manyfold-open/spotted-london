@@ -136,7 +136,7 @@ export function usePopupActions(p: Popup) {
 }
 
 /**
- * Share a pop-up: the phone's share sheet where there is one, else copy the link. A share sheet that fails for any
+ * Share a pop-up: the phone's share sheet on a touch device, else copy the link. A share sheet that fails for any
  * reason but being closed falls back to copying, and a copy that fails says so, so the button is never silent.
  */
 export function useShare(p: Popup) {
@@ -147,7 +147,9 @@ export function useShare(p: Popup) {
       try { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); track('share', { slug: p.slug }); }
       catch { toast('Could not copy the link. Open the pop-up and copy the address from the browser.', 'i-info', true); }
     };
-    if (!navigator.share) return copy();
+    // The macOS and Windows share sheets bury "Copy link" among apps, so a computer copies and says so.
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    if (!navigator.share || !touch) return copy();
     try {
       await navigator.share({ title: p.title, text: `${p.title}, ${p.location.borough ?? 'London'} · ${dateRange(p)}`, url });
       track('share', { slug: p.slug });
