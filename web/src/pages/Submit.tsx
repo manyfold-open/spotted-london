@@ -17,7 +17,10 @@ import { track } from '../lib/track';
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
 type Flag = 'ai' | 'check' | undefined;
-type FieldKey = 'title' | 'host' | 'category' | 'where' | 'start' | 'end' | 'hours' | 'price' | 'desc';
+type FieldKey = 'title' | 'host' | 'category' | 'where' | 'start' | 'end' | 'hours' | 'price' | 'desc' | 'src';
+/** Which dates are known: all of them, no end date announced, or none (migration 0026). The last two, and a run over 180 days, wait for an admin and need a source link. */
+type DateMode = 'dates' | 'no_end' | 'no_dates';
+const DAY_MS = 86_400_000;
 interface Photo { id: string; file: File; url: string }
 
 const today = () => londonDate(Date.now());
@@ -76,6 +79,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const [place, setPlace] = useState<Place | null>(null);
   const [start, setStart] = useState(today());
   const [end, setEnd] = useState(today());
+  const [dateMode, setDateMode] = useState<DateMode>('dates');
   const [hours, setHours] = useState('');
   const [priceType, setPriceType] = useState<'free' | 'paid' | 'unknown'>('unknown');
   const [price, setPrice] = useState('');
@@ -135,8 +139,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
       if (f.title) { setTitle(f.title); next.title = mark('title'); n++; }
       if (f.host) { setHost(f.host); next.host = mark('host'); n++; }
       if (f.category) { setCategory(f.category); next.category = mark('category'); n++; }
-      if (f.start_date) { setStart(f.start_date); next.start = mark('start_date'); n++; }
-      if (f.end_date) { setEnd(f.end_date); next.end = mark('end_date'); n++; }
+      if (f.start_date) { setStart(f.start_date); next.start = mark('start_date'); n++; if (dateMode === 'no_dates') setDateMode(f.end_date ? 'dates' : 'no_end'); }
+      if (f.end_date) { setEnd(f.end_date); next.end = mark('end_date'); n++; if (dateMode === 'no_end') setDateMode('dates'); }
       if (f.hours_text) { setHours(f.hours_text); next.hours = mark('hours_text'); n++; }
       if (f.price_text) { setPrice(f.price_text); setPriceType(/free/i.test(f.price_text) ? 'free' : 'paid'); next.price = mark('price_text'); n++; }
       if (f.description) { setDesc(f.description); next.desc = mark('description'); n++; }
@@ -181,16 +185,22 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   /* ----- trust preview ----- */
   const hasSource = looksLikeUrl(src);
   const trust = (me?.trust ?? 0) + (hasSource ? 10 : 0);
-  const auto = me?.role === 'admin' || me?.role === 'organizer' || trust >= 50;
+  // No end date, no dates, or more than 180 days: an admin looks first, whatever the trust score (an admin's own post is already looked at).
+  const longRun = dateMode !== 'dates' || (!!start && !!end && Date.parse(end) - Date.parse(start) > 180 * DAY_MS);
+  const held = longRun && me?.role !== 'admin';
+  const auto = !held && (me?.role === 'admin' || me?.role === 'organizer' || trust >= 50);
 
   /* ----- submit ----- */
   const validate = () => {
     const e: Partial<Record<FieldKey, string>> = {};
     if (title.trim().length < 3) e.title = 'Give it a name of at least 3 characters.';
     if (!place) e.where = 'Choose an address from the list, or drop the pin on the map.';
-    if (!start) e.start = 'Pick a start date.';
-    if (!end || end < start) e.end = 'The end date must be on or after the start.';
-    if (end && end < today()) e.end = 'This pop-up has already ended.';
+    if (dateMode !== 'no_dates' && !start) e.start = 'Pick a start date.';
+    if (dateMode === 'dates') {
+      if (!end || end < start) e.end = 'The end date must be on or after the start.';
+      if (end && end < today()) e.end = 'This pop-up has already ended.';
+    }
+    if (longRun && !hasSource) e.src = 'Add a link to a page that shows this pop-up, so an admin can check it. Paste it in the box at the top.';
     setErrors(e);
     return !Object.keys(e).length;
   };
@@ -200,7 +210,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
       toast('A few fields need attention', 'i-info', true);
       // The first problem may be far above the button on a phone: bring it into view.
       requestAnimationFrame(() => {
-        const field = document.querySelector('.fields .ferr')?.closest<HTMLElement>('.field');
+        const field = document.querySelector('.fields .ferr, #srcerr')?.closest<HTMLElement>('.field, section');
         field?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
         field?.querySelector<HTMLElement>('input, .datebtn')?.focus({ preventScroll: true });
       });
@@ -213,7 +223,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
         json: {
           title: title.trim(), host: host.trim() || null, category, description: desc.trim() || null,
           address: place!.address, borough: place!.area, lat: place!.lat, lng: place!.lng,
-          start_at: londonTs(start, 0), end_at: londonTs(end, 23, 59), hours_text: hours.trim() || null,
+          start_at: dateMode === 'no_dates' ? null : londonTs(start, 0), end_at: dateMode === 'dates' ? londonTs(end, 23, 59) : null, hours_text: hours.trim() || null,
           price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force, turnstile_token: botToken,
         },
       });
@@ -264,7 +274,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
             onDrop={e => { e.preventDefault(); setDrag(false); readShot(e.dataTransfer.files[0]); }}>
             <div className="row" style={{ gap: 8 }}><span className="tag t-ai"><Icon name="i-sparkle" />AI</span><h2 id="aih">Paste it, we fill it in</h2></div>
             <label htmlFor="src" className="sr">Link or post text</label>
-            <textarea id="src" className="input src" rows={1} value={src} onChange={e => setSrc(e.target.value)} enterKeyHint="go" autoComplete="off" spellCheck={false}
+            <textarea id="src" className="input src" rows={1} value={src} onChange={e => { setSrc(e.target.value); if (errors.src) setErrors(x => ({ ...x, src: undefined })); }} enterKeyHint="go" autoComplete="off" spellCheck={false}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onAutofill(); } }}
               onPaste={e => { const f = [...e.clipboardData.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); readShot(f); } }}
               placeholder="A link, or the post text" />
@@ -281,6 +291,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
                 {ai.state === 'busy' ? <span className="spin" /> : <Icon name={ai.state === 'error' ? 'i-info' : 'i-sparkle'} />}<span>{ai.msg}</span>
               </div>
             ) : <p className="small muted">Works with Instagram, TikTok, Eventbrite and venue sites. Instagram often blocks links, so a screenshot of the post works best.</p>}
+            {errors.src ? <span className="ferr" id="srcerr" role="alert">{errors.src}</span> : null}
           </section>
 
           <label className="field">{lbl('title', 'Name of the pop-up')}
@@ -319,13 +330,20 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
             ) : null}
           </div>
 
+          <div className="field"><span className="lbl" id="modelbl">Dates</span>
+            <div className="chips" role="radiogroup" aria-labelledby="modelbl">
+              {([['dates', 'I know the dates'], ['no_end', 'No end date'], ['no_dates', 'No dates announced']] as const).map(([k, l]) =>
+                <button key={k} type="button" className="chip" role="radio" aria-checked={dateMode === k} aria-pressed={dateMode === k} onClick={() => { setDateMode(k); setErrors(e => ({ ...e, start: undefined, end: undefined })); }}>{l}</button>)}
+            </div>
+          </div>
+          {longRun ? <div className="notice watch small"><Icon name="i-clock" /><span>{dateMode === 'dates' ? 'This runs for more than 180 days.' : dateMode === 'no_end' ? 'It will show "no end date announced".' : 'It will show "dates not announced".'} It is still welcome, but an admin checks it before it goes live, so a source link is needed.</span></div> : null}
           <div className="two">
-            <div className="field">{lbl('start', 'Starts', undefined, 'startlbl')}
+            {dateMode === 'no_dates' ? null : <div className="field">{lbl('start', 'Starts', undefined, 'startlbl')}
               <DatePicker title="Starts" labelledBy="startlbl" value={start} today={today()} min={londonDate(Date.now() - 180 * 86_400_000)} range={[start, end]} className={state('start')}
-                onChange={v => { setStart(v); if (end < v) setEnd(v); clearFlag('start'); }} />{err('start')}</div>
-            <div className="field">{lbl('end', 'Ends', undefined, 'endlbl')}
+                onChange={v => { setStart(v); if (end < v) setEnd(v); clearFlag('start'); }} />{err('start')}</div>}
+            {dateMode === 'dates' ? <div className="field">{lbl('end', 'Ends', undefined, 'endlbl')}
               <DatePicker title="Ends" labelledBy="endlbl" value={end} today={today()} min={start} range={[start, end]} className={state('end')}
-                onChange={v => { setEnd(v); clearFlag('end'); }} />{err('end')}</div>
+                onChange={v => { setEnd(v); clearFlag('end'); }} />{err('end')}</div> : null}
           </div>
           <label className="field">{lbl('hours', 'Opening hours', ' (optional)')}
             <input className={cls('hours')} value={hours} onChange={e => { setHours(e.target.value); clearFlag('hours'); }} placeholder="e.g. Sat 10:00 to 16:00" /></label>
@@ -355,14 +373,14 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
         </form>
 
         <aside className="sticky">
-          <TrustBox trust={trust} auto={auto} hasSource={hasSource} karma={me.karma} verified={me.verified_posts} />
+          <TrustBox trust={trust} auto={auto} held={held} hasSource={hasSource} karma={me.karma} verified={me.verified_posts} />
         </aside>
       </div>
     </>
   );
 }
 
-function TrustBox({ trust, auto, hasSource, karma, verified }: { trust: number; auto: boolean; hasSource: boolean; karma: number; verified: number }) {
+function TrustBox({ trust, auto, held, hasSource, karma, verified }: { trust: number; auto: boolean; held: boolean; hasSource: boolean; karma: number; verified: number }) {
   const width = `${Math.min(100, (trust / 50) * 100)}%`;
   return (
     <div className="panel">
@@ -371,6 +389,7 @@ function TrustBox({ trust, auto, hasSource, karma, verified }: { trust: number; 
       <div className={`meter big ${auto ? '' : 'mid'}`} style={{ margin: '10px 0 12px' }}><i style={{ width }} /></div>
       {auto
         ? <div className="notice good small"><Icon name="i-bolt" /><span>This goes live straight away and the community starts checking it.</span></div>
+        : held ? <div className="notice watch small"><Icon name="i-clock" /><span>An admin reviews this first because of its dates, whatever your score. It needs a source link.</span></div>
         : <div className="notice watch small"><Icon name="i-clock" /><span>An admin reviews this first, usually within 12 hours.{hasSource ? '' : ' A source link adds 10.'}</span></div>}
       <table className="log small" style={{ marginTop: 12 }}><tbody>
         <tr><td>Karma {karma} × 0.5</td><td className="d num">{Math.round(karma * 0.5)}</td></tr>

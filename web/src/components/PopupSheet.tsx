@@ -3,7 +3,7 @@ import { useLocation } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Popup } from '../lib/api';
 import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib/cache';
-import { CATS, dateRange, isLive, PUBLIC } from '../lib/format';
+import { CATS, DATE_KIND_LABEL, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { track } from '../lib/track';
 import { useLocalSaves } from '../lib/local-saves';
@@ -272,6 +272,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
       <div className="dbody">
         <div className="row" style={{ gap: 6 }}>
           <StatusTag key={p.status} status={p.status} sourceChecked={p.source_checked} className={statusChanged ? 'stamp' : ''} />{p.example ? <span className="tag t-sim">Example</span> : null}<span className="tag t-mute">{CATS[p.category]}</span>
+          {p.date_kind ? <span className="tag t-watch">{DATE_KIND_LABEL[p.date_kind]}</span> : null}
           {live ? <span className="tag t-new">On now</span> : null}
         </div>
         <div><h1 style={{ fontSize: 32 }}>{p.title}</h1>{p.host ? <p className="muted" style={{ marginTop: 4 }}>by {p.host}</p> : null}</div>

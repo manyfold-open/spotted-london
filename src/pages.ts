@@ -136,7 +136,8 @@ pages.get('/p/:slug', async c => {
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
 
 function describe(p: PopupRow): string {
-  const when = new Date(p.start_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+  const day = new Date(p.start_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+  const when = p.date_kind === 'undated' ? 'Dates not announced' : p.date_kind === 'open_end' ? `From ${day}, no end date announced` : day;
   return [`${when}${p.borough ? ` in ${p.borough}` : ''}.`, p.description].filter(Boolean).join(' ').slice(0, 200);
 }
 
@@ -148,8 +149,9 @@ export function headTags(p: PopupRow & { cover_key?: string | null }, origin: st
     '@type': 'Event',
     name: p.title,
     description: p.description ?? undefined,
-    startDate: new Date(p.start_at).toISOString(),
-    endDate: new Date(p.end_at).toISOString(),
+    // Stand-in dates (migration 0026) are not announced dates, so they are not given to search engines.
+    startDate: p.date_kind === 'undated' ? undefined : new Date(p.start_at).toISOString(),
+    endDate: p.date_kind === 'undated' || p.date_kind === 'open_end' ? undefined : new Date(p.end_at).toISOString(),
     eventStatus: 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
     location: { '@type': 'Place', name: p.address ?? p.borough ?? 'London', address: { '@type': 'PostalAddress', streetAddress: p.address ?? undefined, addressLocality: 'London', addressCountry: 'GB' }, geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lng } },

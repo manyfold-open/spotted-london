@@ -39,8 +39,9 @@ admin.get('/queue', async c => {
       poster: { id: p.created_by, name: p.poster_name, karma: p.poster_karma, account_age_days: Math.floor((now - p.poster_created_at) / 86_400_000) },
       open_reports: p.open_reports,
       agent_notes: notes.filter(n => n.popup_id === p.id).map(({ popup_id: _, publish_ready, ...n }) => ({ ...n, publish_ready: !!publish_ready })),
-      ready_to_publish: p.status === 'pending' && isReady(notes.filter(n => n.popup_id === p.id)),
+      ready_to_publish: p.status === 'pending' && !p.date_kind && isReady(notes.filter(n => n.popup_id === p.id)),
       flags: [
+        p.date_kind && 'long_run',
         p.created_by.startsWith('agent_') && 'by_agent',
         !p.source_url && 'no_source_link',
         now - p.poster_created_at < 86_400_000 && !p.created_by.startsWith('agent_') && 'new_account',

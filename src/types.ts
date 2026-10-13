@@ -67,6 +67,8 @@ export interface PopupRow {
   end_at: number;
   hours_text: string | null;
   source_url: string | null;
+  /** null for an ordinary pop-up, else why its dates are not a normal short run (see migration 0026) */
+  date_kind: 'long' | 'open_end' | 'undated' | null;
   status: Status;
   final_verdict: 'real' | 'fake' | null;
   merged_into: string | null;

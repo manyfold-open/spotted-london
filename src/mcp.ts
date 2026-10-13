@@ -83,7 +83,9 @@ function brief(p: ReturnType<typeof toPublic>, origin: string) {
     // null: nobody has tagged this one yet, so it says nothing either way
     tags: p.tags ?? null,
     host: p.host,
-    dates: `${londonDateString(p.start_at)} to ${londonDateString(p.end_at)}`,
+    // An open or very long run has stand-in dates (migration 0026): say so, never present them as announced.
+    dates: p.date_kind === 'undated' ? 'not announced' : p.date_kind === 'open_end' ? `from ${londonDateString(p.start_at)}, no end date announced` : `${londonDateString(p.start_at)} to ${londonDateString(p.end_at)}`,
+    ...(p.date_kind ? { long_run: p.date_kind === 'long' ? 'Runs for more than 180 days' : 'No end date announced' } : {}),
     hours: p.hours_text,
     address: p.location.address,
     area: p.location.borough,
@@ -659,7 +661,7 @@ const TOOLS: Record<string, Tool> = {
       // A legacy draft (see isLegacyDraft) comes back once a day until a Triage note on it carries the agent's own quote.
       // A draft with exactly one Triage note, looks_real but not ready, while the Scout was unsure, comes back once: that note
       // was written when the Scout's doubt still blocked publishing.
-      const results = await leasePopups(x, limit, `p.status = 'pending' AND p.end_at > ?1
+      const results = await leasePopups(x, limit, `p.status = 'pending' AND p.date_kind IS NULL AND p.end_at > ?1
         AND (NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2))
           OR (substr(p.created_by, 1, 6) = 'agent_' AND p.evidence_check IS NULL
             AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2)
@@ -688,7 +690,7 @@ const TOOLS: Record<string, Tool> = {
     inputSchema: obj({ limit: N('1 to 30. Defaults to 15.') }),
     async run(a, x) {
       const limit = Math.min(30, Math.max(1, numArg(a, 'limit') ?? 15));
-      const results = await leasePopups(x, limit, `p.status IN ('community', 'verified_community', 'verified_admin') AND p.end_at > ?1 AND p.source_url IS NOT NULL AND p.is_example = 0
+      const results = await leasePopups(x, limit, `p.status IN ('community', 'verified_community', 'verified_admin') AND p.date_kind IS NULL AND p.end_at > ?1 AND p.source_url IS NOT NULL AND p.is_example = 0
         AND NOT EXISTS (SELECT 1 FROM agent_notes n WHERE n.popup_id = p.id AND n.agent_id IN (SELECT id FROM agents WHERE role = ?2) AND n.created_at > ?3)`, 'p.start_at', x.now - 3 * DAY);
       const links = await linksFor(x.c.env.DB, results.map(p => p.id));
       return { count: results.length, lease_minutes: POPUP_LEASE / 60_000, popups: results.map(p => ({ ...brief(toPublic(p), x.origin), source_url: p.source_url, links: links.get(p.id) ?? [] })) };

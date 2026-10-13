@@ -17,7 +17,10 @@ export interface Popup {
   tags?: Tag[] | null;
   price: { type: string | null; text: string | null };
   location: { address: string | null; borough: string | null; lat: number; lng: number };
-  start_at: number; end_at: number; hours_text: string | null; source_url: string | null; status: Status;
+  start_at: number; end_at: number;
+  /** Set when the dates are not a normal short run: start_at and end_at are then stand-ins (migration 0026). */
+  date_kind?: 'long' | 'open_end' | 'undated';
+  hours_text: string | null; source_url: string | null; status: Status;
   verification: { confidence: number; weighted_votes: number; voters: number; checkins: number };
   score: number; hot: number; cover_url: string | null; created_at: number; example?: boolean;
   /** An agent confirmed the post against its source. Shown as "Source checked"; status still comes from votes. */

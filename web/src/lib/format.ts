@@ -14,12 +14,19 @@ export const fmtDay = (t: number) => dayFmt.format(t);
 /** YYYY-MM-DD in London, for date inputs. */
 export const londonDate = (t: number) => dateFmt.format(t);
 
-export function dateRange(p: Pick<Popup, 'start_at' | 'end_at'>): string {
+export function dateRange(p: Pick<Popup, 'start_at' | 'end_at'> & { date_kind?: Popup['date_kind'] }): string {
+  // Open dates have stand-in start and end values: never show those as if they were announced.
+  if (p.date_kind === 'undated') return 'Dates not announced';
+  if (p.date_kind === 'open_end') return `From ${fmtDay(p.start_at)}, no end date announced`;
   const a = fmtDay(p.start_at), b = fmtDay(p.end_at);
   return a === b ? a : `${a} to ${b}`;
 }
 
-export const isLive = (p: Pick<Popup, 'start_at' | 'end_at'>, now = Date.now()) => p.start_at <= now && p.end_at >= now;
+/** The short label for the tag next to a pop-up whose dates are not a normal short run. */
+export const DATE_KIND_LABEL = { long: 'Long run', open_end: 'No end date', undated: 'Dates not announced' } as const;
+
+// With no dates announced the stand-in start is only the day it was added, so it is never "on now".
+export const isLive = (p: Pick<Popup, 'start_at' | 'end_at'> & { date_kind?: Popup['date_kind'] }, now = Date.now()) => p.date_kind !== 'undated' && p.start_at <= now && p.end_at >= now;
 export const startsTomorrow = (p: Pick<Popup, 'start_at'>, now = Date.now()) =>
   londonDate(p.start_at) === londonDate(now + 86_400_000);
 

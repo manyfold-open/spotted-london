@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { MY_STATE_KEY, patchMe, patchPopup, prefetchPopup } from '../lib/cache';
-import { CATS, catIcon, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
+import { CATS, catIcon, DATE_KIND_LABEL, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
 import { useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { track } from '../lib/track';
 import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
@@ -186,7 +186,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
         <button className="save share" aria-label={`Share ${p.title}`} onClick={share}><Icon name="i-share" /></button>
       </div>
       <div className="cbody">
-        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} sourceChecked={p.source_checked} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>
+        <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} sourceChecked={p.source_checked} />{p.date_kind ? <span className="tag t-watch">{DATE_KIND_LABEL[p.date_kind]}</span> : null}{p.example ? <span className="tag t-sim">Example</span> : null}</div>
         <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.closest('.card')?.querySelector('.thumb')); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
         <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
