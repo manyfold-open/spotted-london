@@ -32,11 +32,11 @@ export function Saved() {
   return (
     <>
       <div className="eyebrow">Your list</div><h1>Saved</h1>
-      {me ? <p className="intro">We remind you the day before each one starts, and again on its last day.</p> : null}
+      {me ? <p className="intro">Reminders are coming soon.</p> : null}
       {me === null ? (
         <div className="notice note" style={{ marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
           <Icon name="i-bookmark" />
-          <span style={{ flex: 1, minWidth: 200 }}><b>Saved on this device only.</b> Sign in to keep them on every device and get a reminder the day before each one starts.</span>
+          <span style={{ flex: 1, minWidth: 200 }}><b>Saved on this device only.</b> Sign in to keep them on every device.</span>
           <button className="btn primary sm" onClick={() => gate({ why: 'Sign in to keep your saved list' })}>Sign in</button>
         </div>
       ) : null}
@@ -192,7 +192,7 @@ export function MePage() {
         {me.role === 'admin' ? <Link className="mrow" to="/admin/agent"><Icon name="i-sparkle" /><span>Agents<span className="sub">AI helpers that find, check and flag pop-ups</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         <Link className="mrow" to="/connect"><Icon name="i-sparkle" /><span>Use with your AI<span className="sub">Ask ChatGPT, Claude or Codex what is on</span></span><Icon name="i-down" className="i chev" /></Link>
         <div className="mrow static"><Icon name="i-mail" /><span>Weekly digest<span className="sub">Coming soon</span></span></div>
-        <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Emailed the day before a saved pop-up starts, and on its last day</span></span></div>
+        <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Coming soon</span></span></div>
         <button className="mrow" role="switch" aria-checked={!statsOff} onClick={() => { setTrackingOptOut(!statsOff); setStatsOff(trackingOptedOut()); }}><Icon name="i-info" /><span>Anonymous usage stats<span className="sub">{statsOff ? 'Off on this device. Nothing is counted.' : 'On. Counts visits and taps, never who you are.'}</span></span></button>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
         <button className="mrow" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(v => !v)}><Icon name="i-flag" /><span>Delete account<span className="sub">Removes your email, name and saved list</span></span></button>
