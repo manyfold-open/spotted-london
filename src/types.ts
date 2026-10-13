@@ -14,6 +14,9 @@ export type Bindings = Cloudflare.Env & {
   CF_ANALYTICS_TOKEN?: string;
   /** Where the site is mounted on a shared host, for example '/spotted-london'. Empty or unset: served at the root (src/mount.ts). */
   BASE_PATH?: string;
+  /** The usage guard (src/db/usage.ts) reads this database's and bucket's use from Cloudflare's analytics. */
+  USAGE_D1_ID?: string;
+  USAGE_R2_BUCKET?: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;

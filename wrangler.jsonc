@@ -33,6 +33,10 @@
     "BASE_PATH": "/spotted-london",
     // Public Turnstile site key (the secret goes in `wrangler secret put TURNSTILE_SECRET`)
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFVejc0-TdzlZmEU",
+    // The usage guard (src/db/usage.ts) looks these two up in Cloudflare's analytics. Its secrets are CF_ACCOUNT_ID and
+    // CF_ANALYTICS_TOKEN (Account Analytics: Read). Keep them in step with the bindings below.
+    "USAGE_D1_ID": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a",
+    "USAGE_R2_BUCKET": "manyfold-spotted-london-images",
     "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     // Reads screenshots. Takes images as base64 data URIs and supports JSON schema output.
     "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
@@ -64,6 +68,8 @@
       "ENVIRONMENT": "production",
       "APP_URL": "https://app.manyfold.ai/spotted-london",
       "TURNSTILE_SITE_KEY": "0x4AAAAAAFVejc0-TdzlZmEU",
+      "USAGE_D1_ID": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a",
+      "USAGE_R2_BUCKET": "manyfold-spotted-london-images",
       "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
     },
