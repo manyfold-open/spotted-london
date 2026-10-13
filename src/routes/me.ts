@@ -130,6 +130,8 @@ me.delete('/', async c => {
   // and if this fails nothing else has been deleted yet, so trying again is safe.
   try { await db.prepare('DELETE FROM user_taste WHERE user_id = ?').bind(u.id).run(); } catch (e) { if (!noTable(e)) throw e; }
   await db.batch([
+    // The newsletter list is keyed by email, not by account, so it goes by the address this account has now (the next statement blanks it).
+    db.prepare('DELETE FROM subscribers WHERE email = ?').bind(u.email.toLowerCase()),
     db.prepare("UPDATE users SET email = ?, display_name = NULL, avatar_key = NULL, status = 'deleted' WHERE id = ?").bind(`deleted-${u.id}@invalid`, u.id),
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id),
     db.prepare('DELETE FROM saves WHERE user_id = ?').bind(u.id),

@@ -28,3 +28,20 @@ describe('newsletter (sign-up closed until email sending is connected)', () => {
     expect((await call('GET', '/unsubscribe?token=nope')).status).toBe(404);
   });
 });
+
+describe('deleting an account', () => {
+  it('removes the newsletter row for that email and leaves other addresses alone', async () => {
+    const id = `nl_${Math.random().toString(36).slice(2, 8)}`;
+    const email = `${id}@test.dev`;
+    await env.DB.prepare('INSERT INTO users (id, email, display_name, role, karma, verified_posts, email_verified, created_at) VALUES (?, ?, ?, ?, 0, 0, 1, ?)')
+      .bind(id, email, id, 'user', 1).run();
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO subscribers (email, token, created_at) VALUES (?, ?, 1)').bind(email, `tok_${id}`),
+      env.DB.prepare('INSERT INTO subscribers (email, token, created_at) VALUES (?, ?, 1)').bind(`other_${id}@test.dev`, `tok_other_${id}`),
+    ]);
+    const res = await exports.default.fetch(new Request('http://spotted.test/api/v1/me', { method: 'DELETE', headers: { 'x-dev-user': id, 'x-now': '1000' } }));
+    expect(res.status).toBe(200);
+    expect(await env.DB.prepare('SELECT 1 FROM subscribers WHERE email = ?').bind(email).first()).toBeNull();
+    expect(await env.DB.prepare('SELECT 1 FROM subscribers WHERE email = ?').bind(`other_${id}@test.dev`).first()).not.toBeNull();
+  });
+});
