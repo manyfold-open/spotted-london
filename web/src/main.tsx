@@ -16,6 +16,7 @@ import { BASE } from './lib/base';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
 const InsightsPage = lazy(() => import('./pages/Insights'));
+const DuplicatesPage = lazy(() => import('./pages/Duplicates'));
 
 registerServiceWorker();
 
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
       { path: '/signin', element: <SignIn /> },
       { path: '/admin', element: <AdminQueue /> },
       { path: '/admin/agent', element: <Suspense fallback={null}><AgentsPage /></Suspense> },
+      { path: '/admin/duplicates', element: <Suspense fallback={null}><DuplicatesPage /></Suspense> },
       { path: '/admin/insights', element: <Suspense fallback={null}><InsightsPage /></Suspense> },
       { path: '*', element: <NotFound /> },
     ],

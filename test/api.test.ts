@@ -290,6 +290,20 @@ describe('merging duplicates', () => {
   });
 });
 
+describe('duplicate finder: pairs that are not the same', () => {
+  it('remembers a dismissed pair once, for admins only, and refuses a bad key', async () => {
+    const boss = await user({ role: 'admin' }), nobody = await user();
+    const post = (key: string, u = boss) => api('POST', '/admin/duplicates/dismissed', { user: u, body: { key } });
+    expect((await post('aaa:bbb', nobody)).status).toBe(403);
+    expect((await api('GET', '/admin/duplicates/dismissed', { user: nobody })).status).toBe(403);
+    expect((await post('not a pair')).json.error.code).toBe('key_invalid');
+    await post('dup_a1:dup_b1');
+    const r = await post('dup_a1:dup_b1');
+    expect(r.json.keys.filter((k: string) => k === 'dup_a1:dup_b1')).toHaveLength(1);
+    expect((await api('GET', '/admin/duplicates/dismissed', { user: boss })).json.keys).toContain('dup_a1:dup_b1');
+  });
+});
+
 describe('cron settlement', () => {
   it('ends past pop-ups and settles votes against the verdict', async () => {
     const poster = await user();

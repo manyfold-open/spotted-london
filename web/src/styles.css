@@ -932,3 +932,11 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 @media (max-width: 899px) {
   .ins-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
 }
+
+/* Possible duplicates: two pop-ups side by side on a wide screen, stacked on a phone */
+.dup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px }
+.dup-side { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; padding: 12px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--card) }
+.dup-side h3 { font-family: var(--display); font-size: 16px; font-weight: 800 }
+.dup-side h3 a { color: var(--ink) }
+.dup-side .btn { margin-top: auto }
+@media (max-width: 899px) { .dup-grid { grid-template-columns: 1fr } }
