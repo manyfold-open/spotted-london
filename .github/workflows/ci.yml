@@ -1,0 +1,35 @@
+# Checks only: this workflow never deploys and holds no Cloudflare credentials.
+# Production deploys run on Cloudflare Workers Builds when a change lands on main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci          # also installs web/ (postinstall)
+      - run: npm run typecheck
+      - run: npm --prefix web exec tsc -- --noEmit
+      - run: npm run build:web   # the Worker tests serve web/dist
+      - run: npm test
+      - run: npx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/wrangler-dry"   # the config and the bundle are valid
