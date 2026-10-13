@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Extracted, type Place, type Popup } from '../lib/api';
@@ -93,11 +93,19 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const [drag, setDrag] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [dupes, setDupes] = useState<{ id: string; slug: string; title: string }[] | null>(null);
+  const dupeRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [botToken, setBotToken] = useState<string | null>(null);
   const [botReset, setBotReset] = useState(0);
   const needsBot = useNeedsTurnstile();
   const photosOn = useProviders().data?.photos ?? false;
+
+  // The notice sits next to the Submit button, but the page may have scrolled: bring it into view so the person sees why nothing was posted.
+  useEffect(() => {
+    if (!dupes) return;
+    dupeRef.current?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    dupeRef.current?.focus({ preventScroll: true });
+  }, [dupes]);
 
   const clearFlag = (k: FieldKey) => { setFlags(f => ({ ...f, [k]: undefined })); setErrors(e => ({ ...e, [k]: undefined })); };
 
@@ -296,13 +304,6 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
 
           <label className="field">{lbl('title', 'Name of the pop-up')}
             <input className={cls('title')} value={title} onChange={e => { setTitle(e.target.value); clearFlag('title'); setDupes(null); }} placeholder="e.g. Matcha Lab Pop-up" autoComplete="off" />{err('title')}</label>
-          {dupes ? (
-            <div className="notice watch small" style={{ flexDirection: 'column' }}>
-              <span><b>This looks like it is already listed.</b> If it is the same pop-up, vote on it instead of adding a copy.</span>
-              <span className="row">{dupes.map(d => <Link key={d.id} to={`/?p=${d.slug}`}>{d.title}</Link>)}</span>
-              <button type="button" className="btn sm" onClick={() => submit(true)}>It is a different pop-up, post it</button>
-            </div>
-          ) : null}
           <label className="field">{lbl('host', 'Host or brand', ' (optional)')}
             <input className={cls('host')} value={host} onChange={e => { setHost(e.target.value); clearFlag('host'); }} placeholder="Who is running it" autoComplete="off" /></label>
           <div className="field"><span id="catlbl">{lbl('category', 'Category')}</span>
@@ -366,6 +367,13 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
             <span className="hint">{linkPhoto ? `The first photo is from ${linkPhoto.page.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0]}. We credit the page. Remove it if it does not show the pop-up. ` : ''}We shrink photos before uploading them.</span>
           </div> : <div className="notice small"><Icon name="i-image" /><span>Photo uploads are coming soon. Add a source link so people can see what it looks like.</span></div>}
 
+          {dupes ? (
+            <div className="notice watch small" style={{ flexDirection: 'column' }} role="alert" ref={dupeRef} tabIndex={-1}>
+              <span><b>This looks like it is already listed.</b> If it is the same pop-up, vote on it instead of adding a copy.</span>
+              <span className="row">{dupes.map(d => <Link key={d.id} to={`/?p=${d.slug}`}>{d.title}</Link>)}</span>
+              <button type="button" className="btn sm" disabled={!!saving} onClick={() => submit(true)}>It is a different pop-up, post it</button>
+            </div>
+          ) : null}
           <Turnstile onToken={setBotToken} resetKey={botReset} />
           <div className="row">
             <button className="btn primary" type="submit" disabled={!!saving || (needsBot && !botToken)} style={{ flex: '1 1 auto', maxWidth: 320 }}>{saving ? <><span className="spin" />{saving}</> : <><Icon name="i-plus" />Submit pop-up</>}</button>
