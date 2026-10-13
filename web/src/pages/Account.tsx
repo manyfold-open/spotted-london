@@ -189,6 +189,7 @@ export function MePage() {
       <div className="lh"><h2>Account</h2></div>
       <div className="menu">
         {me.role === 'admin' ? <Link className="mrow" to="/admin"><Icon name="i-inbox" /><span>Review queue<span className="sub">Posts waiting for a decision</span></span><Icon name="i-down" className="i chev" /></Link> : null}
+        {me.role === 'admin' ? <Link className="mrow" to="/admin/duplicates"><Icon name="i-link" /><span>Possible duplicates<span className="sub">Pop-ups that may be listed twice</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         {me.role === 'admin' ? <Link className="mrow" to="/admin/insights"><Icon name="i-list" /><span>Insights<span className="sub">Visitors, what they open and save, how they come back</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         {me.role === 'admin' ? <Link className="mrow" to="/admin/agent"><Icon name="i-sparkle" /><span>Agents<span className="sub">AI helpers that find, check and flag pop-ups</span></span><Icon name="i-down" className="i chev" /></Link> : null}
         <Link className="mrow" to="/connect"><Icon name="i-sparkle" /><span>Use with your AI<span className="sub">Ask ChatGPT, Claude or Codex what is on</span></span><Icon name="i-down" className="i chev" /></Link>
@@ -305,7 +306,7 @@ export function AdminQueue() {
     <>
       <Link className="btn sm subtle m-only" to="/me" style={{ margin: '-6px 0 8px -10px' }}><Icon name="i-left" className="i" />Back to Me</Link>
       <div className="eyebrow">Admin</div><h1>Review queue</h1>
-      <p className="intro">New posts below trust 50, posts the community voted down, posts with several reports, and anything an <Link to="/admin/agent">agent</Link> flagged. Your decision overrides community votes.</p>
+      <p className="intro">New posts below trust 50, posts the community voted down, posts with several reports, and anything an <Link to="/admin/agent">agent</Link> flagged. Your decision overrides community votes. Two public pop-ups that look the same are on <Link to="/admin/duplicates">Possible duplicates</Link>.</p>
       <div className="lh"><h2>{items.length} to review</h2><span className="muted small">Target: under 12 hours</span></div>
       {ready ? (
         <div className="notice" style={{ marginBottom: 14 }}>

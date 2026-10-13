@@ -145,6 +145,33 @@ async function carryOver(db: D1Database, p: PopupRow, target: string, now: numbe
   }
 }
 
+/**
+ * Pairs an admin said are not the same pop-up (the duplicate finder leaves them out). Kept as one list in `settings`,
+ * so no migration; at most DISMISS_MAX pairs, oldest dropped first. The keys are made in `pairKey` (src/shared/merge-candidates.ts).
+ */
+const DISMISS_KEY = 'dup_dismissed', DISMISS_MAX = 2000, PAIR = /^[\w-]{1,40}:[\w-]{1,40}$/;
+
+admin.get('/duplicates/dismissed', async c => {
+  requireAdmin(c);
+  const row = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(DISMISS_KEY).first<{ value: string }>();
+  return c.json({ keys: row ? (JSON.parse(row.value) as string[]) : [] });
+});
+
+admin.post('/duplicates/dismissed', async c => {
+  const a = requireAdmin(c);
+  const now = c.get('now');
+  const key = text(await jsonBody(c.req), 'key', { max: 81, required: true })!;
+  if (!PAIR.test(key)) throw bad('key_invalid', 'That is not a pair of pop-up ids.');
+  const row = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(DISMISS_KEY).first<{ value: string }>();
+  const keys = row ? (JSON.parse(row.value) as string[]) : [];
+  if (!keys.includes(key)) keys.push(key);
+  const kept = keys.slice(-DISMISS_MAX);
+  await c.env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(DISMISS_KEY, JSON.stringify(kept), now).run();
+  await audit(c.env.DB, a.id, 'popup.not_duplicate', 'popup', key.split(':')[0], { pair: key }, now);
+  return c.json({ keys: kept });
+});
+
 type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; evidence: string | null; publish_ready: number; duplicate_of: string | null; created_at: number };
 
 async function openNotes(db: D1Database, ids: string[]): Promise<NoteRow[]> {
