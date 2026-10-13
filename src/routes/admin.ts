@@ -9,6 +9,8 @@ import { awardKarma } from '../db/karma';
 import { FLAGGING_VERDICTS, isReady, publishReady } from '../db/publish';
 import { entersOrLeavesPublic, rebuildSnapshotSoon } from '../db/snapshot';
 import { cleanTags, formatTagColumn, MAX_TAGS, TAGS } from '../shared/tags';
+import { linkKind, normalizeUrl } from '../db/scout';
+import { MAX_PHOTOS } from '../lib/photo';
 
 export const admin = new Hono<AppEnv>();
 
@@ -91,8 +93,10 @@ admin.post('/popups/:id/decision', async c => {
     case 'merge': {
       mergeInto = text(b, 'merge_into', { max: 40, required: true });
       if (mergeInto === p.id) throw bad('merge_invalid', 'A pop-up cannot be merged into itself.');
-      const target = await db.prepare('SELECT id FROM popups WHERE id = ?').bind(mergeInto).first();
+      const target = await db.prepare('SELECT id, status FROM popups WHERE id = ?').bind(mergeInto).first<{ id: string; status: Status }>();
       if (!target) throw bad('merge_invalid', 'The pop-up to merge into does not exist.');
+      // Merging into a removed post would hide both, and a chain of merges is hard to follow.
+      if (target.status === 'removed') throw bad('merge_invalid', 'That pop-up has been removed. Pick the one that is still listed.');
       to = 'removed';
       break;
     }
@@ -101,9 +105,7 @@ admin.post('/popups/:id/decision', async c => {
   await db.prepare('UPDATE popups SET status = ?, merged_into = ?, updated_at = ? WHERE id = ?').bind(to, mergeInto, now, p.id).run();
   // A duplicate is not bad faith, so merging skips the removal penalty.
   if (action !== 'merge') await onStatusChange(db, p, to, now);
-  if (action === 'merge') {
-    await db.prepare('INSERT OR IGNORE INTO saves (user_id, popup_id, remind, created_at) SELECT user_id, ?, remind, created_at FROM saves WHERE popup_id = ?').bind(mergeInto, p.id).run();
-  }
+  if (action === 'merge') await carryOver(db, p, mergeInto!, now);
   if (action === 'approve' || action === 'reject') await resolveReports(db, p.id, action === 'reject' ? 'upheld' : 'rejected', now);
   if (action === 'restore') await recompute(db, p.id, now);
   // The admin has now looked at this pop-up, so agent notes on it are done.
@@ -114,6 +116,34 @@ admin.post('/popups/:id/decision', async c => {
   rebuildSnapshotSoon(c); // hide, remove, approve, restore and merge all change what the public list holds
   return c.json(toPublic(after!));
 });
+
+/**
+ * What a merged pop-up leaves behind for the one that stays: people's saves, its links (its own source link
+ * included) and its photos while there is room (MAX_PHOTOS). Votes are not moved: they carry a position and a
+ * weight for the other pop-up. Anything that was merged into this one now points at the survivor.
+ */
+async function carryOver(db: D1Database, p: PopupRow, target: string, now: number) {
+  const t = await db.prepare('SELECT source_url FROM popups WHERE id = ?').bind(target).first<{ source_url: string | null }>();
+  const stmts = [
+    db.prepare('INSERT OR IGNORE INTO saves (user_id, popup_id, remind, created_at) SELECT user_id, ?, remind, created_at FROM saves WHERE popup_id = ?').bind(target, p.id),
+    db.prepare('INSERT OR IGNORE INTO popup_links (popup_id, url, kind, added_by, created_at) SELECT ?, url, kind, added_by, created_at FROM popup_links WHERE popup_id = ?').bind(target, p.id),
+    db.prepare('UPDATE popups SET merged_into = ? WHERE merged_into = ?').bind(target, p.id),
+  ];
+  const own = p.source_url ? normalizeUrl(p.source_url) : null;
+  const kept = t?.source_url ? normalizeUrl(t.source_url) : null;
+  if (own && own !== kept) {
+    stmts.push(db.prepare('INSERT OR IGNORE INTO popup_links (popup_id, url, kind, added_by, created_at) VALUES (?, ?, ?, NULL, ?)').bind(target, own, linkKind(own, null), now));
+  }
+  await db.batch(stmts);
+
+  const have = (await db.prepare('SELECT COUNT(*) AS n FROM popup_images WHERE popup_id = ?').bind(target).first<{ n: number }>())?.n ?? 0;
+  const room = MAX_PHOTOS - have;
+  if (room <= 0) return;
+  const { results } = await db.prepare('SELECT id FROM popup_images WHERE popup_id = ? ORDER BY position LIMIT ?').bind(p.id, room).all<{ id: string }>();
+  if (results.length) {
+    await db.batch(results.map((r, i) => db.prepare('UPDATE popup_images SET popup_id = ?, position = ? WHERE id = ?').bind(target, have + i, r.id)));
+  }
+}
 
 type NoteRow = { id: string; popup_id: string; agent_id: string; agent_name: string | null; verdict: string; note: string; evidence_url: string | null; evidence: string | null; publish_ready: number; duplicate_of: string | null; created_at: number };
 

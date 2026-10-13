@@ -12,6 +12,7 @@ import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
+import { MergePanel } from './MergePanel';
 import { PhotoViewer } from './PhotoViewer';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions, useShare } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
@@ -183,6 +184,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [viewing, setViewing] = useState<number | null>(null);
   const [reporting, setReporting] = useState(false);
+  const [merging, setMerging] = useState(false);
   // The reasons open at the bottom of the sheet, under the Save and Directions bar: bring them into view.
   const reportBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (reporting) reportBox.current?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }); }, [reporting]);
@@ -334,6 +336,11 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
               <div style={{ marginTop: 10 }}><Turnstile onToken={setBotToken} /></div>
             </div>
           ) : <div><button className="btn sm subtle" onClick={requireAuth(() => setReporting(true), 'Sign in to report', { then: 'report a problem' })}><Icon name="i-flag" />Report a problem</button></div>
+        ) : null}
+        {me?.role === 'admin' && !partial && p.status !== 'removed' ? (
+          merging
+            ? <MergePanel p={p} onDone={onClose} onCancel={() => setMerging(false)} />
+            : <div><button className="btn sm subtle" onClick={() => setMerging(true)}><Icon name="i-link" />Merge into another pop-up</button></div>
         ) : null}
       </div>
       <div className="dfoot">
