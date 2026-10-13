@@ -36,6 +36,23 @@ describe('bodyImage', () => {
     expect(bodyImage(page(`<h1>Show</h1>${imgs}`))).toBeNull();
   });
 
+  it('skips map pictures: Google static maps and tiles, and a name, class or alt that says map', () => {
+    const maps = [
+      '<img src="https://maps.googleapis.com/maps/api/staticmap?center=51.5,-0.1&zoom=15&size=800x400.jpg">',
+      '<img src="https://maps.googleapis.com/gen_204/venue.jpg">', '<img src="https://maps.gstatic.com/mapfiles/pin.png">',
+      '<img src="https://www.google.com/maps/vt/pb=abc/tile.png">', '<img src="https://img.test/staticmap.png">',
+      '<img src="/img/venue_map.png">', '<img src="/img/find-us-map-large.jpg">', '<img class="map" src="/img/find-us.jpg">', '<img alt="Map of the venue" src="/img/find-us.jpg">',
+      '<img alt="Google Map" src="/img/directions.jpg">',
+    ].join('');
+    expect(bodyImage(page(`<h1>Show</h1>${maps}`))).toBeNull();
+    expect(bodyImage(page(`<h1>Show</h1>${maps}<img src="/real.jpg">`))).toBe('/real.jpg');
+  });
+
+  it('does not take "map" out of the middle of a word', () => {
+    expect(bodyImage(page('<h1>Show</h1><img alt="Mapplethorpe: the photographs" src="/mapplethorpe-portrait.jpg">'))).toBe('/mapplethorpe-portrait.jpg');
+    expect(bodyImage(page('<h1>Show</h1><img src="/img/roadmapping.jpg">'))).toBe('/img/roadmapping.jpg');
+  });
+
   it('prefers the widest srcset entry and reads lazy-loaded pictures', () => {
     expect(bodyImage(page('<h1>Show</h1><img srcset="/a-300.jpg 300w, /a-1400.jpg 1400w, /a-750.jpg 750w" src="/a-125.jpg" width="125">'))).toBe('/a-1400.jpg');
     expect(bodyImage(page('<h1>Show</h1><img src="data:image/gif;base64,R0lG" data-src="/lazy.jpg">'))).toBe('/lazy.jpg');
@@ -120,10 +137,35 @@ describe('the backfill with a body picture', () => {
     expect((await tried('pi_b'))!.reason).toMatch(/too small or a banner/);
     expect(await rows('pi_c')).toHaveLength(1);
 
-    // a pop-up whose page shows the very same picture does not get it (not even up to the usual two)
-    await addPopup('pi_d', 'https://shop.test/p/good');
+    // a pop-up whose own page shows the very same picture does not get it (not even up to the usual two)
+    await addPopup('pi_d', 'https://shop.test/p/other/good');
     expect(await go(f)).toBe(0);
     expect(await rows('pi_d')).toHaveLength(0);
     expect((await tried('pi_d'))!.reason).toMatch(/same one other pop-ups use/);
+  });
+
+  it('does not guess from the body when two pop-ups share one source address, but still takes a named og:image', async () => {
+    // two shows, one venue home page: whatever the page shows first is not either show's own picture
+    await addPopup('pi_h1', 'https://shop.test/p/home');
+    await addPopup('pi_h2', 'https://shop.test/p/home');
+    await addPopup('pi_own', 'https://shop.test/p/own'); // a page that belongs to one pop-up still works
+    const f = web({ 'home.jpg': [1200, 800], 'own.jpg': [1200, 800] });
+    expect(await go(f)).toBe(1);
+    expect(await rows('pi_h1')).toHaveLength(0);
+    expect(await rows('pi_h2')).toHaveLength(0);
+    expect((await tried('pi_h1'))!.reason).toBe('The page has no main picture.');
+    expect(await rows('pi_own')).toHaveLength(1);
+
+    // a shared page that names its picture in the head (og:image) is not touched by the rule
+    await addPopup('pi_o1', 'https://og.test/shows');
+    await addPopup('pi_o2', 'https://og.test/shows');
+    const og = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/shows') return new Response('<head><meta property="og:image" content="/hero.jpg"></head><body><h1>x</h1></body>', { headers: { 'content-type': 'text/html' } });
+      return url.pathname === '/hero.jpg' ? new Response(jpegOf(1200, 800), { headers: { 'content-type': 'image/jpeg' } }) : new Response('no', { status: 404 });
+    }) as unknown as typeof fetch;
+    expect(await go(og)).toBe(2);
+    expect(await rows('pi_o1')).toHaveLength(1);
+    expect(await rows('pi_o2')).toHaveLength(1);
   });
 });
