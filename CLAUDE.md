@@ -188,7 +188,7 @@ Done: API, verification and karma, admin queue, email + Google sign in, web app,
 
 Not done yet, roughly in priority order:
 0. Agent fleet (see "Agent fleet"): built in migrations 0007 to 0011 (evidence check, many agents, leases, Triage verification, auto_publish and undo). Next: watch the numbers, then raise quality (stricter conditions, a second Triage opinion, sampling published posts).
-1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send).
+1. Email: Resend for magic links, newsletter confirmation and reminder emails (cron finds reminders but does not send). The newsletter sign-up is closed until then: `POST /newsletter/subscribe` answers 503 `newsletter_unavailable` and stores nothing, and the home page and Me page say "Coming soon". Reminders say "Coming soon" too (Me page row, Saved page, save toasts). Reopen both together with the emails.
 2. Hide quality votes on your own posts in the UI (the API already rejects them).
 3. Vote ring detection in the daily abuse scan.
 4. Custom domain, then move Google OAuth to production and add the domain to Turnstile.

@@ -102,7 +102,7 @@ export function usePopupActions(p: Popup) {
     scope: { id: `save-${p.id}` },
     mutationFn: (on: boolean) => api(`/popups/${p.id}/save`, { method: on ? 'PUT' : 'DELETE', json: on ? {} : undefined }),
     onMutate: on => { haptic(); return patchMe(qc, p.id, { saved: on }); },
-    onSuccess: (_d, on) => { track('save', { slug: p.slug, detail: p.category, x: on ? 1 : 0 }); toast(on ? "Saved. We'll remind you the day before." : 'Removed from saved', 'i-bookmark'); },
+    onSuccess: (_d, on) => { track('save', { slug: p.slug, detail: p.category, x: on ? 1 : 0 }); toast(on ? 'Saved' : 'Removed from saved', 'i-bookmark'); },
     onError: (e, _on, undo) => { undo?.(); onError(e); },
     onSettled: () => { qc.invalidateQueries({ queryKey: ['saves'] }); qc.invalidateQueries({ queryKey: MY_STATE_KEY, refetchType: 'none' }); },
   });
@@ -129,7 +129,7 @@ export function usePopupActions(p: Popup) {
       haptic();
       setLocalSave(p.id, on);
       track('save', { slug: p.slug, detail: p.category, x: on ? 1 : 0 });
-      toast(on ? (first ? 'Saved on this device. Sign in to keep it and get a reminder.' : 'Saved on this device') : 'Removed from saved', 'i-bookmark');
+      toast(on ? (first ? 'Saved on this device. Sign in to keep it.' : 'Saved on this device') : 'Removed from saved', 'i-bookmark');
     },
     voteQuality: requireAuth((v: number, el?: Element) => { bump(el); quality.mutate(p.me?.quality_vote === v ? 0 : v); }, 'Sign in to vote', { then: 'vote', intent: (v: number, _el?: Element) => ({ type: 'quality', id: p.id, value: v }) }),
   };
