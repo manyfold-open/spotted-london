@@ -3,13 +3,13 @@
 
 import { html } from 'hono/html';
 
-export const PRIVACY_UPDATED = '12 October 2026';
-export const PRIVACY_CONTACT = 'zack11712@gmail.com';
+export const PRIVACY_UPDATED = '13 October 2026';
+export const PRIVACY_CONTACT = 'manyfoldai@gmail.com';
 
 export const privacyBody = (origin: string) => html`
 <h1>Privacy</h1>
 <p class="meta">Last updated ${PRIVACY_UPDATED}</p>
-<p>Spotted London (${origin}) lists pop-ups in London. It is a small independent project run by one person. This page says what we collect, why, who else sees it and how to get it removed. Questions: <a href="mailto:${PRIVACY_CONTACT}">${PRIVACY_CONTACT}</a>.</p>
+<p>Spotted London (${origin}) lists pop-ups in London. It is run by the Manyfold team. This page says what we collect, why, who else sees it and how to get it removed. Questions: <a href="mailto:${PRIVACY_CONTACT}">${PRIVACY_CONTACT}</a>.</p>
 
 <h2>You can use most of it without an account</h2>
 <p>Browsing the map and the list, Near me, For you, Ask and saving pop-ups all work signed out. Saves and your For you picks then stay in your browser on your device. You only need an account to add a pop-up, vote, check in or report.</p>
