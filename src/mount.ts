@@ -66,14 +66,17 @@ function rewriteDocument(response: Response, mount: string): Response {
 /**
  * The manifest in web/public is written with relative addresses so it works at a root and under a mount. Under a
  * mount it is sent with absolute paths ("/spotted-london/", "/spotted-london/icons/..."), the form every other home
- * screen app uses, so the iPhone home screen app does not have to resolve "./" to know its scope.
+ * screen app uses. The scope is the whole host ("/"), as it was before the move to a shared host: with a scope of only
+ * "/spotted-london/" the iOS 26 home screen app drew a browser bar (domain on top, back/share/reload at the bottom)
+ * although it reported standalone mode. start_url stays inside the mount.
  */
 async function absoluteManifest(response: Response, mount: string): Promise<Response> {
   let manifest: Record<string, unknown>;
   try { manifest = await response.clone().json() as Record<string, unknown>; } catch { return response; }
   const base = new URL(`${mount}/`, 'https://mount.invalid');
   const abs = (value: unknown) => (typeof value === 'string' ? new URL(value, base).pathname + new URL(value, base).search : value);
-  for (const key of ['id', 'start_url', 'scope']) if (key in manifest) manifest[key] = abs(manifest[key]);
+  for (const key of ['id', 'start_url']) if (key in manifest) manifest[key] = abs(manifest[key]);
+  if ('scope' in manifest) manifest.scope = '/';
   for (const list of ['icons', 'shortcuts']) {
     const items = manifest[list];
     if (!Array.isArray(items)) continue;

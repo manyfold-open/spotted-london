@@ -159,9 +159,9 @@ describe('the Worker under /spotted-london', () => {
     const manifest = await get(`${MOUNT}/manifest.webmanifest`);
     expect(manifest.status).toBe(200);
     expect(manifest.headers.get('content-type')).toMatch(/json/);
-    // Under the mount the manifest carries absolute paths, so the home screen app's scope is spelled out.
+    // Under the mount the manifest carries absolute paths; the scope is the whole host, the start page stays inside the mount.
     const body = await manifest.json() as { id: string; start_url: string; scope: string; icons: { src: string }[]; shortcuts: { url: string; icons: { src: string }[] }[] };
-    expect([body.id, body.start_url, body.scope]).toEqual([`${MOUNT}/`, `${MOUNT}/`, `${MOUNT}/`]);
+    expect([body.id, body.start_url, body.scope]).toEqual([`${MOUNT}/`, `${MOUNT}/`, '/']);
     expect(body.icons.every(i => i.src.startsWith(`${MOUNT}/icons/`))).toBe(true);
     expect(body.shortcuts.map(x => x.url)).toEqual([`${MOUNT}/add`, `${MOUNT}/saved`]);
     expect(body.shortcuts.every(x => x.icons.every(i => i.src.startsWith(`${MOUNT}/icons/`)))).toBe(true);
