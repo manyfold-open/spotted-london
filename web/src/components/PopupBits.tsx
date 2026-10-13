@@ -9,7 +9,7 @@ import { track } from '../lib/track';
 import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
-import { appUrl } from '../lib/base';
+import { appUrl, shareUrl } from '../lib/base';
 
 export function StatusTag({ status, sourceChecked, className = '' }: { status: Popup['status']; sourceChecked?: boolean; className?: string }) {
   if (status === 'community' && sourceChecked) return <span className={`tag t-src ${className}`}><Icon name="i-check" />Source checked</span>;
@@ -135,6 +135,28 @@ export function usePopupActions(p: Popup) {
   };
 }
 
+/**
+ * Share a pop-up: the phone's share sheet where there is one, else copy the link. A share sheet that fails for any
+ * reason but being closed falls back to copying, and a copy that fails says so, so the button is never silent.
+ */
+export function useShare(p: Popup) {
+  const toast = useToast();
+  return async () => {
+    const url = shareUrl(`/p/${p.slug}`);
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); track('share', { slug: p.slug }); }
+      catch { toast('Could not copy the link. Open the pop-up and copy the address from the browser.', 'i-info', true); }
+    };
+    if (!navigator.share) return copy();
+    try {
+      await navigator.share({ title: p.title, text: `${p.title}, ${p.location.borough ?? 'London'} · ${dateRange(p)}`, url });
+      track('share', { slug: p.slug });
+    } catch (e) {
+      if ((e as { name?: string }).name !== 'AbortError') await copy(); // closing the share sheet is not an error
+    }
+  };
+}
+
 export function ScoreVotes({ p }: { p: Popup }) {
   const { voteQuality } = usePopupActions(p);
   const mine = p.me?.quality_vote ?? 0;
@@ -151,6 +173,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
   const { open } = useSheet();
   const qc = useQueryClient();
   const { toggleSave } = usePopupActions(p);
+  const share = useShare(p);
   const live = isLive(p);
   const warm = () => prefetchPopup(qc, p.slug);
   return (
@@ -160,6 +183,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
         <span className="tag cattag">{CATS[p.category]}</span>
         {live ? <span className="tag t-new live">On now</span> : startsTomorrow(p) ? <span className="tag t-out live">Tomorrow</span> : null}
         <button className="save" aria-pressed={!!p.me?.saved} aria-label={p.me?.saved ? 'Remove from saved' : 'Save'} onClick={toggleSave}><Icon name="i-bookmark" /></button>
+        <button className="save share" aria-label={`Share ${p.title}`} onClick={share}><Icon name="i-share" /></button>
       </div>
       <div className="cbody">
         <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} sourceChecked={p.source_checked} />{p.example ? <span className="tag t-sim">Example</span> : null}</div>

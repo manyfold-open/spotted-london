@@ -9,11 +9,10 @@ import { haptic, scrollBehavior } from '../lib/motion';
 import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { Icon } from '../components/Icon';
-import { Cover, MAX_CROP_SMALL } from '../components/PopupBits';
+import { Cover, MAX_CROP_SMALL, useShare } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
 import { track } from '../lib/track';
-import { shareUrl } from '../lib/base';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
@@ -34,7 +33,6 @@ export function Submit() {
 /** Shown after posting: what happens next, and a way to see, share or add another. */
 function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
   const { open } = useSheet();
-  const toast = useToast();
   const qc = useQueryClient();
   const live = p.status !== 'pending';
   useEffect(() => {
@@ -42,13 +40,7 @@ function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
     // Seed the sheet so "See your pop-up" opens straight away.
     if (!qc.getQueryData(['popup', p.slug])) qc.setQueryData(['popup', p.slug], p, { updatedAt: 0 });
   }, [qc, p]);
-  const share = async () => {
-    const url = shareUrl(`/p/${p.slug}`);
-    try {
-      if (navigator.share) await navigator.share({ title: p.title, url });
-      else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }
-    } catch { /* cancelled */ }
-  };
+  const share = useShare(p);
   const i = (n: number) => ({ '--i': n }) as CSSProperties;
   return (
     <div className="done">

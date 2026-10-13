@@ -44,11 +44,12 @@ const SYMBOLS = `
 <symbol id="c-tech" viewBox="0 0 147 148"><path d="m48 9-1 9v8h-6q-16 0-16 17v7h-8l-9 1q-3 4 9 4h8v16h-8q-13 0-8 4 1 3 8 2h7l1 7v8h-8q-8 0-9 2-3 3 10 4h7v7q-1 17 17 18h6v8q0 11 2 9c2-2 2-1 3-9v-8h17v7q0 11 4 10l2-9v-8h16v6q0 11 3 11c2-1 2-1 3-9v-8h7q18-1 17-18v-7h8q9 1 9-2 3-4-10-4h-7v-7l1-7 7-1q11 0 9-3 1-2-8-2l-8-1-1-7v-8h8q13-1 9-5l-9-1h-8v-7q1-17-16-18h-8v-8l-1-9q-5-2-5 10v7H76v-8c-1-8-1-8-3-8s-1 0-2 8v8H53v-7q0-10-3-10zm66 24 3 3v76l-3 3-3 2H36l-2-2-3-6-1-38c1-37 1-37 6-39l38-1h37z"/><path d="M57 53c-5 2-5 2-5 21l1 19c2 2 5 3 20 3 18 0 20-1 22-5V57l-4-4zm33 21v16H74l-17-1V60l17-1h16z"/></symbol>
 <symbol id="c-other" viewBox="0 0 153 148"><path d="M72 11 56 50l-21 3c-23 1-27 2-27 7 0 3 4 7 23 22l12 11-5 20c-7 23-7 27-1 27 3 0 4 0 23-13l17-11 17 10 19 13q11 4 9-9l-6-21c-4-14-4-17-3-18l13-11c16-13 20-18 20-20 0-5-3-6-18-7l-22-2h-8l-6-18C84 12 82 9 77 8q-2-1-5 3m13 17 7 20c3 8 2 7 25 9 22 1 24 1 24 3l-17 15-17 16 10 37q2 7 0 7l-18-11c-21-13-21-13-24-12l-19 12-18 11q-2 2 4-21l6-22q-1-3-17-15C13 62 11 61 13 60l23-3q23-1 23-3l8-19c7-19 9-23 11-22z"/></symbol>
 
+<symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7.500 7.500 4.500-4.500 4.500 4.500"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></g></symbol>
 <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18v2.4H3zm0 4.8h18v2.4H3zM3 15.6h18V18H3z"/></symbol>
 <symbol id="i-left" viewBox="0 0 24 24"><path d="M14.600 4.600 16 6l-6 6 6 6-1.400 1.400L7.200 12z"/></symbol>
 `;
 
-export type IconName = 'i-left' | 'i-menu' | 'i-search' | 'i-list' | 'i-map' | 'i-plus' | 'i-bookmark' | 'i-shield' | 'i-check' | 'i-checkc' | 'i-x' | 'i-pin' | 'i-clock' | 'i-up' | 'i-down' | 'i-flag' | 'i-user' | 'i-inbox' | 'i-mail' | 'i-bell' | 'i-ext' | 'i-locate' | 'i-route' | 'i-pound' | 'i-bolt' | 'i-image' | 'i-sparkle' | 'i-link' | 'i-info' | `c-${Category}`;
+export type IconName = 'i-left' | 'i-menu' | 'i-search' | 'i-list' | 'i-map' | 'i-plus' | 'i-bookmark' | 'i-shield' | 'i-check' | 'i-checkc' | 'i-x' | 'i-pin' | 'i-clock' | 'i-up' | 'i-down' | 'i-flag' | 'i-user' | 'i-inbox' | 'i-mail' | 'i-bell' | 'i-ext' | 'i-locate' | 'i-route' | 'i-pound' | 'i-bolt' | 'i-image' | 'i-sparkle' | 'i-link' | 'i-share' | 'i-info' | `c-${Category}`;
 
 export function IconSprite() {
   return <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${SYMBOLS}</defs>` }} />;
