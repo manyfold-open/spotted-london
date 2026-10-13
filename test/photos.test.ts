@@ -72,6 +72,24 @@ describe('photo helpers', () => {
     expect(await pagePhoto('https://shop.test/sale', f(`<head><meta property="og:image" content="/og.jpg"></head><body>${ld({ '@type': 'Event', image: '/show.jpg' })}</body>`))).toBe('https://shop.test/og.jpg');
   });
 
+  it('falls back to link image_src, itemprop image and name thumbnail in the head, after og:image', async () => {
+    const f = (h: string) => (async () => new Response(h, { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+    const at = (head: string) => pagePhoto('https://shop.test/sale', f(`<head>${head}</head>`));
+    expect(await at('<link rel="image_src" href="/a.jpg">')).toBe('https://shop.test/a.jpg');
+    expect(await at('<meta itemprop="image" content="/b.jpg">')).toBe('https://shop.test/b.jpg');
+    expect(await at("<meta content='/c.jpg' name='thumbnail'>")).toBe('https://shop.test/c.jpg');
+    expect(await at('<meta property="og:image" content="/og.jpg"><link rel="image_src" href="/a.jpg">')).toBe('https://shop.test/og.jpg');
+    // not a picture of the page: icons, other meta names
+    expect(await at('<link rel="icon" href="/fav.png"><meta name="msapplication-TileImage" content="/tile.png"><meta name="description" content="image">')).toBeNull();
+  });
+
+  it('fetchPhoto does not ask for image/* (sites then answer with AVIF)', async () => {
+    let accept = '';
+    const f = (async (_u: string, init: RequestInit) => { accept = new Headers(init.headers).get('accept') ?? ''; return new Response(jpeg()); }) as unknown as typeof fetch;
+    await fetchPhoto('https://a.test/p.jpg', f);
+    expect(accept).not.toContain('*');
+  });
+
   it('pagePhoto reads past 300 KB of inline CSS to the meta tags, and ignores meta tags in the body', async () => {
     const f = (h: string) => (async () => new Response(h, { headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
     const css = `<style>${'a{color:red}'.repeat(30_000)}</style>`; // 360 KB

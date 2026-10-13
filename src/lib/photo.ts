@@ -4,6 +4,7 @@
 
 import { safeUrl, parseOpenGraph, jsonLdEventImage } from './extract';
 import { newId } from './util';
+import { bodyImage, imageSize, looksLikeAPhoto } from './page-image';
 
 export const MAX_PHOTOS = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -40,7 +41,8 @@ export async function fetchPhoto(raw: string, fetcher: typeof fetch = fetch): Pr
   if (!url) throw new PhotoError('The photo address is not a public web link.');
   let res: Response;
   try {
-    res = await fetcher(url.toString(), { headers: { 'user-agent': UA, accept: 'image/jpeg,image/png,image/webp,image/*;q=0.5' }, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+    // No image/*: sites that negotiate then send AVIF (barbican.org.uk), which we do not store.
+    res = await fetcher(url.toString(), { headers: { 'user-agent': UA, accept: 'image/jpeg,image/png,image/webp' }, redirect: 'follow', signal: AbortSignal.timeout(8000) });
   } catch { throw new PhotoError('The photo did not load.'); }
   const length = Number(res.headers.get('content-length') ?? 0);
   if (!res.ok || !res.body) { await res.body?.cancel(); throw new PhotoError('The site did not give us the photo.'); }
@@ -64,12 +66,24 @@ export async function fetchPhoto(raw: string, fetcher: typeof fetch = fetch): Pr
   return { bytes, ...kind };
 }
 
+/** Where else a head says "this is the page's picture", for pages with no og:image: link rel=image_src, meta itemprop=image, meta name=thumbnail. */
+export function headImageFallback(head: string): string | null {
+  for (const tag of head.match(/<(?:link|meta)\s[^>]*>/gi) ?? []) {
+    const attr = (name: string) => { const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag); return (m?.[1] ?? m?.[2] ?? '').trim(); };
+    const link = /^<link/i.test(tag);
+    const hit = link ? /(^|\s)image_src(\s|$)/i.test(attr('rel')) : /^(image|thumbnail)$/i.test(attr('itemprop') || attr('name'));
+    const value = link ? attr('href') : attr('content');
+    if (hit && value) return value;
+  }
+  return null;
+}
+
 /**
  * The main picture a page names (og:image, twitter:image in the head; else the image of a JSON-LD Event anywhere
  * in the first 500 KB), as an absolute address, or why there is none.
  * The reason tells "the site refused us" (HTTP 403) from "the page has no picture", which the backfill stores.
  */
-export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = fetch): Promise<{ image: string; why?: undefined } | { image: null; why: string }> {
+export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = fetch, opts: { body?: boolean } = {}): Promise<{ image: string; fromBody?: boolean; why?: undefined } | { image: null; why: string }> {
   const page = safeUrl(pageUrl);
   if (!page) return { image: null, why: 'The page address is not a public web link.' };
   let res: Response;
@@ -97,12 +111,15 @@ export async function pagePhotoResult(pageUrl: string, fetcher: typeof fetch = f
     };
     await read(true);
     const end = html.search(/<\/head>/i);
-    let raw = parseOpenGraph(end >= 0 ? html.slice(0, end) : html).image_url;
+    const head = end >= 0 ? html.slice(0, end) : html;
+    let raw = parseOpenGraph(head).image_url || headImageFallback(head);
     if (!raw) { await read(false); raw = jsonLdEventImage(html); } // event data often sits in the body
+    let fromBody = false;
+    if (!raw && opts.body) { raw = bodyImage(html)?.replace(/&amp;/g, '&') ?? null; fromBody = !!raw; } // last resort, the backfill only
     await reader.cancel().catch(() => {});
     if (!raw) return { image: null, why: 'The page has no main picture.' };
     const image = resolveImageUrl(raw, page.toString());
-    return image ? { image } : { image: null, why: 'The page names a picture that is not a public web link.' };
+    return image ? (fromBody ? { image, fromBody } : { image }) : { image: null, why: 'The page names a picture that is not a public web link.' };
   } catch { return { image: null, why: 'The page could not be read.' }; }
 }
 
@@ -111,7 +128,8 @@ export async function pagePhoto(pageUrl: string, fetcher: typeof fetch = fetch):
   return (await pagePhotoResult(pageUrl, fetcher)).image;
 }
 
-export type PhotoSource = { imageUrl: string; pageUrl: string | null };
+/** `fromBody`: the picture was picked from the page's content, not named by the page, so it must be big and not a strip. */
+export type PhotoSource = { imageUrl: string; pageUrl: string | null; fromBody?: boolean };
 
 /**
  * Copy one photo into R2 and the popup_images table. Returns the stored photo, or says why not.
@@ -131,6 +149,7 @@ export async function addPhotoFromUrl(
   if ((have?.n ?? 0) >= MAX_PHOTOS) return { saved: false, reason: `A pop-up can have up to ${MAX_PHOTOS} photos.` };
   let photo: Awaited<ReturnType<typeof fetchPhoto>>;
   try { photo = await fetchPhoto(src.imageUrl, fetcher); } catch (e) { return { saved: false, reason: e instanceof PhotoError ? e.message : 'The photo could not be read.' }; }
+  if (src.fromBody && !looksLikeAPhoto(imageSize(photo.bytes))) return { saved: false, reason: 'The page picture is too small or a banner, not a photo of the pop-up.' };
   const id = newId();
   const key = `popups/${popupId}/${id}.${photo.ext}`;
   await env.IMAGES.put(key, photo.bytes, { httpMetadata: { contentType: photo.type, cacheControl: 'public, max-age=31536000, immutable' } });
