@@ -1,9 +1,16 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "spotted-london",
+  "name": "manyfold-spotted-london",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-20",
   "compatibility_flags": ["nodejs_compat"],
+
+  // Shared host app.manyfold.ai: two routes on the manyfold.ai zone, neither reaching past /spotted-london.
+  // Keep them in step with BASE_PATH below and "run_worker_first" in `assets`.
+  "routes": [
+    { "pattern": "app.manyfold.ai/spotted-london", "zone_name": "manyfold.ai" },
+    { "pattern": "app.manyfold.ai/spotted-london/*", "zone_name": "manyfold.ai" }
+  ],
   "observability": { "enabled": true },
 
   // The web app (web/dist). Unknown paths fall back to index.html; these paths run the Worker first.
@@ -19,19 +26,22 @@
   // Safe default. Local dev switches to "development" through .dev.vars.
   "vars": {
     "ENVIRONMENT": "production",
-    // Public site address, used in sign-in links and the Google redirect. Set before deploying.
-    "APP_URL": "https://spotted-london.zack11712.workers.dev",
+    // Public site address with its mount path, used in sign-in links and the Google redirect. Set before deploying.
+    "APP_URL": "https://app.manyfold.ai/spotted-london",
+    // The site is served under this prefix on the shared host app.manyfold.ai (src/mount.ts, the `routes` below).
+    // Requests that arrive at the root of another host, such as the workers.dev address, are still answered.
+    "BASE_PATH": "/spotted-london",
     // Public Turnstile site key (the secret goes in `wrangler secret put TURNSTILE_SECRET`)
-    "TURNSTILE_SITE_KEY": "0x4AAAAAAFKY6joZ7fjJGaI4",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFVejc0-TdzlZmEU",
     "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     // Reads screenshots. Takes images as base64 data URIs and supports JSON schema output.
     "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
   },
 
   "d1_databases": [
-    { "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a", "migrations_dir": "./migrations" }
+    { "binding": "DB", "database_name": "manyfold-spotted-london-db", "database_id": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a", "migrations_dir": "./migrations" }
   ],
-  "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "bba61c97b91a4980af0cdfc40ca3d8cf" }],
   // Anyone's AI assistant can call POST /mcp without a key (search_popups, get_popup). This caps those calls per
   // visitor (a salted IP hash) so one client cannot use up the free CPU. Counted by Cloudflare, no D1 or KV writes.
   "ratelimits": [{ "name": "MCP_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
@@ -39,7 +49,7 @@
   // through the Analytics Engine SQL API (secrets CF_ACCOUNT_ID and CF_ANALYTICS_TOKEN, see README "Insights").
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "spotted_events" }],
   // Photos (R2 enabled on the account on 2026-09-30)
-  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "manyfold-spotted-london-images" }],
 
   // Workers AI for autofill from pasted text and screenshots. It always runs on Cloudflare,
   // so `npm run dev` needs `npx wrangler login` first. Free tier: 10,000 neurons a day.
@@ -52,16 +62,16 @@
   "previews": {
     "vars": {
       "ENVIRONMENT": "production",
-      "APP_URL": "https://spotted-london.zack11712.workers.dev",
-      "TURNSTILE_SITE_KEY": "0x4AAAAAAFKY6joZ7fjJGaI4",
+      "APP_URL": "https://app.manyfold.ai/spotted-london",
+      "TURNSTILE_SITE_KEY": "0x4AAAAAAFVejc0-TdzlZmEU",
       "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
     },
-    "d1_databases": [{ "binding": "DB", "database_name": "spotted-db", "database_id": "12a7f746-6ba9-4432-a1f2-893fc3b78f6a" }],
-    "kv_namespaces": [{ "binding": "CACHE", "id": "0d8fb2067882416ea1e1ce14a4dc112f" }],
+    "d1_databases": [{ "binding": "DB", "database_name": "manyfold-spotted-london-db", "database_id": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a" }],
+    "kv_namespaces": [{ "binding": "CACHE", "id": "bba61c97b91a4980af0cdfc40ca3d8cf" }],
     "ratelimits": [{ "name": "MCP_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
     "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "spotted_events" }],
-    "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "spotted-images" }],
+    "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "manyfold-spotted-london-images" }],
     "ai": { "binding": "AI" }
   },
 

@@ -35,7 +35,7 @@ delete env.CLOUDFLARE_API_TOKEN; // these two point wrangler at the wrong Cloudf
 delete env.CLOUDFLARE_ACCOUNT_ID;
 
 const out = execFileSync('npx', [
-  'wrangler', 'd1', 'execute', 'spotted-db', where, '--json', '--command',
+  'wrangler', 'd1', 'execute', 'manyfold-spotted-london-db', where, '--json', '--command',
   `SELECT id, title, host, description, category, status FROM popups WHERE is_example = 0${cutoff === null ? '' : ` AND created_at < ${cutoff}`} ORDER BY category, title`,
 ], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const rows = JSON.parse(out)[0].results;

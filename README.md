@@ -63,14 +63,14 @@ Agents run on Manyfold, not Cloudflare. Settings, keys and runs are at **/admin/
 
 ## Production
 
-Live at **https://spotted-london.zack11712.workers.dev**.
+Live at **https://app.manyfold.ai/spotted-london**, in the NetMind.AI Cloudflare account (the shared host `app.manyfold.ai`, mounted under a prefix, see below).
 
 | Resource | Name |
 |---|---|
-| Worker | `spotted-london` (cron: every 10 min, hourly, daily 04:00 UTC) |
-| D1 | `spotted-db` |
-| KV | `CACHE` |
-| R2 | `spotted-images` |
+| Worker | `manyfold-spotted-london` (cron: every 10 min, hourly, daily 04:00 UTC) |
+| D1 | `manyfold-spotted-london-db` |
+| KV | `manyfold-spotted-london-cache` (binding `CACHE`) |
+| R2 | `manyfold-spotted-london-images` |
 | Analytics Engine | `spotted_events` (binding `EVENTS`) |
 
 Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APIFY_TOKEN`. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN`, `AGENT_ADMIN_TOKEN`.
@@ -91,7 +91,7 @@ Cloudflare Workers Builds is connected to this repo (no GitHub Actions).
 
 - Push to `main` builds and deploys production.
 - Other branches get a preview version. Previews share production D1, KV and R2, have no secrets, and read vars and bindings from the `previews` block in `wrangler.jsonc`, so add new ones in both places.
-- The build token cannot touch D1. If a change adds a file to `migrations/`, run `npx wrangler d1 migrations apply spotted-db --remote` from a signed-in computer **before** merging.
+- The build token cannot touch D1. If a change adds a file to `migrations/`, run `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` from a signed-in computer **before** merging.
 - Build settings: build command `npm ci && npm run build:web`, deploy command `npx wrangler deploy`, `NODE_VERSION=22`.
 
 ### Still to switch on

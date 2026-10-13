@@ -3,7 +3,7 @@
 > 範圍：`manyfold-open/spotted-london`（Cloudflare Worker + D1 + KV + R2，Workers 免費方案）。
 > 本計畫依 2026-10-02 `main` 的程式碼寫成，**沒有看過 D1 實際用量**，所以第 0 步先量測。
 > 參考範本：`manyfold-open/manyfold-data` 裡 Ying 的三個 commit（`52f07e3` 邊緣快取、`51e96d3` 整包資料集、`c760bce` 預先存好的資料集）。
-> 專案規則（`CLAUDE.md`）：開分支、開 PR，由 Zack merge；有 migration 要在 PR 寫明，並先跑 `npx wrangler d1 migrations apply spotted-db --remote` 再 merge。
+> 專案規則（`CLAUDE.md`）：開分支、開 PR，由 Zack merge；有 migration 要在 PR 寫明，並先跑 `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` 再 merge。
 
 ---
 
@@ -48,16 +48,16 @@
 cd spotted-london
 unset CLOUDFLARE_API_TOKEN   # CLAUDE.md：Zack 的 shell 可能指向公司帳號，先確認 whoami 是個人帳號
 npx wrangler whoami
-npx wrangler d1 insights spotted-db --timePeriod 7d --sort-type sum --sort-by reads --limit 20
-npx wrangler d1 insights spotted-db --timePeriod 7d --sort-type sum --sort-by writes --limit 20
+npx wrangler d1 insights manyfold-spotted-london-db --timePeriod 7d --sort-type sum --sort-by reads --limit 20
+npx wrangler d1 insights manyfold-spotted-london-db --timePeriod 7d --sort-type sum --sort-by writes --limit 20
 ```
 
-也可以在 Cloudflare Dashboard → Workers & Pages → D1 → spotted-db → Metrics 看 rows read／written 曲線。
+也可以在 Cloudflare Dashboard → Workers & Pages → D1 → manyfold-spotted-london-db → Metrics 看 rows read／written 曲線。
 
 記下：
 - 讀取前 5 名的查詢（預期是 `listPopups` 那條）與每天總 rows read
 - 寫入前 5 名（預期是 `UPDATE popups SET hot = ?`）與每天總 rows written
-- 目前有效 pop-up 數 N：`npx wrangler d1 execute spotted-db --remote --command "SELECT status, COUNT(*) FROM popups WHERE end_at >= strftime('%s','now')*1000 GROUP BY status"`
+- 目前有效 pop-up 數 N：`npx wrangler d1 execute manyfold-spotted-london-db --remote --command "SELECT status, COUNT(*) FROM popups WHERE end_at >= strftime('%s','now')*1000 GROUP BY status"`
 
 > 如果 insights 回傳空陣列（我試 manyfold-data 時就是），通常是剛過 00:00 UTC 重置、或沒登入對帳號。換看 Dashboard。
 
@@ -253,7 +253,7 @@ PR 1 可以獨立立刻上；PR 2、PR 3 可以分開 merge，PR 2 完成後即�
 ### 每個 PR 的檢查清單
 - [ ] `npm run typecheck && (cd web && npx tsc --noEmit)`
 - [ ] `npm test`
-- [ ] 有 migration → PR 說明寫明，並先 `npx wrangler d1 migrations apply spotted-db --remote` 再 merge
+- [ ] 有 migration → PR 說明寫明，並先 `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` 再 merge
 - [ ] 新增 vars／bindings → 同步加到 `wrangler.jsonc` 的 `previews` 區塊
 - [ ] 改了 MCP 工具名稱或輸入 → 同步 `skills/spotted-london/SKILL.md` 與 `src/db/agents.ts` 的 `AGENT_INFO`
 - [ ] 手機 375 px 檢查 Explore、Map、Saved、PopupSheet
