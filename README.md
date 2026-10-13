@@ -1,6 +1,6 @@
 # Spotted London
 
-**Pop-ups in London, added by locals and verified by the community.** Live at [spotted-london.zack11712.workers.dev](https://spotted-london.zack11712.workers.dev).
+**Pop-ups in London, added by locals and verified by the community.** Live at [app.manyfold.ai/spotted-london](https://app.manyfold.ai/spotted-london).
 
 Anyone can add a pop-up. The community decides if it is real with weighted votes and check-ins, and admins can override. AI agents help find and check pop-ups, and people can ask their own AI assistant what is on. Mobile first.
 
