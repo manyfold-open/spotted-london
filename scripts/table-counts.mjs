@@ -12,7 +12,7 @@ delete env.CLOUDFLARE_API_TOKEN; // these two point wrangler at the wrong Cloudf
 delete env.CLOUDFLARE_ACCOUNT_ID;
 
 function rows(sql) {
-  const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'spotted-db', where, '--json', '--command', sql],
+  const out = execFileSync('npx', ['wrangler', 'd1', 'execute', 'manyfold-spotted-london-db', where, '--json', '--command', sql],
     { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out)[0].results;
 }

@@ -13,6 +13,7 @@ import { buildPopupSnapshot, entersOrLeavesPublic, readSnapshot, rebuildSnapshot
 import { awardKarma } from '../db/karma';
 import { addPhotoFromUrl, resolveImageUrl, sniffPhoto } from '../lib/photo';
 import { audit } from './admin';
+import { assertPhotosOpen } from '../db/usage';
 
 export const popups = new Hono<AppEnv>();
 
@@ -350,6 +351,7 @@ const IMAGE_TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg'
 popups.post('/:id/images', async c => {
   const u = requireUser(c);
   if (!c.env.IMAGES) throw new ApiError(501, 'photos_not_enabled', 'Photo uploads are not switched on yet. Your pop-up was saved without photos.');
+  await assertPhotosOpen(c.env.DB);
   const db = c.env.DB;
   const p = await load(db, c.req.param('id'));
   if (p.created_by !== u.id && u.role !== 'admin') throw new ApiError(403, 'not_yours', 'Only the poster can add photos for now.');
@@ -379,6 +381,7 @@ export const MAX_THUMB_BYTES = 150 * 1024;
 popups.put('/:id/images/:imageId/thumb', async c => {
   const u = requireUser(c);
   const db = c.env.DB;
+  await assertPhotosOpen(db);
   const p = await load(db, c.req.param('id'));
   if (p.created_by !== u.id && u.role !== 'admin') throw new ApiError(403, 'not_yours', 'Only the poster or an admin can add a thumbnail.');
   const img = await db.prepare('SELECT id, thumb_key FROM popup_images WHERE id = ? AND popup_id = ?').bind(c.req.param('imageId'), p.id).first<{ id: string; thumb_key: string | null }>();

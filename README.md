@@ -1,6 +1,6 @@
 # Spotted London
 
-**Pop-ups in London, added by locals and verified by the community.** Live at [spotted-london.zack11712.workers.dev](https://spotted-london.zack11712.workers.dev).
+**Pop-ups in London, added by locals and verified by the community.** Live at [app.manyfold.ai/spotted-london](https://app.manyfold.ai/spotted-london).
 
 Anyone can add a pop-up. The community decides if it is real with weighted votes and check-ins, and admins can override. AI agents help find and check pop-ups, and people can ask their own AI assistant what is on. Mobile first.
 
@@ -63,17 +63,17 @@ Agents run on Manyfold, not Cloudflare. Settings, keys and runs are at **/admin/
 
 ## Production
 
-Live at **https://spotted-london.zack11712.workers.dev**.
+Live at **https://app.manyfold.ai/spotted-london**, in the NetMind.AI Cloudflare account (the shared host `app.manyfold.ai`, mounted under a prefix, see below).
 
 | Resource | Name |
 |---|---|
-| Worker | `spotted-london` (cron: every 10 min, hourly, daily 04:00 UTC) |
-| D1 | `spotted-db` |
-| KV | `CACHE` |
-| R2 | `spotted-images` |
+| Worker | `manyfold-spotted-london` (cron: every 10 min, hourly, daily 04:00 UTC) |
+| D1 | `manyfold-spotted-london-db` |
+| KV | `manyfold-spotted-london-cache` (binding `CACHE`) |
+| R2 | `manyfold-spotted-london-images` |
 | Analytics Engine | `spotted_events` (binding `EVENTS`) |
 
-Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APIFY_TOKEN`. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN`, `AGENT_ADMIN_TOKEN`.
+Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APIFY_TOKEN`. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `AGENT_ADMIN_TOKEN`. Recommended: `CF_ACCOUNT_ID` and `CF_ANALYTICS_TOKEN` (a token with only Account Analytics: Read), which switch on the usage guard that pauses the background writing work and new photos when D1 or R2 use runs far above normal (see CLAUDE.md, "Usage guard"), and feed the Insights page.
 
 ### Mounted under a prefix
 
@@ -91,7 +91,7 @@ Cloudflare Workers Builds is connected to this repo and does the deploys. GitHub
 
 - Push to `main` builds and deploys production.
 - Other branches get a preview version. Previews share production D1, KV and R2, have no secrets, and read vars and bindings from the `previews` block in `wrangler.jsonc`, so add new ones in both places.
-- The build token cannot touch D1. If a change adds a file to `migrations/`, run `npx wrangler d1 migrations apply spotted-db --remote` from a signed-in computer **before** merging.
+- The build token cannot touch D1. If a change adds a file to `migrations/`, run `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` from a signed-in computer **before** merging.
 - Build settings: build command `npm ci && npm run build:web`, deploy command `npx wrangler deploy`, `NODE_VERSION=22`.
 
 ### Still to switch on

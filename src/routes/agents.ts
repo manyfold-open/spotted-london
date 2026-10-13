@@ -17,6 +17,7 @@ import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
 import { snapshotStats } from '../db/snapshot';
+import { guardState } from '../db/usage';
 import { mountOf } from '../mount';
 
 // Admin settings for the AI agents (/admin/agent in the web app). Secrets are write-only:
@@ -44,7 +45,7 @@ function view(a: AgentRow, runs: RunRow[], openNotes: number, published?: { publ
 agentsAdmin.get('/', async c => {
   await requireAgentManager(c);
   const db = c.env.DB;
-  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats, askToday, publicList] = await Promise.all([
+  const [{ results: agents }, { results: runs }, { results: notes }, mode, stats, askToday, publicList, usageGuard] = await Promise.all([
     db.prepare('SELECT * FROM agents').all<AgentRow>(),
     db.prepare('SELECT * FROM agent_runs WHERE started_at > ? ORDER BY started_at DESC LIMIT 100').bind(c.get('now') - 30 * 86_400_000).all<RunRow>(),
     db.prepare("SELECT agent_id, COUNT(*) AS n FROM agent_notes WHERE resolved_at IS NULL AND verdict != 'looks_real' GROUP BY agent_id").all<{ agent_id: string; n: number }>(),
@@ -52,6 +53,7 @@ agentsAdmin.get('/', async c => {
     publishStats(db, c.get('now')),
     askStats(c.env, c.get('now')),
     snapshotStats(db),
+    guardState(db),
   ]);
   const base = c.env.APP_URL ? c.env.APP_URL.replace(/\/+$/, '') : new URL(c.req.url).origin + mountOf(c);
   return c.json({
@@ -61,6 +63,7 @@ agentsAdmin.get('/', async c => {
     auto_publish: mode,
     ask: askToday,
     public_list: publicList,
+    usage_guard: usageGuard,
     roles: AGENT_ROLES.map(role => ({ role, name: AGENT_INFO[role].name })),
     agents: [...agents].sort((x, y) => AGENT_ROLES.indexOf(x.role) - AGENT_ROLES.indexOf(y.role) || x.created_at - y.created_at || x.id.localeCompare(y.id)).map(a =>
       view(a, runs.filter(r => r.agent_id === a.id).slice(0, 8), notes.find(n => n.agent_id === a.id)?.n ?? 0, stats.get(a.id))),

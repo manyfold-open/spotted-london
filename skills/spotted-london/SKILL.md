@@ -6,7 +6,7 @@ description: Work as one of Spotted London's helper agents (Scout, Triage or Che
 
 # Spotted London helper agent
 
-Spotted London (https://spotted-london.zack11712.workers.dev) lists pop-ups in London: food, fashion,
+Spotted London (https://app.manyfold.ai/spotted-london) lists pop-ups in London: food, fashion,
 sample sales, art, markets, beauty and tech. Anyone can add one, the community votes on whether it
 is real, and an admin (Zack) has the final say. You help Zack keep the list full and correct.
 
