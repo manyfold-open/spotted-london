@@ -329,7 +329,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
 
           <div className="two">
             <div className="field">{lbl('start', 'Starts', undefined, 'startlbl')}
-              <DatePicker title="Starts" labelledBy="startlbl" value={start} today={today()} min={londonDate(Date.now() - 7 * 86_400_000)} range={[start, end]} className={state('start')}
+              <DatePicker title="Starts" labelledBy="startlbl" value={start} today={today()} min={londonDate(Date.now() - 180 * 86_400_000)} range={[start, end]} className={state('start')}
                 onChange={v => { setStart(v); if (end < v) setEnd(v); clearFlag('start'); }} />{err('start')}</div>
             <div className="field">{lbl('end', 'Ends', undefined, 'endlbl')}
               <DatePicker title="Ends" labelledBy="endlbl" value={end} today={today()} min={start} range={[start, end]} className={state('end')}

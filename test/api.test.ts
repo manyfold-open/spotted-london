@@ -80,6 +80,15 @@ describe('creating pop-ups', () => {
     expect(tooLong.json.error.message).toContain('180 days');
   });
 
+  it('accepts a pop-up that started more than a week ago and is still running, but not one that has ended', async () => {
+    const u = await user();
+    // found late: started 11 days ago, ends in 20 days
+    const late = await api('POST', '/popups', { user: u, body: popupBody({ title: 'Found it late pop-up', lat: 51.47, lng: -0.31, start_at: NOW - 11 * DAY, end_at: NOW + 20 * DAY }) });
+    expect(late.status).toBe(201);
+    const over = await api('POST', '/popups', { user: u, body: popupBody({ title: 'Already over pop-up', lat: 51.48, lng: -0.32, start_at: NOW - 30 * DAY, end_at: NOW - 2 * DAY }) });
+    expect(over.json.error.code).toBe('already_ended');
+  });
+
   it('accepts every category and names them all when one is wrong', async () => {
     const boss = await user({ role: 'admin' });
     for (const [i, category] of CATEGORIES.entries()) {
