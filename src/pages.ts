@@ -7,7 +7,7 @@ import type { AppEnv, PopupRow } from './types';
 import { consumeMagicToken, startSession, userForEmail } from './routes/auth';
 import { safeReturnTo } from './lib/auth';
 import { ApiError } from './lib/util';
-import { appOrigin } from './middleware';
+import { appBase, publicBase } from './middleware';
 import { llmsText } from './lib/llms';
 import { privacyBody } from './privacy';
 import { snapshotItems } from './db/snapshot';
@@ -91,10 +91,10 @@ pages.post('/login/verify', async c => {
 });
 
 /** The privacy policy. Plain HTML so Google's checks and crawlers can read it without running JavaScript. */
-pages.get('/privacy', c => c.html(shell('Privacy · Spotted London', privacyBody(appOrigin(c)), true), 200, { 'cache-control': 'public, max-age=3600' }));
+pages.get('/privacy', c => c.html(shell('Privacy · Spotted London', privacyBody(appBase(c)), true), 200, { 'cache-control': 'public, max-age=3600' }));
 
 /** A guide for AI assistants (llmstxt.org). Cached for an hour: it only changes with a deploy. */
-pages.get('/llms.txt', c => c.text(llmsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600', 'content-type': 'text/plain; charset=utf-8' }));
+pages.get('/llms.txt', c => c.text(llmsText(appBase(c)), 200, { 'cache-control': 'public, max-age=3600', 'content-type': 'text/plain; charset=utf-8' }));
 
 /** What search engines may crawl. The API stays closed, except photos, which share previews and Google Images use. */
 export function robotsText(origin: string): string {
@@ -107,11 +107,11 @@ export function sitemapXml(origin: string, slugs: string[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `<url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`;
 }
 
-pages.get('/robots.txt', c => c.text(robotsText(appOrigin(c)), 200, { 'cache-control': 'public, max-age=3600' }));
+pages.get('/robots.txt', c => c.text(robotsText(appBase(c)), 200, { 'cache-control': 'public, max-age=3600' }));
 
 pages.get('/sitemap.xml', async c => {
   const items = await snapshotItems(c.env.DB, c.get('now'));
-  const xml = sitemapXml(appOrigin(c), items.filter(i => !i.example).map(i => i.slug));
+  const xml = sitemapXml(appBase(c), items.filter(i => !i.example).map(i => i.slug));
   return c.body(xml, 200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' });
 });
 
@@ -129,7 +129,7 @@ pages.get('/p/:slug', async c => {
   return new HTMLRewriter()
     .on('title', { element: e => { e.setInnerContent(`${p.title} · Spotted London`); } })
     .on('meta[name="description"]', { element: e => { e.setAttribute('content', describe(p)); } })
-    .on('head', { element: e => { e.append(headTags(p, new URL(c.req.url).origin) + (p.is_example ? '<meta name="robots" content="noindex">' : ''), { html: true }); } })
+    .on('head', { element: e => { e.append(headTags(p, publicBase(c)) + (p.is_example ? '<meta name="robots" content="noindex">' : ''), { html: true }); } })
     .transform(shellRes);
 });
 

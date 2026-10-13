@@ -15,6 +15,7 @@ import { Icon } from './Icon';
 import { PhotoViewer } from './PhotoViewer';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions } from './PopupBits';
 import { Turnstile, useNeedsTurnstile } from './Turnstile';
+import { appUrl, shareUrl } from '../lib/base';
 
 // Same thresholds as src/lib/scoring.ts on the server (SPEC 4.3).
 const VERIFY_CONFIDENCE = 0.75, VERIFY_MIN_WEIGHT = 8;
@@ -258,7 +259,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   ];
 
   const share = async () => {
-    const url = `${location.origin}/p/${p.slug}`;
+    const url = shareUrl(`/p/${p.slug}`);
     try {
       if (navigator.share) await navigator.share({ title: p.title, url });
       else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }
@@ -384,7 +385,7 @@ function AddPhoto({ p }: { p: Popup }) {
     setErr(null); setBusy('Copying photo');
     try {
       const photo = await api<{ id: string; url: string }>(`/popups/${p.id}/images/from-url`, { method: 'POST', json: { image_url: url, page_url: p.source_url ?? url } });
-      await fetch(photo.url).then(r => r.blob()).then(b => makeThumb(p.id, photo.id, b)).catch(() => {});
+      await fetch(appUrl(photo.url)).then(r => r.blob()).then(b => makeThumb(p.id, photo.id, b)).catch(() => {});
       setLink(''); setLinking(false); done();
     } catch (e) {
       // The server says why (too big, not a photo, the site refused); the pop-up itself is fine.

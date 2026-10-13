@@ -7,6 +7,7 @@ import { useErrorToast, useMe, useToast } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { ScoutSources } from './ScoutSources';
 import { PhotoThumbs } from '../components/PhotoThumbs';
+import { appUrl } from '../lib/base';
 
 // Admin settings for the AI agents that run on Manyfold (SPEC §13.4).
 
@@ -99,7 +100,7 @@ function TagsReport() {
               <h3 style={{ marginTop: 14 }}>Check these by eye</h3>
               <ul className="stack" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
                 {r.samples.map(s => (
-                  <li key={s.id}><a href={`/p/${s.slug}`} target="_blank" rel="noopener">{s.title}</a>: {s.tags.map(t => TAG_LABELS[t]).join(', ')}{s.source_url ? <> (<a href={s.source_url} target="_blank" rel="noopener nofollow">source</a>)</> : null}</li>
+                  <li key={s.id}><a href={appUrl(`/p/${s.slug}`)} target="_blank" rel="noopener">{s.title}</a>: {s.tags.map(t => TAG_LABELS[t]).join(', ')}{s.source_url ? <> (<a href={s.source_url} target="_blank" rel="noopener nofollow">source</a>)</> : null}</li>
                 ))}
               </ul>
             </>

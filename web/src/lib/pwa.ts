@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { appUrl, BASE } from './base';
 
 // Chrome and Edge fire this once, early. It is kept here so the menu can use it whenever it opens.
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
@@ -16,7 +17,7 @@ window.addEventListener('appinstalled', () => { deferred = null; emit(); });
 /** Only in the production build: in dev a cached shell would hide every change. */
 export function registerServiceWorker() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  window.addEventListener('load', () => { navigator.serviceWorker.register(appUrl('/sw.js'), { scope: `${BASE}/` }).catch(() => {}); });
 }
 
 export type InstallState = 'none' | 'prompt' | 'ios';

@@ -6,6 +6,7 @@ import { getTaste, updateTaste, useKeptNote } from '../lib/taste';
 import { DECK_SIZE, forgetSwipes, learn, likedCategories, pickDeck, type Taste } from '../../../src/shared/taste';
 import { Icon } from './Icon';
 import { Img } from './PopupBits';
+import { appUrl } from '../lib/base';
 
 type Dir = 'yes' | 'no' | 'skip';
 const THROW = 90; // px of drag that counts as an answer
@@ -159,7 +160,7 @@ function TasteCard({ p, behind, style, lean = 0, onDown, onMove, onUp }: {
   const price = p.price.type === 'free' ? 'Free' : p.price.text || null;
   return (
     <article className={`td-card ${behind ? 'behind' : ''}`} style={style} aria-hidden={behind} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-      <div className={`td-pic pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
+      <div className={`td-pic pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${appUrl(p.cover_url)}")` } as CSSProperties : undefined}>
         {p.cover_url ? <Img src={p.cover_url} fit /> : <Icon name={catIcon(p.category)} className="i big" />}
         <span className="tag cattag">{CATS[p.category]}</span>
         {isLive(p) ? <span className="tag t-new live">On now</span> : null}

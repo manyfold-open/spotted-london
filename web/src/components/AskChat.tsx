@@ -12,6 +12,7 @@ import { tasteSummary } from '../../../src/shared/taste';
 import { Icon } from './Icon';
 import { Img } from './PopupBits';
 import { Turnstile } from './Turnstile';
+import { appUrl } from '../lib/base';
 
 const EXAMPLES = ['Free and a bit weird this weekend', 'Something to eat on Saturday', 'A good date idea near me'];
 const SLOW_MS = 25_000;
@@ -193,7 +194,7 @@ function AskRow({ pick, p, metres, onOpen }: { pick?: AskPick; p: Popup | null; 
   const title = p?.title ?? pick?.title ?? '';
   return (
     <li>
-      <a className="ask-item" href={`/p/${slug}`} onClick={e => { e.preventDefault(); onOpen(slug); }}>
+      <a className="ask-item" href={appUrl(`/p/${slug}`)} onClick={e => { e.preventDefault(); onOpen(slug); }}>
         <span className={`sw ${p ? `pat-${p.category}` : ''}`}>{p ? (p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i" />) : <Icon name="i-pin" className="i" />}</span>
         <span className="ask-t">
           <b>{title}</b>

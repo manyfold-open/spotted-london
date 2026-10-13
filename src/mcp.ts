@@ -29,6 +29,7 @@ import { AGENT_TAG_EDITS_PER_DAY, readTagChange, readTagQuotes, TagError, type T
 import { currentTags, mergeTags, setAgentTags, tagEditsInLastDay, vetClaimTags, type Dropped } from './db/tags';
 import { markPostsHandled, newPostCounts, POST_OFFER, postsFor } from './db/social';
 import { checkEvidence, checkQuotes, EVIDENCE_MAX, EVIDENCE_MIN, EvidenceError, looksAimedAtAgents, type EvidenceCheck, type QuoteCheck } from './lib/evidence';
+import { mountOf } from './mount';
 import { addPhotoFromUrl, pagePhoto, resolveImageUrl, type PhotoSource } from './lib/photo';
 import { differentSites, FixError, OUT_OF_SCOPE_REASONS, parseFixes } from './lib/triage';
 import { applyFixes, autoRemove, overDailyCap, type AutoKind } from './db/triage';
@@ -942,7 +943,7 @@ mcp.post('/', async c => {
   let body: unknown;
   try { body = await c.req.json(); } catch { return c.json(fail(null, -32700, 'The request body must be JSON.'), 400); }
   const url = new URL(c.req.url);
-  const x: Ctx = { c, agent, now: c.get('now'), origin: c.env.APP_URL ? new URL(c.env.APP_URL).origin : url.origin };
+  const x: Ctx = { c, agent, now: c.get('now'), origin: c.env.APP_URL ? c.env.APP_URL.replace(/\/+$/, '') : url.origin + mountOf(c) };
   if (Array.isArray(body)) {
     const out = (await Promise.all(body.map(m => handle(m as Rpc, x)))).filter(Boolean);
     return out.length ? c.json(out) : c.body(null, 202);

@@ -2,6 +2,7 @@
 
 import type { Category } from '../../../src/shared/categories';
 import type { Tag } from '../../../src/shared/tags';
+import { appUrl } from './base';
 export type { Category, Tag };
 export type Status = 'pending' | 'community' | 'verified_community' | 'verified_admin' | 'hidden' | 'removed' | 'ended';
 export type When = 'today' | 'weekend' | 'week' | 'all';
@@ -89,7 +90,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   const { json, ...rest } = init;
   const headers = new Headers(rest.headers);
   if (json !== undefined) headers.set('content-type', 'application/json');
-  const res = await fetch(`/api/v1${path}`, { ...rest, headers, body: json !== undefined ? JSON.stringify(json) : rest.body, credentials: 'same-origin' });
+  const res = await fetch(appUrl(`/api/v1${path}`), { ...rest, headers, body: json !== undefined ? JSON.stringify(json) : rest.body, credentials: 'same-origin' });
   const type = res.headers.get('content-type') ?? '';
   const body = type.includes('json') ? await res.json() : null;
   if (!res.ok) {

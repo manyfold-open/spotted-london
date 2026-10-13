@@ -13,6 +13,7 @@ import { Cover, MAX_CROP_SMALL } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
 import { track } from '../lib/track';
+import { shareUrl } from '../lib/base';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
@@ -42,7 +43,7 @@ function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
     if (!qc.getQueryData(['popup', p.slug])) qc.setQueryData(['popup', p.slug], p, { updatedAt: 0 });
   }, [qc, p]);
   const share = async () => {
-    const url = `${location.origin}/p/${p.slug}`;
+    const url = shareUrl(`/p/${p.slug}`);
     try {
       if (navigator.share) await navigator.share({ title: p.title, url });
       else { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); }

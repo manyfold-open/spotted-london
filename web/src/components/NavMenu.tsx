@@ -5,6 +5,7 @@ import { useInstall } from '../lib/pwa';
 import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 import { Ticker } from './PopupBits';
+import { appUrl } from '../lib/base';
 
 /** The menu that replaces the sidebar and the tab bar. Slides in from the left over everything. */
 export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { open: boolean; onClose: () => void; savedCount: number; queueCount: number; isAdmin: boolean }) {
@@ -59,7 +60,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           <div><span className="keypin community" /><p><b>Being checked.</b> Dashed ring, no tick. Your vote helps.</p></div>
           <div><span className="keypin cluster">8</span><p><b>A number.</b> Several pop-ups close together. Tap it to zoom in.</p></div>
         </div>
-        <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap. <a href="/privacy">Privacy</a></p>
+        <p className="mp-foot">Icons by <a href="https://koboyo.com/icons" target="_blank" rel="noopener">Koboyo</a>. Map data © OpenStreetMap. <a href={appUrl('/privacy')}>Privacy</a></p>
       </aside>
     </>
   );

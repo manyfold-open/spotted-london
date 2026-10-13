@@ -1,5 +1,8 @@
 // Spotted London service worker. Two jobs: open the app when the phone is offline, and load faster.
 // It never touches the Worker's own paths (API, sign-in, MCP, server pages), so data is always live.
+// Where the site is mounted ('' at a root, '/spotted-london' under app.manyfold.ai): the scope this worker was
+// registered with (web/src/lib/pwa.ts). Every path below is written without it and compared without it.
+const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 const SHELL = 'spotted-shell-v1';
 const ASSETS = 'spotted-assets-v1';
 const MAX_ASSETS = 80;
@@ -7,10 +10,10 @@ const WORKER_PATHS = ['/api', '/login', '/mcp', '/privacy', '/llms.txt', '/sitem
 
 // Save the page and the files it loads now, so the very first visit already works offline.
 async function precache() {
-  const res = await fetch('/', { cache: 'reload' });
+  const res = await fetch(`${BASE}/`, { cache: 'reload' });
   const text = await res.clone().text();
-  await (await caches.open(SHELL)).put('/', res);
-  const files = [...new Set(text.match(/\/assets\/[^"'\s]+/g) || [])];
+  await (await caches.open(SHELL)).put(`${BASE}/`, res);
+  const files = [...new Set(text.match(new RegExp(`${BASE}/assets/[^"'\\s]+`, 'g')) || [])];
   const cache = await caches.open(ASSETS);
   await Promise.all(files.map(f => cache.add(f).catch(() => {})));
 }
@@ -37,10 +40,10 @@ async function trim(cache) {
 async function page(request) {
   try {
     const res = await fetch(request);
-    if (res.ok && request.url === `${self.location.origin}/`) (await caches.open(SHELL)).put('/', res.clone());
+    if (res.ok && request.url === `${self.location.origin}${BASE}/`) (await caches.open(SHELL)).put(`${BASE}/`, res.clone());
     return res;
   } catch {
-    return (await caches.match('/')) || Response.error();
+    return (await caches.match(`${BASE}/`)) || Response.error();
   }
 }
 
@@ -63,7 +66,9 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (WORKER_PATHS.some(p => url.pathname === p || url.pathname.startsWith(`${p}/`))) return;
+  if (BASE && url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return; // not ours: another app on the same host
+  const path = url.pathname.slice(BASE.length) || '/';
+  if (WORKER_PATHS.some(p => path === p || path.startsWith(`${p}/`))) return;
   if (request.mode === 'navigate') event.respondWith(page(request));
-  else if (url.pathname.startsWith('/assets/')) event.respondWith(asset(request));
+  else if (path.startsWith('/assets/')) event.respondWith(asset(request));
 });

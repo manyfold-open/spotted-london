@@ -17,6 +17,7 @@ import { nextDue, SOURCE_KINDS, SOURCE_STATUSES, sourceStats, sourceTarget, type
 import { lastRuns, newPostCounts, socialSummary } from '../db/social';
 import { socialMode } from '../lib/social';
 import { snapshotStats } from '../db/snapshot';
+import { mountOf } from '../mount';
 
 // Admin settings for the AI agents (/admin/agent in the web app). Secrets are write-only:
 // the caller token and the Spotted key are never sent back, only their last four characters.
@@ -52,9 +53,9 @@ agentsAdmin.get('/', async c => {
     askStats(c.env, c.get('now')),
     snapshotStats(db),
   ]);
-  const origin = c.env.APP_URL ? new URL(c.env.APP_URL).origin : new URL(c.req.url).origin;
+  const base = c.env.APP_URL ? c.env.APP_URL.replace(/\/+$/, '') : new URL(c.req.url).origin + mountOf(c);
   return c.json({
-    mcp_url: `${origin}/mcp`,
+    mcp_url: `${base}/mcp`,
     skill_url: SKILL_URL,
     agents_key_set: (c.env.AGENTS_KEY ?? '').length >= 32,
     auto_publish: mode,

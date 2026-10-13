@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
 import { referrerHost, routeName, slugFromPath } from '../../../src/shared/tracking';
+import { appUrl } from './base';
 
 // Anonymous usage stats. What is sent and why is on the privacy page (src/privacy.ts); keep both in step.
 //  - A random id made on this device (`spotted.vid`). It is never linked to an account, an email or an address.
@@ -60,8 +61,8 @@ function flush(force = false) {
   if (!enabled()) { queue.length = 0; return; }
   const body = JSON.stringify({ v: visitorId(), s: ctx.signedIn ? 1 : 0, w: innerWidth < 900 ? 'm' : 'd', events: queue.splice(0, 10) });
   try {
-    if (!navigator.sendBeacon?.('/api/v1/e', new Blob([body], { type: 'application/json' }))) {
-      void fetch('/api/v1/e', { method: 'POST', body, keepalive: true, headers: { 'content-type': 'application/json' } }).catch(() => {});
+    if (!navigator.sendBeacon?.(appUrl('/api/v1/e'), new Blob([body], { type: 'application/json' }))) {
+      void fetch(appUrl('/api/v1/e'), { method: 'POST', body, keepalive: true, headers: { 'content-type': 'application/json' } }).catch(() => {});
     }
   } catch { /* stats must never get in the way */ }
   if (queue.length) timer = setTimeout(flush, 500);

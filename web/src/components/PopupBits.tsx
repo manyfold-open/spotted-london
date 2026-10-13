@@ -9,6 +9,7 @@ import { track } from '../lib/track';
 import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
 import { bump, haptic } from '../lib/motion';
 import { Icon } from './Icon';
+import { appUrl } from '../lib/base';
 
 export function StatusTag({ status, sourceChecked, className = '' }: { status: Popup['status']; sourceChecked?: boolean; className?: string }) {
   if (status === 'community' && sourceChecked) return <span className={`tag t-src ${className}`}><Icon name="i-check" />Source checked</span>;
@@ -38,7 +39,7 @@ export function Cover({ p, className, fit, onOpen }: { p: Pick<Popup, 'category'
     onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } },
   } : undefined;
   return (
-    <div className={`${className} pat-${p.category} ${zoom ? 'zoomable' : ''}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined} {...zoom}>
+    <div className={`${className} pat-${p.category} ${zoom ? 'zoomable' : ''}`} style={p.cover_url ? { '--cover': `url("${appUrl(p.cover_url)}")` } as CSSProperties : undefined} {...zoom}>
       {p.cover_url ? <Img src={p.cover_url} fit={fit} /> : <Icon name={catIcon(p.category)} className="i big" />}
     </div>
   );
@@ -50,7 +51,7 @@ export function Cover({ p, className, fit, onOpen }: { p: Pick<Popup, 'category'
  * `fit` is true for the usual limit, or the share of the photo that may be cropped.
  */
 export function Img({ src, fit }: { src: string; fit?: boolean | number }) {
-  return <img src={src} alt="" loading="lazy" decoding="async" className="fade" onLoad={e => settle(e.currentTarget, fit)} onError={hideBroken}
+  return <img src={appUrl(src)} alt="" loading="lazy" decoding="async" className="fade" onLoad={e => settle(e.currentTarget, fit)} onError={hideBroken}
     ref={el => { if (el?.complete && el.naturalWidth && !el.classList.contains('in')) settle(el, fit); }} />;
 }
 
@@ -154,7 +155,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
   const warm = () => prefetchPopup(qc, p.slug);
   return (
     <article className="card" style={{ '--i': Math.min(i, 8) } as CSSProperties}>
-      <div className={`thumb pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${p.cover_url}")` } as CSSProperties : undefined}>
+      <div className={`thumb pat-${p.category}`} style={p.cover_url ? { '--cover': `url("${appUrl(p.cover_url)}")` } as CSSProperties : undefined}>
         {p.cover_url ? <Img src={p.cover_url} fit /> : <Icon name={catIcon(p.category)} className="i big" />}
         <span className="tag cattag">{CATS[p.category]}</span>
         {live ? <span className="tag t-new live">On now</span> : startsTomorrow(p) ? <span className="tag t-out live">Tomorrow</span> : null}
