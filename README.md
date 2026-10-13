@@ -77,7 +77,7 @@ Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT
 
 ### Mounted under a prefix
 
-The same build can be served at the root of a host or under a prefix on a host shared with other apps (for example `https://app.manyfold.ai/spotted-london`). Set the var `BASE_PATH` (for example `/spotted-london`) and make `APP_URL` the full public address including the prefix. Then route that prefix to the Worker (`app.manyfold.ai/spotted-london` and `app.manyfold.ai/spotted-london/*` in `wrangler.jsonc` `routes`) and list it in `assets.run_worker_first`. Without `BASE_PATH` nothing changes. To try it locally:
+The same build can be served at the root of a host or under a prefix on a host shared with other apps (for example `https://app.manyfold.ai/spotted-london`). Set the var `BASE_PATH` (for example `/spotted-london`) and make `APP_URL` the full public address including the prefix. Then route that prefix to the Worker (`app.manyfold.ai/spotted-london*` in `wrangler.jsonc` `routes`; the trailing `*` is needed so `/spotted-london?utm_source=...` with a query string still reaches the Worker, otherwise Cloudflare shows error 1033) and list it in `assets.run_worker_first`. Without `BASE_PATH` nothing changes. To try it locally:
 
 ```bash
 npm run build:web
