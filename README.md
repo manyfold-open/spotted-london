@@ -25,7 +25,7 @@ Anyone can add a pop-up. The community decides if it is real with weighted votes
 You need Node.js 22+ and git. No Cloudflare account is needed.
 
 ```bash
-git clone https://github.com/tldr0810/spotted-london.git
+git clone https://github.com/manyfold-open/spotted-london.git
 cd spotted-london
 npm install
 cp .dev.vars.example .dev.vars
