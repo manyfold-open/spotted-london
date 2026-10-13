@@ -67,7 +67,7 @@ describe('creating pop-ups', () => {
     expect((await api('POST', '/popups', { user: u, body: popupBody({ source_url: 'http://localhost/x' }) })).json.error.code).toBe('source_url_invalid');
   });
 
-  it('lets a pop-up run for up to 180 days and says so when it is longer', async () => {
+  it('lets a pop-up run for up to 180 days, and takes a longer one as a long run for an admin to look at', async () => {
     const boss = await user({ role: 'admin' });
     // a big exhibition: 3 Oct 2026 to 31 Jan 2027 is 120 days
     const long = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Renoir and Love', category: 'exhibition', lat: 51.5089, lng: -0.1283, start_at: NOW, end_at: NOW + 120 * DAY }) });
@@ -75,9 +75,9 @@ describe('creating pop-ups', () => {
     const exact = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Half year installation', category: 'art', lat: 51.52, lng: -0.09, start_at: NOW, end_at: NOW + 180 * DAY }) });
     expect(exact.status).toBe(201);
     const tooLong = await api('POST', '/popups', { user: boss, body: popupBody({ title: 'Longer than half a year', category: 'art', lat: 51.53, lng: -0.1, start_at: NOW, end_at: NOW + 181 * DAY }) });
-    expect(tooLong.status).toBe(400);
-    expect(tooLong.json.error.code).toBe('too_long');
-    expect(tooLong.json.error.message).toContain('180 days');
+    expect(tooLong.status).toBe(201); // people may add it (see 'open and very long dates'); agents still get too_long
+    expect(tooLong.json.date_kind).toBe('long');
+    expect(exact.json.date_kind).toBeUndefined();
   });
 
   it('accepts a pop-up that started more than a week ago and is still running, but not one that has ended', async () => {
@@ -245,6 +245,78 @@ describe('admin decisions', () => {
     await api('POST', `/admin/popups/${p.id}/decision`, { user: boss, body: { action: 'approve' } });
     await api('POST', `/admin/popups/${p.id}/decision`, { user: boss, body: { action: 'approve' } });
     expect(await karmaOf(poster)).toBe(10);
+  });
+});
+
+describe('open and very long dates', () => {
+  const SRC = 'https://venue.example/whats-on';
+  const post = (u: string, over: Record<string, unknown>) => api('POST', '/popups', { user: u, body: popupBody({ source_url: SRC, ...over }) });
+
+  it('a missing end date is accepted with a source, waits for an admin even for a trusted poster, and shows as a stand-in', async () => {
+    const trusted = await user(), boss = await user({ role: 'admin' });
+    expect((await post(trusted, { title: 'Open end no source', lat: 51.601, lng: -0.201, end_at: null, source_url: null })).json.error.code).toBe('source_required');
+    const r = await post(trusted, { title: 'Open end zymurgy bar', lat: 51.602, lng: -0.202, end_at: null });
+    expect(r.status).toBe(201);
+    expect(r.json).toMatchObject({ status: 'pending', date_kind: 'open_end' });
+    expect(r.json.end_at - r.json.start_at).toBeGreaterThan(180 * DAY); // a stand-in a year on
+    // the public list does not have it until an admin says so
+    expect((await api('GET', '/popups?when=all&q=zymurgy')).json.items).toHaveLength(0);
+    const q = (await api('GET', '/admin/queue', { user: boss })).json.items.find((i: any) => i.id === r.json.id);
+    expect(q.flags).toContain('long_run');
+    expect(q.ready_to_publish).toBe(false);
+    await api('POST', `/admin/popups/${r.json.id}/decision`, { user: boss, body: { action: 'approve' } });
+    const listed = (await api('GET', '/popups?when=all&q=zymurgy')).json.items;
+    expect(listed).toHaveLength(1);
+    expect(listed[0].date_kind).toBe('open_end');
+  });
+
+  it('no dates at all is "undated", starts today, and an admin posting it needs no wait', async () => {
+    const trusted = await user(), boss = await user({ role: 'admin' });
+    const r = await post(trusted, { title: 'Undated dumpling cart', lat: 51.603, lng: -0.203, start_at: null, end_at: null });
+    expect(r.json).toMatchObject({ status: 'pending', date_kind: 'undated', start_at: NOW });
+    expect((await post(trusted, { title: 'Undated no link', lat: 51.604, lng: -0.204, start_at: null, end_at: null, source_url: '' })).json.error.code).toBe('source_required');
+    const own = await post(boss, { title: 'Undated admin find', lat: 51.605, lng: -0.205, start_at: null, end_at: null });
+    expect(own.json.status).toBe('verified_admin');
+  });
+
+  it('more than 180 days is accepted as a long run, and an ordinary one still is not marked', async () => {
+    const trusted = await user();
+    const long = await post(trusted, { title: 'Year long installation', lat: 51.606, lng: -0.206, start_at: NOW, end_at: NOW + 200 * DAY });
+    expect(long.json).toMatchObject({ status: 'pending', date_kind: 'long' });
+    const normal = await post(trusted, { title: 'Ordinary weekend stall', lat: 51.607, lng: -0.207 });
+    expect(normal.json.status).toBe('community');
+    expect(normal.json.date_kind).toBeUndefined();
+  });
+
+  it('agents keep both dates and the 180 day limit', async () => {
+    const { parsePopupInput } = await import('../src/routes/popups');
+    const base = popupBody({ lat: 51.51, lng: -0.12 });
+    expect(() => parsePopupInput({ ...base, end_at: null }, NOW, true)).toThrow();
+    expect(() => parsePopupInput({ ...base, end_at: NOW + 300 * DAY }, NOW, true)).toThrow();
+  });
+
+  it('editing a live post into open dates sends it back to an admin; an edit that leaves the dates alone does not move them', async () => {
+    const poster = await user(), boss = await user({ role: 'admin' });
+    const live = (await post(poster, { title: 'Edit me into open end', lat: 51.608, lng: -0.208 })).json;
+    expect(live.status).toBe('community');
+    const edited = await api('PATCH', `/popups/${live.id}`, { user: poster, body: { end_at: null } });
+    expect(edited.json).toMatchObject({ status: 'pending', date_kind: 'open_end' });
+    // an admin approves it, then the poster edits only the text: the stand-in end does not move (votes are not reset)
+    await api('POST', `/admin/popups/${live.id}/decision`, { user: boss, body: { action: 'approve' } });
+    const before = (await api('GET', `/popups/${live.id}`)).json;
+    const later = await api('PATCH', `/popups/${live.id}`, { user: boss, body: { description: 'Now with a patio' }, now: NOW + 3 * DAY });
+    expect(later.json.end_at).toBe(before.end_at);
+    expect(later.json.votes_reset).toBe(false);
+  });
+
+  it('agents cannot publish one, even when their notes say it is ready', async () => {
+    const { publishReady } = await import('../src/db/publish');
+    const trusted = await user();
+    const r = (await post(trusted, { title: 'Ready but long run', lat: 51.609, lng: -0.209, end_at: null })).json;
+    await env.DB.prepare("INSERT INTO agent_runs (id, agent_id, trigger, status, started_at) VALUES ('run_long_1', 'triage', 'manual', 'done', ?)").bind(NOW).run();
+    await env.DB.prepare("INSERT INTO agent_notes (id, popup_id, agent_id, run_id, verdict, note, publish_ready, created_at) VALUES ('n_long_1', ?, 'triage', 'run_long_1', 'looks_real', 'ok', 1, ?)").bind(r.id, NOW).run();
+    expect(await publishReady(env.DB, r.id, 'someone', 'batch', NOW)).toBe(false);
+    expect((await env.DB.prepare('SELECT status FROM popups WHERE id = ?').bind(r.id).first<{ status: string }>())!.status).toBe('pending');
   });
 });
 

@@ -242,7 +242,7 @@ export function MePage() {
 
 /* ---------------- Admin queue ---------------- */
 type QueueItem = Popup & { poster: { id: string; name: string | null; karma: number; account_age_days: number }; open_reports: number; flags: string[]; agent_notes: AgentNote[]; ready_to_publish?: boolean };
-const FLAG_TEXT: Record<string, string> = { no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes', by_agent: 'Found by an agent' };
+const FLAG_TEXT: Record<string, string> = { long_run: 'Open or long dates: check the source', no_source_link: 'No source link', new_account: 'New account', reported: 'Reported', community_hidden: 'Hidden by votes', by_agent: 'Found by an agent' };
 const VERDICT: Record<string, [string, string]> = {
   looks_real: ['Looks real', 't-eng'], needs_check: ['Needs a check', 't-watch'], likely_fake: ['Likely fake', 't-err'],
   duplicate: ['Duplicate', 't-err'], details_changed: ['Details changed', 't-watch'], cancelled: ['Cancelled', 't-err'], out_of_scope: ['Not a pop-up', 't-err'],
@@ -323,6 +323,7 @@ export function AdminQueue() {
               <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.ready_to_publish ? <span className="tag t-eng"><Icon name="i-checkc" />Ready to publish</span> : null}</div>
               <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={appUrl(`/p/${p.slug}`)} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
               <div className="small muted">{p.location.borough ?? 'London'} · {dateRange(p)} · by <b>{p.poster.name ?? 'a member'}</b> (karma {p.poster.karma}, {p.poster.account_age_days} days)</div>
+              {p.source_url ? <a className="small" href={p.source_url} target="_blank" rel="noopener nofollow" style={{ overflowWrap: 'anywhere' }}><Icon name="i-ext" className="i" /> {p.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : null}
               <div className="row" style={{ gap: 6 }}>{p.flags.map(f => <span key={f} className={`tag ${f === 'by_agent' ? 't-ai' : 't-err'}`}><Icon name={f === 'by_agent' ? 'i-sparkle' : 'i-flag'} />{FLAG_TEXT[f] ?? f}{f === 'reported' ? ` (${p.open_reports})` : ''}</span>)}</div>
               {p.agent_notes?.length ? <AgentNotes notes={p.agent_notes} busy={dismiss.isPending} onDismiss={id => dismiss.mutate(id)} /> : null}
             </div>

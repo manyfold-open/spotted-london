@@ -97,6 +97,8 @@ export function toPublic(p: PopupRow & { cover_key?: string | null; source_check
     location: { address: p.address, borough: p.borough, lat: p.lat, lng: p.lng },
     start_at: p.start_at,
     end_at: p.end_at,
+    // Only when the dates are not a normal short run (migration 0026); start_at and end_at are then stand-ins. Left out otherwise to keep the list small.
+    ...(p.date_kind ? { date_kind: p.date_kind } : {}),
     hours_text: p.hours_text,
     source_url: p.source_url,
     status: p.status,

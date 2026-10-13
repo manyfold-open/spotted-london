@@ -38,12 +38,13 @@ type OpenNote = { id: string; agent_id: string; verdict: string; publish_ready: 
 
 /**
  * Moves a pending pop-up to 'community' when its open notes say it is ready. `actor` is the admin's id,
- * or the agent's own user id in auto mode. Returns false when it was no longer pending or not ready.
+ * or the agent's own user id in auto mode. Returns false when it was no longer pending or not ready. A pop-up with open or
+ * very long dates (`date_kind`) is never published this way: an admin decides.
  */
 export async function publishReady(db: D1Database, popupId: string, actor: string, via: 'batch' | 'auto', now: number): Promise<boolean> {
   const { results: notes } = await db.prepare('SELECT id, agent_id, verdict, publish_ready FROM agent_notes WHERE popup_id = ? AND resolved_at IS NULL').bind(popupId).all<OpenNote>();
   if (!isReady(notes)) return false;
-  const moved = await db.prepare("UPDATE popups SET status = 'community', updated_at = ? WHERE id = ? AND status = 'pending'").bind(now, popupId).run();
+  const moved = await db.prepare("UPDATE popups SET status = 'community', updated_at = ? WHERE id = ? AND status = 'pending' AND date_kind IS NULL").bind(now, popupId).run();
   if (!moved.meta.changes) return false;
   await db.prepare('UPDATE agent_notes SET resolved_at = ? WHERE popup_id = ? AND resolved_at IS NULL').bind(now, popupId).run();
   await recompute(db, popupId, now);

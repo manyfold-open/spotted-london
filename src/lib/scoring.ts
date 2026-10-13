@@ -3,6 +3,8 @@
 
 export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
+/** The longest an ordinary pop-up may run. Zack raised it from 90 to 180 days on 2026-10-03 so a big exhibition (Renoir and Love, 120 days) fits. Longer ones need an admin (date_kind 'long'). */
+export const MAX_DURATION = 180 * DAY;
 
 export type Status =
   | 'pending'
@@ -120,7 +122,8 @@ export function hot(
   const q = p.qualityPos - p.qualityNeg;
   const order = Math.log10(Math.max(Math.abs(q), 1)) * Math.sign(q);
   const bonus = p.status === 'verified_admin' ? 2 : p.status === 'verified_community' ? 1 : 0;
-  const live = p.startAt <= now && p.endAt >= now ? 1.5 : 0;
+  // A long run is always on, so it gets no "live now" lift: it sits below the pop-ups that are on for a short time.
+  const live = p.startAt <= now && p.endAt >= now && p.endAt - p.startAt <= MAX_DURATION ? 1.5 : 0;
   const decay = p.startAt > now ? (p.startAt - now) / HOUR / 48 : 0;
   return round(order + bonus + live - decay, 6);
 }

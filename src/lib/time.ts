@@ -1,7 +1,7 @@
 // Europe/London calendar helpers. Workers run in UTC, but "today" and
 // "this weekend" mean London days, including across BST changes.
 
-import { DAY } from './scoring';
+import { DAY, MAX_DURATION } from './scoring';
 
 const TZ = 'Europe/London';
 const fmt = new Intl.DateTimeFormat('en-GB', {
@@ -83,5 +83,20 @@ export function windowFor(when: When, now: number): { from: number; to: number }
   }
 }
 
-/** The longest a pop-up may run. Zack raised it from 90 to 180 days on 2026-10-03 so a big exhibition (Renoir and Love, 120 days) fits. */
-export const MAX_DURATION = 180 * DAY;
+export { MAX_DURATION };
+
+export type DateKind = 'long' | 'open_end' | 'undated';
+export const DATE_KINDS: readonly DateKind[] = ['long', 'open_end', 'undated'];
+
+/** How far past the start the end is put when no end date is announced. */
+export const OPEN_END = 365 * DAY;
+
+/**
+ * Works out the stored dates and the kind from what a person gave (null = not known). No start means no dates at all
+ * (an end date alone is not kept). Stand-ins keep start_at and end_at filled in; see migration 0026.
+ */
+export function resolveDates(start: number | null, end: number | null, now: number): { start_at: number; end_at: number; date_kind: DateKind | null } {
+  if (start === null) return { start_at: now, end_at: now + OPEN_END, date_kind: 'undated' };
+  if (end === null) return { start_at: start, end_at: Math.max(start, now) + OPEN_END, date_kind: 'open_end' };
+  return { start_at: start, end_at: end, date_kind: end - start > MAX_DURATION ? 'long' : null };
+}

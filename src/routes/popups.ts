@@ -6,7 +6,7 @@ import { jsonBody, num, oneOf, text } from '../lib/validate';
 import { CATEGORIES, safeUrl } from '../lib/extract';
 import { boxAround, CHECKIN_RADIUS_M, geohash, haversine, inLondon } from '../lib/geo';
 import { DAY, hot, initialStatus, KARMA, PUBLIC_STATUSES, voteWeight } from '../lib/scoring';
-import { MAX_DURATION, windowFor, type When } from '../lib/time';
+import { MAX_DURATION, resolveDates, windowFor, type When } from '../lib/time';
 import { recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
 import { tagFilter } from '../shared/tags';
 import { buildPopupSnapshot, entersOrLeavesPublic, readSnapshot, rebuildSnapshotSoon } from '../db/snapshot';
@@ -154,7 +154,7 @@ popups.post('/', async c => {
   const b = await jsonBody(c.req);
   await verifyTurnstile(c, typeof b.turnstile_token === 'string' ? b.turnstile_token : undefined);
 
-  const input = parsePopupInput(b, now, true);
+  const input = parsePopupInput(b, now, true, { openDates: true });
   const db = c.env.DB;
 
   if (u.role !== 'admin') {
@@ -173,7 +173,10 @@ popups.post('/', async c => {
     }
   }
 
-  const status = initialStatus({ role: u.role, karma: u.karma, verifiedPosts: u.verified_posts, badPosts: u.bad_posts }, !!input.source_url);
+  // Open or very long dates wait for an admin, however much the poster is trusted (an admin's own post counts as looked at).
+  const status = input.date_kind && u.role !== 'admin'
+    ? 'pending'
+    : initialStatus({ role: u.role, karma: u.karma, verifiedPosts: u.verified_posts, badPosts: u.bad_posts }, !!input.source_url);
   const id = newId();
   const row = {
     id, slug: slugify(input.title!), ...input, geohash: geohash(input.lat!, input.lng!), status,
@@ -218,9 +221,14 @@ popups.patch('/:id', async c => {
     throw new ApiError(403, 'not_editable', 'Only the poster can edit this, and only before it is verified.');
   }
   const b = await jsonBody(c.req);
-  const input = parsePopupInput({ ...fromRow(p), ...b }, now, false);
+  const input = parsePopupInput({ ...fromRow(p), ...b }, now, false, { openDates: true });
+  // Stand-in dates are made from "now", so an edit that leaves them alone keeps them (and the votes that went with them).
+  if (input.date_kind === p.date_kind && p.date_kind === 'undated') { input.start_at = p.start_at; input.end_at = p.end_at; }
+  if (input.date_kind === p.date_kind && p.date_kind === 'open_end' && input.start_at === p.start_at) input.end_at = p.end_at;
   const moved = input.lat !== p.lat || input.lng !== p.lng || input.start_at !== p.start_at || input.end_at !== p.end_at;
-  const set = { ...input, geohash: geohash(input.lat!, input.lng!), updated_at: now };
+  // A live post that is edited into open or very long dates goes back to an admin: that is the same rule as adding one.
+  const held = !isAdmin && !!input.date_kind && !p.date_kind && p.status !== 'pending';
+  const set = { ...input, ...(held ? { status: 'pending' } : {}), geohash: geohash(input.lat!, input.lng!), updated_at: now };
   const cols = Object.keys(set);
   const stmts = [
     c.env.DB.prepare(`UPDATE popups SET ${cols.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...cols.map(k => (set as Record<string, unknown>)[k] ?? null), p.id),
@@ -439,29 +447,38 @@ function fromRow(p: PopupRow) {
   return {
     title: p.title, host: p.host, description: p.description, category: p.category, price_type: p.price_type,
     price_text: p.price_text, address: p.address, borough: p.borough, lat: p.lat, lng: p.lng,
-    start_at: p.start_at, end_at: p.end_at, hours_text: p.hours_text, source_url: p.source_url,
+    // Stand-in dates (migration 0026) are not given back as if a person had typed them, or an edit would turn them into real ones.
+    start_at: p.date_kind === 'undated' ? null : p.start_at, end_at: p.date_kind === 'open_end' || p.date_kind === 'undated' ? null : p.end_at,
+    hours_text: p.hours_text, source_url: p.source_url,
   };
 }
 
-/** `ongoing`: agents may send a pop-up that started long ago and is still running, with its real start date. */
-export function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean, opts: { ongoing?: boolean } = {}) {
+/**
+ * `ongoing`: agents may send a pop-up that started long ago and is still running, with its real start date.
+ * `openDates`: a person may leave the end date out (no end announced), the start date too (no dates announced), or
+ * give a run of more than 180 days. These get a `date_kind` and need a source link, and the route sends them to an
+ * admin first. Agents keep both dates and the 180 day limit.
+ */
+export function parsePopupInput(b: Record<string, unknown>, now: number, creating: boolean, opts: { ongoing?: boolean; openDates?: boolean } = {}) {
   const title = text(b, 'title', { min: 3, max: 100, required: true });
   const category = oneOf(b, 'category', CATEGORIES, { required: true });
   const lat = num(b, 'lat', { required: true }), lng = num(b, 'lng', { required: true });
   if (!inLondon(lat!, lng!)) throw bad('outside_london', 'The location must be in London.');
-  const start_at = num(b, 'start_at', { required: true }), end_at = num(b, 'end_at', { required: true });
-  if (end_at! <= start_at!) throw bad('dates_invalid', 'The end must be after the start.');
-  if (end_at! - start_at! > MAX_DURATION) throw bad('too_long', `A pop-up can run for at most ${MAX_DURATION / DAY} days.`);
-  // A pop-up that started a while ago and is still running is fine (someone may find it late). MAX_DURATION bounds how far back, and it must not have ended.
-  if (creating && end_at! < now) throw bad('already_ended', 'This pop-up has already ended.');
+  const given = { start: num(b, 'start_at', { required: !opts.openDates }), end: num(b, 'end_at', { required: !opts.openDates }) };
+  const { start_at, end_at, date_kind } = opts.openDates ? resolveDates(given.start, given.end, now) : { start_at: given.start!, end_at: given.end!, date_kind: null };
+  if (end_at <= start_at) throw bad('dates_invalid', 'The end must be after the start.');
+  if (!opts.openDates && end_at - start_at > MAX_DURATION) throw bad('too_long', `A pop-up can run for at most ${MAX_DURATION / DAY} days.`);
+  // A pop-up that started a while ago and is still running is fine (someone may find it late). It must not have ended.
+  if (creating && end_at < now) throw bad('already_ended', 'This pop-up has already ended.');
   let source_url: string | null = text(b, 'source_url', { max: 500 });
   if (source_url) {
     const u = safeUrl(source_url);
     if (!u) throw bad('source_url_invalid', 'The source link must be a public web address.');
     source_url = u.toString();
   }
+  if (date_kind && !source_url) throw bad('source_required', 'Add a link to a page that shows this pop-up, so an admin can check it.');
   return {
-    title, category, lat, lng, start_at, end_at, source_url,
+    title, category, lat, lng, start_at, end_at, date_kind, source_url,
     host: text(b, 'host', { max: 100 }),
     description: text(b, 'description', { max: 2000 }),
     address: text(b, 'address', { max: 200 }),
