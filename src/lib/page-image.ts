@@ -3,7 +3,9 @@
 // Only the photo backfill uses it: a header, a menu or a footer picture is never this event's, so we start at the
 // first <h1> and stop at the footer, and skip logos, icons, tiny pictures, GIFs and SVGs.
 
-const BAD_NAME = /(logo|favicon|sprite|placeholder|icon|avatar|badge|flag|arrow|pixel|spacer|loading|blank|gmap|navigation|\/maps?\/)/i;
+// Maps: a venue page's "how to find us" picture is never the event's photo. Google's static map and tile hosts, and a name,
+// class or alt that holds the word map on its own ("Map of the venue", venue_map.png), but not "Mapplethorpe" or "mapbox".
+const BAD_NAME = /(logo|favicon|sprite|placeholder|icon|avatar|badge|flag|arrow|pixel|spacer|loading|blank|gmap|navigation|\/maps?\/|maps\.googleapis|maps\.gstatic|google\.[a-z.]+\/maps|staticmap|(^|[^a-z])maps?([^a-z]|$))/i;
 const GOOD_TYPE = /\.(jpe?g|png|webp)(\?|#|$)/i;
 const MAX_TAGS = 25;
 const MIN_WIDTH = 400;

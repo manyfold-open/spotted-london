@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { backfillPhotos, IDLE_AFTER_LAP, isListingPage, RETRY_AFTER, RETRY_SOON, retryAfter } from '../src/db/photo-backfill';
+import { backfillPhotos, IDLE_AFTER_LAP, isListingPage, RETRY_AFTER, RETRY_SOON, retryAfter, sharedSources } from '../src/db/photo-backfill';
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 8, 30, 13);
@@ -165,6 +165,35 @@ describe('backfillPhotos', () => {
       expect(isListingPage(u), u).toBe(true);
     for (const u of ['https://gallery.test/exhibitions/643-peter-howson-salvation/', 'https://venue.test/events/halloween-late', 'https://shop.test/', 'https://shop.test/sale', 'not a url'])
       expect(isListingPage(u), u).toBe(false);
+  });
+
+  it('knows which source links more than one pop-up uses, in one query, ignoring removed ones', async () => {
+    await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE id LIKE 'bf_%' OR id LIKE 'cur_%' OR id LIKE 'lst_%'").run();
+    await addPopup('sh_1', 'https://venue.test/');
+    await addPopup('sh_2', 'https://venue.test/');
+    await addPopup('sh_3', 'https://venue.test/show-3');
+    await addPopup('sh_4', 'https://gone.example/', 'removed');
+    await addPopup('sh_5', 'https://gone.example/');
+    const shared = await sharedSources(env.DB, ['https://venue.test/', 'https://venue.test/show-3', 'https://gone.example/', null, 'https://never.test/']);
+    expect([...shared]).toEqual(['https://venue.test/']);
+    expect((await sharedSources(env.DB, [null])).size).toBe(0);
+  });
+
+  it('does not use the body picture of a page that two pop-ups share, but does use its og:image', async () => {
+    await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE id LIKE 'sh_%'").run();
+    await addPopup('own_1', 'https://twin.test/');
+    await addPopup('own_2', 'https://twin.test/');
+    await addPopup('own_3', 'https://solo.test/');
+    const bodyOnly = (u: string) => new Response(`<head></head><body><h1>x</h1><img src="/${u}.jpg" width="900"></body>`, { headers: { 'content-type': 'text/html' } });
+    const f = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('.jpg')) { const b = new Uint8Array(5000); b.set([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 3, 0x20, 4, 0xb0, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]); return new Response(b, { headers: { 'content-type': 'image/jpeg' } }); }
+      return url.hostname === 'twin.test' ? bodyOnly('twin') : bodyOnly('solo');
+    }) as unknown as typeof fetch;
+    expect(await run(NOW, 10, f)).toBe(1);
+    expect(await photos('own_1')).toHaveLength(0);
+    expect(await photos('own_2')).toHaveLength(0);
+    expect(await photos('own_3')).toHaveLength(1);
   });
 
   it('does not read a list page, and says why', async () => {

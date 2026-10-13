@@ -46,13 +46,27 @@ export async function pagesFor(db: D1Database, p: Candidate): Promise<string[]> 
   }).slice(0, 2);
 }
 
-/** Try one pop-up. Returns the reason it got no photo, or null when one was saved. */
-export async function backfillOne(env: Pick<Bindings, 'DB' | 'IMAGES'>, p: Candidate, now: number, fetcher: typeof fetch = fetch): Promise<string | null> {
+/**
+ * Of these source links, the ones that two or more pop-ups share (a venue's home page for two different shows). One address
+ * cannot be the own page of two events, so a picture picked from the page's content would be a guess. One query for the whole
+ * batch, not one per pop-up: popups.source_url has no index, so every lookup reads the table.
+ */
+export async function sharedSources(db: D1Database, urls: (string | null)[]): Promise<Set<string>> {
+  const list = [...new Set(urls.filter((u): u is string => !!u))];
+  if (!list.length) return new Set();
+  const marks = list.map(() => '?').join(',');
+  const { results } = await db.prepare(`SELECT source_url FROM popups WHERE source_url IN (${marks}) AND status NOT IN ('removed', 'hidden') GROUP BY source_url HAVING COUNT(*) > 1`)
+    .bind(...list).all<{ source_url: string }>();
+  return new Set(results.map(r => r.source_url));
+}
+
+/** Try one pop-up. Returns the reason it got no photo, or null when one was saved. `shared`: source links that other pop-ups use too. */
+export async function backfillOne(env: Pick<Bindings, 'DB' | 'IMAGES'>, p: Candidate, now: number, fetcher: typeof fetch = fetch, shared: Set<string> = new Set()): Promise<string | null> {
   const pages = await pagesFor(env.DB, p);
   if (!pages.length) return 'No page to read: the source is a social post, a list of many events, or there is no link.';
   let why = 'The page has no main picture.';
   for (const page of pages) {
-    const found = await pagePhotoResult(page, fetcher, { body: true });
+    const found = await pagePhotoResult(page, fetcher, { body: !shared.has(page) });
     if (found.image === null) { why = found.why; continue; }
     const image = found.image;
     if (NOT_A_PHOTO.test(new URL(image).pathname)) { why = 'The page picture looks like a logo.'; continue; }
@@ -102,10 +116,11 @@ export async function backfillPhotos(env: Pick<Bindings, 'DB' | 'IMAGES'>, now: 
   await writeCursor(env.DB, lapDone ? { after: '', idle_until: now + IDLE_AFTER_LAP } : { after: results[results.length - 1].id, idle_until: 0 }, now);
   if (!results.length) return 0;
   await env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES (?, 'photo-bot@system.invalid', 'Photo backfill', 'user', 0, 0, ?)").bind(BOT_ID, now).run();
+  const shared = await sharedSources(env.DB, results.map(p => p.source_url));
   let saved = 0;
   for (const p of results) {
     let why: string | null;
-    try { why = await backfillOne(env, p, now, fetcher); } catch (e) { console.error('photo backfill failed', p.id, e); why = 'It could not be read.'; }
+    try { why = await backfillOne(env, p, now, fetcher, shared); } catch (e) { console.error('photo backfill failed', p.id, e); why = 'It could not be read.'; }
     if (!why) saved++;
     await env.DB.prepare('INSERT OR REPLACE INTO photo_tries (popup_id, tried_at, saved, reason, retry_at) VALUES (?, ?, ?, ?, ?)').bind(p.id, now, why ? 0 : 1, why, why ? now + retryAfter(why) : null).run();
   }
