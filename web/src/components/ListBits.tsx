@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api, listParams, type Popup } from '../lib/api';
 import { filterPopups } from '../../../src/shared/filter-popups';
 import { forYou, hiddenCategories, syncActions } from '../../../src/shared/taste';
 import { updateTaste, useTaste } from '../lib/taste';
 import { useAsk, useAskStatus } from '../lib/ask';
-import { CAT_LIST, CATS, catIcon, looksLikeEmail } from '../lib/format';
+import { CAT_LIST, CATS, catIcon } from '../lib/format';
 import { mergeMe } from '../lib/cache';
-import { useDebounced, useErrorToast, useFilters, useMe, useMyState } from '../lib/hooks';
+import { useDebounced, useFilters, useMe, useMyState } from '../lib/hooks';
 import { Icon } from './Icon';
 
 const WHENS = [['today', 'Today'], ['weekend', 'This weekend'], ['week', 'Next 7 days'], ['all', 'All upcoming']] as const;
@@ -104,28 +104,10 @@ export function VerifiedSwitch() {
 }
 
 export function Newsletter() {
-  const { data: me } = useMe();
-  const [email, setEmail] = useState('');
-  const [bad, setBad] = useState(false);
-  const onError = useErrorToast();
-  const sub = useMutation({ mutationFn: (e: string) => api('/newsletter/subscribe', { method: 'POST', json: { email: e } }), onError });
-  if (sub.isSuccess) return <div className="notice good" style={{ marginTop: 24 }}><Icon name="i-mail" /><span>Check your inbox to confirm. The first issue lands on Thursday morning.</span></div>;
   return (
-    <div className="notice note" style={{ marginTop: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div className="notice note" style={{ marginTop: 24, alignItems: 'center' }}>
       <Icon name="i-mail" />
-      <div style={{ flex: 1, minWidth: 180 }}><b>This Weekend in London Pop-ups</b><br /><span className="small">The ten best verified pop-ups, every Thursday.</span></div>
-      <form className="newsform" noValidate onSubmit={e => {
-        e.preventDefault();
-        if (!me && !looksLikeEmail(email)) return setBad(true);
-        sub.mutate(me?.email ?? email.trim());
-      }}>
-        <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
-          {me ? null : <label style={{ flex: 1, minWidth: 0 }}><span className="sr">Email</span><input className={`input ${bad ? 'bad' : ''}`} type="email" inputMode="email" autoComplete="email" value={email}
-            onChange={e => { setEmail(e.target.value); setBad(false); }} placeholder="you@email.com" style={{ minHeight: 38, borderRadius: 999 }} aria-invalid={bad} aria-describedby={bad ? 'newserr' : undefined} /></label>}
-          <button className="btn primary sm" disabled={sub.isPending}>{sub.isPending ? <span className="spin" /> : null}{me ? 'Subscribe with my email' : 'Subscribe'}</button>
-        </div>
-        {bad ? <span className="ferr" id="newserr" role="alert">Enter an email address like name@example.com.</span> : null}
-      </form>
+      <div style={{ flex: 1, minWidth: 0 }}><b>Weekly digest, coming soon</b><br /><span className="small">The ten best verified pop-ups, once a week. Sign-up is not open yet.</span></div>
     </div>
   );
 }

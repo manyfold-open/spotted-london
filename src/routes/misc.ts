@@ -1,23 +1,13 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { ApiError, bad, newId } from '../lib/util';
-import { jsonBody, text } from '../lib/validate';
+import { ApiError } from '../lib/util';
 
-/* ---------- newsletter (double opt-in; sending goes through Beehiiv later) ---------- */
+/* ---------- newsletter (sign-up closed for now; confirm and unsubscribe still work for old rows) ---------- */
 export const newsletter = new Hono<AppEnv>();
 
-newsletter.post('/subscribe', async c => {
-  const b = await jsonBody(c.req);
-  const email = text(b, 'email', { max: 254, required: true })!.toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('email_invalid', 'Enter a valid email address.');
-  const token = newId() + newId();
-  await c.env.DB.prepare(
-    `INSERT INTO subscribers (email, token, created_at) VALUES (?, ?, ?)
-     ON CONFLICT (email) DO UPDATE SET unsubscribed_at = NULL, token = CASE WHEN confirmed = 1 THEN token ELSE excluded.token END`,
-  ).bind(email, token, c.get('now')).run();
-  // TODO(newsletter): send the confirmation email. Until then, dev returns the link so it can be tested.
-  const dev = c.env.ENVIRONMENT === 'development';
-  return c.json({ ok: true, message: 'Check your inbox to confirm.', ...(dev ? { confirm_token: token } : {}) });
+// Closed until email sending is connected (Resend). Nothing is stored, so nobody is signed up for a mail that never comes.
+newsletter.post('/subscribe', () => {
+  throw new ApiError(503, 'newsletter_unavailable', 'The weekly digest is coming soon. Sign-up is not open yet.');
 });
 
 newsletter.get('/confirm', async c => {
