@@ -63,6 +63,34 @@ function rewriteDocument(response: Response, mount: string): Response {
   return out;
 }
 
+/**
+ * The manifest in web/public is written with relative addresses so it works at a root and under a mount. Under a
+ * mount it is sent with absolute paths ("/spotted-london/", "/spotted-london/icons/..."), the form every other home
+ * screen app uses, so the iPhone home screen app does not have to resolve "./" to know its scope.
+ */
+async function absoluteManifest(response: Response, mount: string): Promise<Response> {
+  let manifest: Record<string, unknown>;
+  try { manifest = await response.clone().json() as Record<string, unknown>; } catch { return response; }
+  const base = new URL(`${mount}/`, 'https://mount.invalid');
+  const abs = (value: unknown) => (typeof value === 'string' ? new URL(value, base).pathname + new URL(value, base).search : value);
+  for (const key of ['id', 'start_url', 'scope']) if (key in manifest) manifest[key] = abs(manifest[key]);
+  for (const list of ['icons', 'shortcuts']) {
+    const items = manifest[list];
+    if (!Array.isArray(items)) continue;
+    manifest[list] = items.map((item: Record<string, unknown>) => {
+      const out = { ...item };
+      if ('src' in out) out.src = abs(out.src);
+      if ('url' in out) out.url = abs(out.url);
+      if (Array.isArray(out.icons)) out.icons = out.icons.map((i: Record<string, unknown>) => ({ ...i, src: abs(i.src) }));
+      return out;
+    });
+  }
+  const out = new Response(JSON.stringify(manifest), response);
+  out.headers.delete('etag');
+  out.headers.delete('content-length');
+  return out;
+}
+
 type Fetch<E> = (request: Request, env: E, ctx: ExecutionContext) => Response | Promise<Response>;
 
 /** Wraps a fetch handler so it can also be served under BASE_PATH. */
@@ -95,6 +123,7 @@ export function withMount<E extends { BASE_PATH?: string }>(inner: Fetch<E>): Fe
       response = new Response(response.body, response);
       response.headers.set('location', prefixed(location, mount));
     }
+    if (url.pathname === '/manifest.webmanifest' && response.status === 200) return absoluteManifest(response, mount);
     return shouldRewrite(response) ? rewriteDocument(response, mount) : response;
   };
 }
