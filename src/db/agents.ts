@@ -119,7 +119,7 @@ export function brief(a: AgentRow, runId: string, appUrl: string, now: number): 
   return [
     `Spotted London: ${info.name} run ${runId}${a.name !== info.name ? ` (${a.name})` : ''}.`,
     `Today in London is ${today}, ${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}.`,
-    `Use the spotted-london skill, section "${info.name}". Use the Spotted tools from the MCP server named "spotted" (${new URL('/mcp', appUrl)}), which already carries your key.`,
+    `Use the spotted-london skill, section "${info.name}". Use the Spotted tools from the MCP server named "spotted" (${appUrl.replace(/\/+$/, '')}/mcp), which already carries your key.`,
     `Your job: ${info.job}`,
     `Write at most ${a.max_items} ${info.unit} in this run. Pass run_id "${runId}" to every tool that asks for it.`,
     'When you are done, call finish_run with a short summary: what you looked at, what you sent, and anything the admin should know.',

@@ -1,7 +1,8 @@
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv, UserRow } from '../types';
-import { appOrigin, ipHash, verifyTurnstile } from '../middleware';
+import { appBase, ipHash, verifyTurnstile } from '../middleware';
+import { mountOf } from '../mount';
 import { ApiError, bad, newId, sha256 } from '../lib/util';
 import { jsonBody, text } from '../lib/validate';
 import {
@@ -23,7 +24,7 @@ export async function startSession(c: Context<AppEnv>, userId: string) {
   await c.env.DB.prepare('INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
     .bind(await sha256(token), userId, now + SESSION_TTL, now).run();
   setCookie(c, SESSION_COOKIE, token, {
-    httpOnly: true, secure: isHttps(c), sameSite: 'Lax', path: '/', maxAge: SESSION_TTL / 1000,
+    httpOnly: true, secure: isHttps(c), sameSite: 'Lax', path: mountOf(c) || '/', maxAge: SESSION_TTL / 1000,
   });
 }
 
@@ -85,7 +86,7 @@ auth.post('/magic-link', async c => {
   await db.prepare('INSERT INTO login_tokens (token_hash, email, ip_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
     .bind(tokenHash, email, ip, now + MAGIC_TTL, now).run();
 
-  const link = `${appOrigin(c)}/login/verify?token=${token}${returnTo !== '/' ? `&return_to=${encodeURIComponent(returnTo)}` : ''}`;
+  const link = `${appBase(c)}/login/verify?token=${token}${returnTo !== '/' ? `&return_to=${encodeURIComponent(returnTo)}` : ''}`;
   const sent = await sendEmail(c.env, { to: email, ...magicLinkEmail(link) }).catch(() => {
     throw new ApiError(502, 'email_failed', 'We could not send the email. Try again in a minute.');
   });
@@ -121,7 +122,7 @@ auth.post('/magic/verify', async c => {
 auth.post('/logout', async c => {
   const sid = getCookie(c, SESSION_COOKIE);
   if (sid) await c.env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(await sha256(sid)).run();
-  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: isHttps(c) });
+  deleteCookie(c, SESSION_COOKIE, { path: mountOf(c) || '/', secure: isHttps(c) });
   return c.json({ ok: true });
 });
 
@@ -129,7 +130,7 @@ auth.post('/logout', async c => {
 
 const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
-const googleRedirect = (c: Context<AppEnv>) => `${appOrigin(c)}/api/v1/auth/google/callback`;
+const googleRedirect = (c: Context<AppEnv>) => `${appBase(c)}/api/v1/auth/google/callback`;
 
 auth.get('/google', async c => {
   if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) {
@@ -139,7 +140,7 @@ auth.get('/google', async c => {
   await c.env.DB.prepare('INSERT INTO oauth_states (state_hash, verifier, return_to, expires_at) VALUES (?, ?, ?, ?)')
     .bind(await sha256(state), verifier, safeReturnTo(c.req.query('return_to')), c.get('now') + OAUTH_TTL).run();
   // Ties the callback to this browser, which stops login CSRF.
-  setCookie(c, OAUTH_COOKIE, state, { httpOnly: true, secure: isHttps(c), sameSite: 'Lax', path: '/api/v1/auth/google', maxAge: OAUTH_TTL / 1000 });
+  setCookie(c, OAUTH_COOKIE, state, { httpOnly: true, secure: isHttps(c), sameSite: 'Lax', path: `${mountOf(c)}/api/v1/auth/google`, maxAge: OAUTH_TTL / 1000 });
   const q = new URLSearchParams({
     client_id: c.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirect(c), response_type: 'code', scope: 'openid email profile',
     state, code_challenge: await pkceChallenge(verifier), code_challenge_method: 'S256', prompt: 'select_account',
@@ -150,10 +151,10 @@ auth.get('/google', async c => {
 interface GoogleClaims { iss: string; aud: string; sub: string; email?: string; email_verified?: boolean; name?: string; exp: number }
 
 auth.get('/google/callback', async c => {
-  const fail = (code: string) => c.redirect(`${appOrigin(c)}/?login_error=${code}`, 302);
+  const fail = (code: string) => c.redirect(`${appBase(c)}/?login_error=${code}`, 302);
   const q = c.req.query();
   const cookieState = getCookie(c, OAUTH_COOKIE);
-  deleteCookie(c, OAUTH_COOKIE, { path: '/api/v1/auth/google', secure: isHttps(c) });
+  deleteCookie(c, OAUTH_COOKIE, { path: `${mountOf(c)}/api/v1/auth/google`, secure: isHttps(c) });
   if (q.error) return fail('google_cancelled');
   if (!q.code || !q.state || !cookieState || cookieState !== q.state) return fail('state_mismatch');
 
@@ -194,5 +195,5 @@ auth.get('/google/callback', async c => {
     return fail(e instanceof ApiError ? e.code : 'server_error');
   }
   await startSession(c, u.id);
-  return c.redirect(`${appOrigin(c)}${safeReturnTo(st.return_to)}`, 302);
+  return c.redirect(`${appBase(c)}${safeReturnTo(st.return_to)}`, 302);
 });

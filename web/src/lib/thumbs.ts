@@ -5,6 +5,7 @@
 import { useEffect } from 'react';
 import { api } from './api';
 import { compressImage } from './image';
+import { appUrl } from './base';
 
 const THUMB_EDGE = 640; // a card shows a photo about 100 to 260 px wide, so this is sharp on a 2x or 3x screen
 const THUMB_MAX_BYTES = 150_000; // what the server accepts
@@ -31,7 +32,7 @@ export async function runThumbs({ max = Infinity, stop, onProgress }: { max?: nu
     for (const it of page.items) {
       if (stop?.()) return { made, failed };
       try {
-        const res = await fetch(it.url);
+        const res = await fetch(appUrl(it.url));
         if (!res.ok) throw new Error('not found');
         await makeThumb(it.popup_id, it.id, await res.blob());
         made++;

@@ -13,4 +13,11 @@ export default defineConfig({
   },
   // the map library is big and only loads on the map and Add screens
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 1100 },
+  experimental: {
+    // The site can be mounted under a prefix (app.manyfold.ai/spotted-london, see src/mount.ts). The Worker prefixes
+    // the paths it writes into the HTML. Paths that the scripts build for themselves (the files a lazy page loads
+    // first) are prefixed in the browser, from the same <meta name="app-base">. At the root the prefix is empty.
+    renderBuiltUrl: (filename, { hostType }) =>
+      hostType === 'js' ? { runtime: `((document.querySelector('meta[name="app-base"]')?.content ?? '') + ${JSON.stringify('/' + filename)})` } : undefined,
+  },
 });

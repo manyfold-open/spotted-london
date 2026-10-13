@@ -75,6 +75,16 @@ Live at **https://spotted-london.zack11712.workers.dev**.
 
 Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APIFY_TOKEN`. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN`, `AGENT_ADMIN_TOKEN`.
 
+### Mounted under a prefix
+
+The same build can be served at the root of a host or under a prefix on a host shared with other apps (for example `https://app.manyfold.ai/spotted-london`). Set the var `BASE_PATH` (for example `/spotted-london`) and make `APP_URL` the full public address including the prefix. Then route that prefix to the Worker (`app.manyfold.ai/spotted-london` and `app.manyfold.ai/spotted-london/*` in `wrangler.jsonc` `routes`) and list it in `assets.run_worker_first`. Without `BASE_PATH` nothing changes. To try it locally:
+
+```bash
+npm run build:web
+npm run dev:local -- --var BASE_PATH:/spotted-london --var APP_URL:http://localhost:8787/spotted-london
+# open http://localhost:8787/spotted-london/
+```
+
 ### How deploys happen
 
 Cloudflare Workers Builds is connected to this repo (no GitHub Actions).

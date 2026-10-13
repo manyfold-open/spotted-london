@@ -12,6 +12,7 @@ import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnst
 import { Logo } from '../components/Shell';
 import { flushTaste, forgetTaste } from '../lib/taste';
 import { markSigningIn, setTrackingOptOut, trackingOptedOut } from '../lib/track';
+import { appUrl } from '../lib/base';
 
 /* ---------------- Saved ---------------- */
 export function Saved() {
@@ -57,7 +58,7 @@ export function SignInPrompt({ title, text, to }: { title: string; text: string;
       <h1 style={{ fontSize: 28 }}>{title}</h1>
       <p className="muted" style={{ margin: '8px 0 18px' }}>{text}</p>
       <div className="stack">
-        {p?.google ? <a className="btn primary block" href={`/api/v1/auth/google?return_to=${back}`} onClick={() => markSigningIn('page')}>Continue with Google</a> : null}
+        {p?.google ? <a className="btn primary block" href={appUrl(`/api/v1/auth/google?return_to=${back}`)} onClick={() => markSigningIn('page')}>Continue with Google</a> : null}
         {!p || p.email || !p.google ? <Link className={`btn block ${p?.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`}>{p?.google ? 'Use email instead' : 'Sign in'}</Link> : null}
         <Link className="btn subtle block" to="/">Keep browsing</Link>
       </div>
@@ -111,7 +112,7 @@ export function SignIn() {
       {providers.data?.google ? (
         <>
           {providers.data.email ? <div className="row" style={{ margin: '16px 0' }}><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /><span className="small muted">or</span><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /></div> : null}
-          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`} onClick={() => markSigningIn('page')}>Continue with Google</a>
+          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={appUrl(`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`)} onClick={() => markSigningIn('page')}>Continue with Google</a>
         </>
       ) : null}
       <p className="small muted" style={{ marginTop: 16 }}>We never show your email to other people.</p>
@@ -261,7 +262,7 @@ function AgentNotes({ notes, onDismiss, busy }: { notes: AgentNote[]; onDismiss:
         {n.evidence ? <p className="small muted">Quote: &ldquo;{n.evidence}&rdquo;</p> : null}
         <div className="row small" style={{ gap: 12 }}>
           {n.evidence_url ? <a href={n.evidence_url} target="_blank" rel="noopener noreferrer"><Icon name="i-ext" className="i" /> Source</a> : null}
-          {n.duplicate_of ? <a href={`/p/${n.duplicate_of}`} onClick={e => { e.preventDefault(); open(n.duplicate_of!); }}>Open the original</a> : null}
+          {n.duplicate_of ? <a href={appUrl(`/p/${n.duplicate_of}`)} onClick={e => { e.preventDefault(); open(n.duplicate_of!); }}>Open the original</a> : null}
           <span className="spacer" />
           <button className="btn sm subtle" disabled={busy} onClick={() => onDismiss(n.id)}>Dismiss</button>
         </div>
@@ -318,7 +319,7 @@ export function AdminQueue() {
             <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} />{p.ready_to_publish ? <span className="tag t-eng"><Icon name="i-checkc" />Ready to publish</span> : null}</div>
-              <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={`/p/${p.slug}`} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
+              <h3 style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 800 }}><a href={appUrl(`/p/${p.slug}`)} style={{ color: 'var(--ink)' }} onClick={e => { e.preventDefault(); open(p.slug); }}>{p.title}</a></h3>
               <div className="small muted">{p.location.borough ?? 'London'} · {dateRange(p)} · by <b>{p.poster.name ?? 'a member'}</b> (karma {p.poster.karma}, {p.poster.account_age_days} days)</div>
               <div className="row" style={{ gap: 6 }}>{p.flags.map(f => <span key={f} className={`tag ${f === 'by_agent' ? 't-ai' : 't-err'}`}><Icon name={f === 'by_agent' ? 'i-sparkle' : 'i-flag'} />{FLAG_TEXT[f] ?? f}{f === 'reported' ? ` (${p.open_reports})` : ''}</span>)}</div>
               {p.agent_notes?.length ? <AgentNotes notes={p.agent_notes} busy={dismiss.isPending} onDismiss={id => dismiss.mutate(id)} /> : null}
@@ -412,7 +413,7 @@ export function CrashPage() {
         <p className="muted">{stale ? 'Reload the page to get the latest version.' : 'This page hit a problem. Reload to try again. If it keeps happening, go back to Explore.'}</p>
         <div className="row">
           <button className="btn primary" onClick={() => void resetAndReload()}>Reload</button>
-          <a className="btn" href="/">Back to Explore</a>
+          <a className="btn" href={appUrl('/')}>Back to Explore</a>
         </div>
         <button className="linkbtn small" onClick={() => {
           const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 14).join('\n') : '';

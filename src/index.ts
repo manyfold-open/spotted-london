@@ -17,8 +17,17 @@ import { agentsAdmin } from './routes/agents';
 import { mcp } from './mcp';
 import { events } from './routes/events';
 import { insights } from './routes/insights';
+import { withMount } from './mount';
 
 const app = new Hono<AppEnv>();
+
+// At the root only the paths in wrangler.jsonc `run_worker_first` reach the Worker; the static files never do.
+// Under a mount (src/mount.ts) every request does, because the prefix has to come off before the assets can be
+// found. So anything that is not the Worker's own goes straight to the static files, before the session lookup
+// (no database read per script or picture). Keep this list in step with `run_worker_first`.
+const WORKER_PATHS = /^\/(api|mcp|login|p|privacy|llms\.txt|sitemap\.xml|robots\.txt)(\/|$)/;
+app.on(['GET', 'HEAD'], '*', (c, next) => (WORKER_PATHS.test(c.req.path) ? next() : c.env.ASSETS.fetch(c.req.raw)));
+
 app.use('*', session, sameOrigin);
 
 const api = new Hono<AppEnv>();
@@ -55,7 +64,7 @@ app.onError((err, c) => {
 });
 
 export default {
-  fetch: app.fetch,
+  fetch: withMount<Bindings>((request, env, ctx) => app.fetch(request, env, ctx)),
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(runCron(controller.cron, env));
   },

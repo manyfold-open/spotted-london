@@ -10,23 +10,24 @@ const manifest = JSON.parse(manifestText) as {
 };
 
 describe('web app manifest', () => {
-  it('opens the app full screen from the root', () => {
+  // Relative to the manifest, so it works at a root and under a mount (app.manyfold.ai/spotted-london).
+  it('opens the app full screen from where it is served', () => {
     expect(manifest.display).toBe('standalone');
-    expect(manifest.start_url).toBe('/');
-    expect(manifest.scope).toBe('/');
+    expect(manifest.start_url).toBe('./');
+    expect(manifest.scope).toBe('./');
     expect(manifest.short_name.length).toBeLessThanOrEqual(12);
   });
 
   it('has a 192 and a 512 icon, plain and maskable', () => {
     for (const purpose of ['any', 'maskable']) {
       for (const sizes of ['192x192', '512x512']) {
-        expect(manifest.icons.some(i => i.purpose === purpose && i.sizes === sizes && i.src.startsWith('/icons/'))).toBe(true);
+        expect(manifest.icons.some(i => i.purpose === purpose && i.sizes === sizes && i.src.startsWith('icons/'))).toBe(true);
       }
     }
   });
 
   it('keeps shortcuts inside the app', () => {
-    expect(manifest.shortcuts.map(s => s.url)).toEqual(['/add', '/saved']);
+    expect(manifest.shortcuts.map(s => s.url)).toEqual(['add', 'saved']);
   });
 
   it('is linked from the page, with the iOS tags', () => {

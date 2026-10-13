@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage';
 import { Submit } from './pages/Submit';
 import { Connect } from './pages/Connect';
 import { AdminQueue, CrashPage, MePage, noteCrash, NotFound, Saved, SignIn } from './pages/Account';
+import { BASE } from './lib/base';
 
 const AgentsPage = lazy(() => import('./pages/Agents'));
 const InsightsPage = lazy(() => import('./pages/Insights'));
@@ -50,7 +51,7 @@ const router = createBrowserRouter([
       { path: '*', element: <NotFound /> },
     ],
   },
-]);
+], { basename: BASE || undefined });
 
 createRoot(document.getElementById('root')!, { onCaughtError: (_e, info) => noteCrash(info) }).render(
   <StrictMode>

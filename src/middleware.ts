@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import type { AppEnv, UserRow } from './types';
 import { ApiError, sha256 } from './lib/util';
 import { SESSION_COOKIE } from './lib/auth';
+import { mountOf } from './mount';
 
 const isDev = (c: Context<AppEnv>) => c.env.ENVIRONMENT === 'development';
 
@@ -117,13 +118,19 @@ export async function withinPublicLimit(c: Context<AppEnv>, lane: string): Promi
   return !who || (await c.env.MCP_LIMIT.limit({ key: `${lane}:${who}` })).success;
 }
 
-/** The site's own origin, from APP_URL (falls back to the request origin in development). */
-export function appOrigin(c: Context<AppEnv>): string {
+/**
+ * The site's public address with any mount path and no trailing slash (https://app.manyfold.ai/spotted-london),
+ * from APP_URL. In development it falls back to the address the request came in on.
+ */
+export function appBase(c: Context<AppEnv>): string {
   const u = c.env.APP_URL;
-  if (u) return new URL(u).origin;
-  if (isDev(c)) return new URL(c.req.url).origin;
+  if (u) return u.replace(/\/+$/, '');
+  if (isDev(c)) return new URL(c.req.url).origin + mountOf(c);
   throw new ApiError(501, 'app_url_missing', 'APP_URL is not configured on the server.');
 }
+
+/** The address the visitor is using right now: this request's origin plus the prefix it came in under. */
+export const publicBase = (c: Context<AppEnv>): string => new URL(c.req.url).origin + mountOf(c);
 
 /**
  * CSRF guard for cookie sessions. SameSite=Lax already blocks most cross-site posts;

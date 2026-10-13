@@ -5,6 +5,7 @@ import { api, type InsightDays, type Insights } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CATS } from '../lib/format';
+import { appUrl } from '../lib/base';
 
 // Admin only. How people use Spotted, as counts: visitors, what they open and save, whether they come back.
 // Nothing here says who anyone is. The events are anonymous (src/lib/events.ts); the account counts come from D1.
@@ -110,7 +111,7 @@ function Accounts({ a, days }: { a: Insights['accounts']; days: number }) {
         <li><b className="num">{fmt(act.asks)}</b> Ask {act.asks === 1 ? 'question' : 'questions'}</li>
       </ul>
       <h3 style={{ marginTop: 16 }}>Most saved right now</h3>
-      <Rows label="Most saved pop-ups" rows={a.most_saved.map(m => ({ key: m.slug, label: <a href={`/p/${m.slug}`} target="_blank" rel="noopener">{m.title}</a>, n: m.saves }))} />
+      <Rows label="Most saved pop-ups" rows={a.most_saved.map(m => ({ key: m.slug, label: <a href={appUrl(`/p/${m.slug}`)} target="_blank" rel="noopener">{m.title}</a>, n: m.saves }))} />
     </section>
   );
 }
@@ -141,7 +142,7 @@ function Behaviour({ e }: { e: Stats }) {
       <section className="panel ins-panel" aria-labelledby="in-pop">
         <h2 id="in-pop">What people open</h2>
         <h3 style={{ marginTop: 10 }}>Pop-ups</h3>
-        <Rows label="Most opened pop-ups" rows={e.top_popups.map(p => ({ key: p.slug, label: <a href={`/p/${p.slug}`} target="_blank" rel="noopener">{p.title}</a>, n: p.opens, extra: p.saves ? `${fmt(p.saves)} saved` : undefined }))} />
+        <Rows label="Most opened pop-ups" rows={e.top_popups.map(p => ({ key: p.slug, label: <a href={appUrl(`/p/${p.slug}`)} target="_blank" rel="noopener">{p.title}</a>, n: p.opens, extra: p.saves ? `${fmt(p.saves)} saved` : undefined }))} />
         <h3 style={{ marginTop: 16 }}>Categories</h3>
         <Rows label="Opens per category" rows={e.categories.map(c => ({ key: c.key, label: CATS[c.key as keyof typeof CATS] ?? c.key, n: c.opens, extra: c.saves ? `${fmt(c.saves)} saved` : undefined }))} />
         <h3 style={{ marginTop: 16 }}>Filters used</h3>

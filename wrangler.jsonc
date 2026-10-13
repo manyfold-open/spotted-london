@@ -7,11 +7,13 @@
   "observability": { "enabled": true },
 
   // The web app (web/dist). Unknown paths fall back to index.html; these paths run the Worker first.
+  // The last two are for the mount at app.manyfold.ai/spotted-london (BASE_PATH, src/mount.ts): the prefix has to
+  // come off before the static files can be found, so everything under it goes to the Worker first.
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy", "/sitemap.xml", "/robots.txt"]
+    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy", "/sitemap.xml", "/robots.txt", "/spotted-london", "/spotted-london/*"]
   },
 
   // Safe default. Local dev switches to "development" through .dev.vars.

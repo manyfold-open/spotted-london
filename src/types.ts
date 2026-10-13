@@ -12,6 +12,8 @@ export type Bindings = Cloudflare.Env & {
   CF_ACCOUNT_ID?: string;
   /** Cloudflare API token with Account Analytics: Read, for the Insights page only. */
   CF_ANALYTICS_TOKEN?: string;
+  /** Where the site is mounted on a shared host, for example '/spotted-london'. Empty or unset: served at the root (src/mount.ts). */
+  BASE_PATH?: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   MAPBOX_TOKEN?: string;

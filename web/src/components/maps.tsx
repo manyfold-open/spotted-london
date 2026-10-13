@@ -8,10 +8,11 @@ import { catIcon, isLive } from '../lib/format';
 import { CLUSTER_MAX_ZOOM, clusterPins, clusterZoom, coreBounds, isAway, pinSetKey } from '../lib/map-home';
 import { isPhone, reducedMotion } from '../lib/motion';
 import type { IconName } from './Icon';
+import { appUrl } from '../lib/base';
 
 // MapLibre finds its worker relative to its own file, which breaks once bundled. Point it at
 // the worker Vite builds for us instead.
-setWorkerUrl(workerUrl);
+setWorkerUrl(appUrl(workerUrl));
 
 /** Pins live outside React, so their icon is plain sprite markup. */
 const iconMarkup = (name: IconName) => `<svg class="i" aria-hidden="true"><use href="#${name}"/></svg>`;
