@@ -15,9 +15,12 @@ Follow "Set up locally" in [README.md](README.md). You do not need a Cloudflare 
 ## Before you open a pull request
 
 ```bash
+npm run build:web
 npm test
 npm run typecheck && (cd web && npx tsc --noEmit)
 ```
+
+The same checks run on every pull request in GitHub Actions (`.github/workflows/ci.yml`). They need to pass before merging.
 
 - Add or update a test for behaviour you change (`test/`).
 - A new migration goes in `migrations/` with the next number, and must not break the code that is already deployed.

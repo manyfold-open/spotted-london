@@ -30,7 +30,7 @@ npm run build:web            # needed once before `npm run dev`; the Worker serv
 npm run dev                  # Worker on :8787 (needs `npx wrangler login` for Workers AI)
 npm run dev:local            # same without a Cloudflare login; AI autofill returns an error
 npm run dev:web              # Vite on :5173, proxies /api and /login to :8787
-npm test                     # builds web, then vitest inside workerd (unit + API tests)
+npm test                     # vitest inside workerd (unit + API tests); run `npm run build:web` first, some tests serve web/dist
 npm run typecheck && (cd web && npx tsc --noEmit)
 npm run deploy               # build web + wrangler deploy (production)
 python3 scripts/seed.py      # regenerate seed/*.sql
@@ -170,7 +170,7 @@ Direction set by Zack on 2026-10-01: add an agent pipeline next to the existing 
 
 ## Production
 
-Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this repo (no GitHub Actions minutes available). Push to `main` deploys production; other branches get preview versions that share production D1/KV/R2. Work on a branch and open a PR; Zack merges. The build token has no D1 access: if a PR adds a migration, say so in the PR and ask Zack to run `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` before merging (migrations must not break the currently deployed code). Build settings are listed in README "How deploys happen".
+Deploys run on Cloudflare Workers Builds (connected 2026-09-30), linked to this repo. GitHub Actions (`.github/workflows/ci.yml`) only checks (typecheck, tests, `wrangler deploy --dry-run`); it never deploys and holds no credentials. Push to `main` deploys production; other branches get preview versions that share production D1/KV/R2. Work on a branch and open a PR; Zack merges. The build token has no D1 access: if a PR adds a migration, say so in the PR and ask Zack to run `npx wrangler d1 migrations apply manyfold-spotted-london-db --remote` before merging (migrations must not break the currently deployed code). Build settings are listed in README "How deploys happen".
 
 - https://app.manyfold.ai/spotted-london (BASE_PATH `/spotted-london`; see "Mount under a prefix"), in the company Cloudflare account NetMind.AI, as the Worker `manyfold-spotted-london` with D1 `manyfold-spotted-london-db`, R2 `manyfold-spotted-london-images` and KV `manyfold-spotted-london-cache`. Before 2026-10 it ran in the maintainer's personal account at spotted-london.zack11712.workers.dev (retired; no resource there is used any more). The deploy token for Claude Code is kept in `~/.config/spotted-london/cf-company-token` (mode 600): use it as `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID` for `npx wrangler`, and never print it.
 - Admin: the maintainer (promoted 2026-09-30, recorded in audit_log).

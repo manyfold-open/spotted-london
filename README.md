@@ -87,7 +87,7 @@ npm run dev:local -- --var BASE_PATH:/spotted-london --var APP_URL:http://localh
 
 ### How deploys happen
 
-Cloudflare Workers Builds is connected to this repo (no GitHub Actions).
+Cloudflare Workers Builds is connected to this repo and does the deploys. GitHub Actions only runs checks (`.github/workflows/ci.yml`).
 
 - Push to `main` builds and deploys production.
 - Other branches get a preview version. Previews share production D1, KV and R2, have no secrets, and read vars and bindings from the `previews` block in `wrangler.jsonc`, so add new ones in both places.

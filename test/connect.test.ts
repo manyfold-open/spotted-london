@@ -67,7 +67,9 @@ describe('limits on keyless public reads', () => {
   it('stops one visitor after the minute allowance, and counts the list and the MCP tools separately', async () => {
     const ip = { 'x-dev-ip': '203.0.113.77' };
     let last: any;
-    for (let i = 0; i < 121; i++) last = await rpc('tools/call', { name: 'search_popups', arguments: { query: 'zzz' } }, ip);
+    // The allowance is 120 a minute, counted in windows that may start at any second, so a slow machine (CI) can see a
+    // window end mid-loop and start counting again. Keep asking until the limit answers, which takes at most two windows.
+    for (let i = 0; i < 300 && !last?.result?.isError; i++) last = await rpc('tools/call', { name: 'search_popups', arguments: { query: 'zzz' } }, ip);
     expect(last.result.isError).toBe(true);
     expect(last.result.content[0].text).toMatch(/Too many requests/);
     // another visitor is not affected
