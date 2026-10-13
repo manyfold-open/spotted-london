@@ -51,6 +51,7 @@ export default function AgentsPage() {
           <ScoutSources />
           <TagsReport />
           <PhotoThumbs />
+          <UsageGuardPanel g={q.data.usage_guard} />
           <PublicList list={q.data.public_list} />
           <Setup view={q.data} />
         </>
@@ -105,6 +106,30 @@ function TagsReport() {
               </ul>
             </>
           ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Cloudflare has no spending cap, so the Worker checks its own D1 and R2 use every hour and pauses the writing work when it runs high. */
+function UsageGuardPanel({ g }: { g: AgentsView['usage_guard'] }) {
+  const n = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)} M` : v.toLocaleString('en-GB'));
+  const when = g.checked_at ? new Date(g.checked_at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  return (
+    <section className="panel" style={{ marginTop: 22 }} aria-labelledby="ug-h">
+      <h2 id="ug-h">Usage guard</h2>
+      {!g.configured ? (
+        <p className="muted" style={{ marginTop: 6 }}>Not set up. It needs CF_ACCOUNT_ID and CF_ANALYTICS_TOKEN as secrets and USAGE_D1_ID and USAGE_R2_BUCKET in wrangler.jsonc. Until then nothing watches the Cloudflare bill.</p>
+      ) : (
+        <>
+          <p className="muted" style={{ marginTop: 6 }}>
+            {g.on ? 'Paused: agents, Apify posts, photo backfill and new photos wait until the numbers fall back.' : 'Everything is running.'}
+            {g.usage ? ` Today: ${n(g.usage.day.rowsRead)} rows read, ${n(g.usage.day.rowsWritten)} written, ${n(g.usage.day.classA)} photo writes. This month: ${n(g.usage.month.rowsRead)} read, ${n(g.usage.month.rowsWritten)} written. Photos: ${g.usage.storageGb.toFixed(2)} GB.` : ''}
+            {when ? ` Checked ${when}.` : ''}
+          </p>
+          {g.on ? <div className="notice err" style={{ marginTop: 10 }}><Icon name="i-info" /><span>{g.reasons.join('. ')}.</span></div> : null}
+          {g.error ? <div className="notice" style={{ marginTop: 10 }}><Icon name="i-info" /><span>The last check failed: {g.error}. The earlier verdict stays.</span></div> : null}
         </>
       )}
     </section>

@@ -5,6 +5,7 @@
 import { safeUrl, parseOpenGraph, jsonLdEventImage } from './extract';
 import { newId } from './util';
 import { bodyImage, imageSize, looksLikeAPhoto } from './page-image';
+import { guardOn } from '../db/usage';
 
 export const MAX_PHOTOS = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -144,6 +145,7 @@ export async function addPhotoFromUrl(
   fetcher: typeof fetch = fetch,
 ): Promise<{ saved: true; id: string; url: string } | { saved: false; reason: string }> {
   if (!env.IMAGES) return { saved: false, reason: 'Photo storage is not switched on.' };
+  if (await guardOn(env.DB)) return { saved: false, reason: 'Photos are paused for a while because the site is close to its usage limits.' };
   const have = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(origin_url = ?2) AS same FROM popup_images WHERE popup_id = ?1').bind(popupId, src.imageUrl).first<{ n: number; same: number | null }>();
   if ((have?.same ?? 0) > 0) return { saved: false, reason: 'That photo is already on the pop-up.' };
   if ((have?.n ?? 0) >= MAX_PHOTOS) return { saved: false, reason: `A pop-up can have up to ${MAX_PHOTOS} photos.` };

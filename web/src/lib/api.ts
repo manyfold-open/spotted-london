@@ -58,7 +58,12 @@ export interface TagReport {
   changes: { agent: string; role: string; edits: number; added: number; removed: number }[];
   samples: { id: string; slug: string; title: string; tags: Tag[]; source_url: string | null }[];
 }
-export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; auto_publish: 'suggest' | 'auto'; ask: AskStats | null; public_list: { bytes: number; built_at: number | null; warn_bytes: number; max_bytes: number }; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
+/** The spending guard (src/db/usage.ts): on means agents, social fetching, photo backfill and new photos are paused. */
+export interface UsageGuard {
+  configured: boolean; on: boolean; reasons: string[]; checked_at: number | null; error: string | null;
+  usage: { day: { rowsRead: number; rowsWritten: number; classA: number }; month: { rowsRead: number; rowsWritten: number; classA: number }; storageGb: number } | null;
+}
+export interface AgentsView { mcp_url: string; skill_url: string; agents_key_set: boolean; auto_publish: 'suggest' | 'auto'; ask: AskStats | null; public_list: { bytes: number; built_at: number | null; warn_bytes: number; max_bytes: number }; usage_guard: UsageGuard; roles: { role: Agent['role']; name: string }[]; agents: Agent[] }
 export type SourceKind = 'listing' | 'venue' | 'brand' | 'social' | 'search';
 export type SourceStatus = 'active' | 'suggested' | 'paused' | 'rejected';
 export interface SocialFetch {

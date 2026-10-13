@@ -9,12 +9,15 @@ import { purgeSocial, runSocial } from './db/social';
 import { buildPopupSnapshot } from './db/snapshot';
 import { purgeAsks } from './db/ask';
 import { backfillPhotos } from './db/photo-backfill';
+import { guardOn, refreshGuard } from './db/usage';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
     case '*/10 * * * *':
       await endExpired(env.DB, now);
       await buildPopupSnapshot(env.DB, now).catch(e => console.error('snapshot cron failed', e));
+      // When the usage guard is on (src/db/usage.ts) the work below, which writes the most, waits. The site keeps working.
+      if (await guardOn(env.DB)) { console.warn('usage guard on: agents, social fetch and photo backfill skipped'); break; }
       // AI agents on Manyfold: check open runs, start the ones that are due (SPEC §13.4)
       await runAgents(env, now).catch(e => console.error('agents cron failed', e));
       // Instagram and Threads posts for Scout, through Apify (does nothing until APIFY_TOKEN is set)
@@ -23,6 +26,7 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await backfillPhotos(env, now).catch(e => console.warn('photo backfill skipped', e));
       break;
     case '0 * * * *':
+      await refreshGuard(env, now).catch(e => console.warn('usage guard skipped', e));
       await recomputeHot(env.DB, now);
       await reminders(env.DB, now);
       break;
