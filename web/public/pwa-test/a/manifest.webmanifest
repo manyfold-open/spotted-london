@@ -1,0 +1,24 @@
+{
+  "id": "/spotted-london/pwa-test/a/",
+  "name": "Test A",
+  "short_name": "Test A",
+  "start_url": "/spotted-london/pwa-test/a/",
+  "scope": "/spotted-london/pwa-test/a/",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#f4efe6",
+  "icons": [
+    {
+      "src": "/spotted-london/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/spotted-london/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

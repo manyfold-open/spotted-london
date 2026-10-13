@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#f4efe6">
+    <title>Test B</title>
+    <link rel="manifest" href="/pwa-test/b/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Test B">
+    <style>
+      body { margin: 0; padding: 24vh 24px 24px; background: #f4efe6; color: #111; font: 600 22px/1.4 system-ui, sans-serif; }
+      p { margin: 0 0 16px; }
+      .mode::after { content: "display mode: browser"; }
+      @media (display-mode: standalone) { .mode::after { content: "display mode: standalone"; } }
+      @media (display-mode: minimal-ui) { .mode::after { content: "display mode: minimal-ui"; } }
+    </style>
+  </head>
+  <body>
+    <p>B: scope is the whole host</p>
+    <p class="mode"></p>
+    <p>Temporary page to find out why the iPhone home screen app shows a browser bar. No script, no service worker.</p>
+  </body>
+</html>
