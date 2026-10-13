@@ -5,11 +5,13 @@
   "compatibility_date": "2026-08-20",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Shared host app.manyfold.ai: two routes on the manyfold.ai zone, neither reaching past /spotted-london.
-  // Keep them in step with BASE_PATH below and "run_worker_first" in `assets`.
+  // Shared host app.manyfold.ai: one route on the manyfold.ai zone, neither reaching past /spotted-london.
+  // The trailing * matters: Cloudflare matches a route pattern against the whole URL including the query string,
+  // so a plain "app.manyfold.ai/spotted-london" misses ".../spotted-london?fbclid=..." (the Instagram bio link),
+  // which then falls through to the shared host's origin and shows error 1033.
+  // Keep it in step with BASE_PATH below and "run_worker_first" in `assets`.
   "routes": [
-    { "pattern": "app.manyfold.ai/spotted-london", "zone_name": "manyfold.ai" },
-    { "pattern": "app.manyfold.ai/spotted-london/*", "zone_name": "manyfold.ai" }
+    { "pattern": "app.manyfold.ai/spotted-london*", "zone_name": "manyfold.ai" }
   ],
   "observability": { "enabled": true },
 
