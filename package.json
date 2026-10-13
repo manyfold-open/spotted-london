@@ -14,6 +14,7 @@
     "recategorize": "node scripts/recategorize.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "usage": "node scripts/usage.mjs",
     "types": "wrangler types",
     "dev:web": "npm --prefix web run dev",
     "build:web": "npm --prefix web run build",
