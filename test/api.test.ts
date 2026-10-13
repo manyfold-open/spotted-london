@@ -248,6 +248,48 @@ describe('admin decisions', () => {
   });
 });
 
+describe('merging duplicates', () => {
+  it('removes the copy, keeps its saves, links and photos on the original, and charges nobody', async () => {
+    const poster = await user(), saver = await user(), boss = await user({ role: 'admin' });
+    const keep = (await api('POST', '/popups', { user: poster, body: popupBody({ title: 'Merge keep: Kiln Pop', category: 'art', lat: 51.5312, lng: -0.1011, source_url: 'https://kiln.example/pop' }) })).json;
+    const copy = (await api('POST', '/popups', { user: poster, body: popupBody({ title: 'Merge copy: Kiln Pop', category: 'art', lat: 51.5412, lng: -0.1111, source_url: 'https://insta.example/kiln', force: true }) })).json;
+    await env.DB.prepare('INSERT INTO saves (user_id, popup_id, remind, created_at) VALUES (?, ?, 0, ?)').bind(saver, copy.id, NOW).run();
+    await env.DB.prepare('INSERT INTO popup_images (id, popup_id, r2_key, position, created_at) VALUES (?, ?, ?, 0, ?)').bind('img_copy_1', copy.id, 'images/copy-1.jpg', NOW).run();
+    const before = await karmaOf(poster);
+
+    const r = await api('POST', `/admin/popups/${copy.id}/decision`, { user: boss, body: { action: 'merge', merge_into: keep.id } });
+    expect(r.status).toBe(200);
+    expect(r.json.status).toBe('removed');
+    expect(await karmaOf(poster)).toBe(before);
+    const row = await env.DB.prepare('SELECT status, merged_into FROM popups WHERE id = ?').bind(copy.id).first();
+    expect(row).toMatchObject({ status: 'removed', merged_into: keep.id });
+    expect(await env.DB.prepare('SELECT 1 FROM saves WHERE user_id = ? AND popup_id = ?').bind(saver, keep.id).first()).toBeTruthy();
+    expect(await env.DB.prepare('SELECT 1 FROM popup_links WHERE popup_id = ? AND url LIKE ?').bind(keep.id, 'https://insta.example/kiln%').first()).toBeTruthy();
+    expect(await env.DB.prepare('SELECT popup_id FROM popup_images WHERE id = ?').bind('img_copy_1').first()).toEqual({ popup_id: keep.id });
+  });
+
+  it('refuses a target that is missing, removed or the same post, and anything that is not an admin', async () => {
+    const poster = await user(), boss = await user({ role: 'admin' });
+    const a = (await api('POST', '/popups', { user: poster, body: popupBody({ title: 'Merge guard one', lat: 51.5612, lng: -0.1211 }) })).json;
+    const b = (await api('POST', '/popups', { user: poster, body: popupBody({ title: 'Merge guard two', lat: 51.5712, lng: -0.1311 }) })).json;
+    const merge = (id: string, into: string, user = boss) => api('POST', `/admin/popups/${id}/decision`, { user, body: { action: 'merge', merge_into: into } });
+    expect((await merge(a.id, a.id)).json.error.code).toBe('merge_invalid');
+    expect((await merge(a.id, 'nope')).json.error.code).toBe('merge_invalid');
+    expect((await merge(a.id, b.id, poster)).status).toBe(403);
+    await merge(b.id, a.id);
+    expect((await merge(a.id, b.id)).json.error.code).toBe('merge_invalid'); // b is removed now
+  });
+
+  it('points earlier merges at the survivor', async () => {
+    const poster = await user(), boss = await user({ role: 'admin' });
+    const [a, b, c] = await Promise.all([0, 1, 2].map(async i => (await api('POST', '/popups', { user: poster, body: popupBody({ title: `Merge chain ${i}`, lat: 51.58 + i * 0.01, lng: -0.14 }) })).json));
+    await api('POST', `/admin/popups/${c.id}/decision`, { user: boss, body: { action: 'merge', merge_into: b.id } });
+    await api('POST', `/admin/popups/${b.id}/decision`, { user: boss, body: { action: 'merge', merge_into: a.id } });
+    const row = await env.DB.prepare('SELECT merged_into FROM popups WHERE id = ?').bind(c.id).first();
+    expect(row).toEqual({ merged_into: a.id });
+  });
+});
+
 describe('cron settlement', () => {
   it('ends past pop-ups and settles votes against the verdict', async () => {
     const poster = await user();

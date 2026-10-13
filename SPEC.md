@@ -564,6 +564,7 @@ CREATE TABLE audit_log (
 | 分類 | 11 類，每個活動一類：`food`、`dining`（主廚駐店與晚宴）、`market`（市集與藝博會）、`exhibition`（畫廊與美術館展覽）、`art`（一次性裝置與公共藝術）、`event`、`fashion`、`sample`、`beauty`、`tech`、`other`。清單只寫在 `src/shared/categories.ts`；新增一類要同時加 migration、icon、封面圖案。Scout 與 Triage 的判斷規則在 `skills/spotted-london/SKILL.md`。新分類的 icon 是自繪的線條圖，不是 Koboyo。設計：`docs/superpowers/specs/2026-10-02-category-split-design.md` |
 | 收錄範圍 | 只要活動本身是限時的就收，不管場地是不是常設：博物館 Lates、常設餐廳的一晚限定晚宴或限期菜單、藝術博覽會都算。不收常駐的東西（固定菜單、常設館藏、沒有結束日的固定派對）。Scout 的 `confidence: high` 改為：主辦或場地頁面確認日期與地點，或兩個獨立頁面一致；缺營業時間或價格不影響。描述裡每個細節都要在讀過的頁面上（2026-10-02） |
 | 最長天數 | 一個活動最多可以跑 180 天（2026-10-03 由 90 天放寬，讓國家美術館 Renoir and Love 這類 120 天的大展收得進來）。快照只收開始日在 90 天內的活動，這是另一個限制 |
+| 合併重複（2026-10-13） | 管理員在 pop-up 彈窗（「Merge into another pop-up」）或審核佇列（「Merge」）把重複的活動併進另一筆已上架的。被併的那筆變 `removed`、記 `merged_into`，貼文者不扣 karma；它的收藏、連結（含它自己的來源網址）、照片（最多 5 張）會移到留下的那筆。投票不搬（投票綁定當時的位置與權重）。不能併進已移除的活動，也不能併進自己。建議清單在瀏覽器用現成的公開列表算（800 公尺內且日期重疊，或標題有共同字），也可以用標題或主辦搜尋。|
 | 舊草稿特例 | migration 0007 之前送的 Scout 草稿沒有 `evidence_check`，只要 Triage 自己引用的原文在網頁上找到、日期地點都對，就算 ready，不看 Scout 的原文與信心。這些草稿每天回到 Triage 佇列一次，直到 Triage 的 note 附上自己的引用原文為止（2026-10-02） |
 
 ### 待決問題
