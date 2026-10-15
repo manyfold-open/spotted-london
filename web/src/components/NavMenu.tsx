@@ -6,6 +6,7 @@ import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 import { Ticker } from './PopupBits';
 import { appUrl } from '../lib/base';
+import { setConsent, useAnalytics } from '../lib/ga';
 
 /** The menu that replaces the sidebar and the tab bar. Slides in from the left over everything. */
 export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { open: boolean; onClose: () => void; savedCount: number; queueCount: number; isAdmin: boolean }) {
@@ -13,6 +14,7 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
   const loc = useLocation();
   const box = useRef<HTMLElement>(null);
   const app = useInstall();
+  const analytics = useAnalytics();
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +52,11 @@ export function NavMenu({ open, onClose, savedCount, queueCount, isAdmin }: { op
           <button type="button" className="mp-install" onClick={() => { onClose(); app.install(); }}><Icon name="i-plus" /><span><b>Install the app</b><small>Opens full screen from your home screen</small></span></button>
         ) : app.state === 'ios' ? (
           <p className="mp-install ios"><Icon name="i-plus" /><span><b>Install the app</b><small>Tap Share in your browser, then Add to Home Screen.</small></span></p>
+        ) : null}
+        {analytics.shown ? (
+          <button type="button" className="mp-install mp-ga" role="switch" aria-checked={analytics.on} onClick={() => setConsent(analytics.on ? 'denied' : 'granted')}>
+            <Icon name="i-info" /><span><b>Google Analytics: {analytics.on ? 'on' : 'off'}</b><small>{analytics.on ? 'Counts visits to help us improve Spotted. Tap to turn it off.' : 'Off on this device. Tap to turn it on.'}</small></span>
+          </button>
         ) : null}
         <div className="mp-key" aria-label="Map key">
           <span className="mp-navh">Map key</span>

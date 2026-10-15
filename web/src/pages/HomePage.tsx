@@ -10,6 +10,8 @@ import { haptic, scrollBehavior, usePhone } from '../lib/motion';
 import { nearChoiceMade, useNearMe } from '../lib/near-me';
 import { useWelcome } from '../lib/onboarding';
 import { nextStep } from '../../../src/shared/onboarding';
+import { setConsent, useAnalytics } from '../lib/ga';
+import { appUrl } from '../lib/base';
 import { getTaste, updateTaste, useKeptNote, useTaste } from '../lib/taste';
 import type { Snap } from '../lib/map-home';
 import { Icon } from '../components/Icon';
@@ -78,9 +80,10 @@ export default function HomePage() {
   const [askMounted, setAskMounted] = useState(false);
   useEffect(() => { if (asked.open) setAskMounted(true); }, [asked.open]);
   const view: View = sp.get('view') === 'list' ? 'list' : 'map';
-  // First-visit cards come one at a time: welcome, then location, then the swipe invite.
+  // First-visit cards come one at a time: the analytics question where it is owed, welcome, location, the swipe invite.
   const welcome = useWelcome(taste.seen || nearChoiceMade());
-  const step = view === 'map' ? nextStep({ welcome: welcome.due, location: near.prompt, taste: !taste.seen && !deck && (q.all?.length ?? 0) >= 4 }) : null;
+  const analytics = useAnalytics();
+  const step = view === 'map' ? nextStep({ consent: analytics.owed, welcome: welcome.due, location: near.prompt, taste: !taste.seen && !deck && (q.all?.length ?? 0) >= 4 }) : null;
 
   const [snap, setSnap] = useState<Snap>(view === 'list' ? 'full' : 'peek');
   const [hl, setHl] = useState<string | null>(null);
@@ -251,6 +254,18 @@ export default function HomePage() {
       {phone ? (
         <div className="mp-chips" ref={chips}>
           <Filters inline near={nearOn} locating={near.state === 'asking'} onNear={onNear} onPick={openDeck} onAsk={openAsk} />
+        </div>
+      ) : null}
+
+      {step === 'consent' ? (
+        <div className="mp-prompt" role="dialog" aria-label="Google Analytics">
+          <h2><Icon name="i-info" />Help us improve Spotted?</h2>
+          <p>Can we use Google Analytics to count visits and see which pages people open? It sets two cookies on this site. Nothing is used for ads.</p>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn sm" onClick={() => setConsent('denied')}>No thanks</button>
+            <button className="btn sm" onClick={() => setConsent('granted')}>Allow</button>
+          </div>
+          <p className="fine"><Icon name="i-info" /><span>Change it any time in the menu. <a href={appUrl('/privacy')}>Privacy</a></span></p>
         </div>
       ) : null}
 

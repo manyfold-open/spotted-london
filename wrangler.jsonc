@@ -41,7 +41,11 @@
     "USAGE_R2_BUCKET": "manyfold-spotted-london-images",
     "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     // Reads screenshots. Takes images as base64 data URIs and supports JSON schema output.
-    "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
+    "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct",
+    // Google Analytics 4 (stream "Spotted London"), on production pages at APP_URL's host only (src/analytics.ts).
+    // Visitors in the UK, the EEA and Switzerland are asked first. Left out of `previews` on purpose: previews are
+    // not measured. Remove it and no page loads anything from Google.
+    "GA_MEASUREMENT_ID": "G-P9WVSTMG87"
   },
 
   "d1_databases": [

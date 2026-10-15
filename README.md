@@ -72,6 +72,7 @@ Live at **https://app.manyfold.ai/spotted-london**, in the NetMind.AI Cloudflare
 | KV | `manyfold-spotted-london-cache` (binding `CACHE`) |
 | R2 | `manyfold-spotted-london-images` |
 | Analytics Engine | `spotted_events` (binding `EVENTS`) |
+| Google Analytics | GA4 `G-P9WVSTMG87` (var `GA_MEASUREMENT_ID`), asked first in the UK, EEA and Switzerland; see CLAUDE.md "Google Analytics" |
 
 Secrets are set with `npx wrangler secret put NAME`, never in the repo: `IP_SALT`, `TURNSTILE_SECRET`, `AGENTS_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APIFY_TOKEN`. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `AGENT_ADMIN_TOKEN`. Recommended: `CF_ACCOUNT_ID` and `CF_ANALYTICS_TOKEN` (a token with only Account Analytics: Read), which switch on the usage guard that pauses the background writing work and new photos when D1 or R2 use runs far above normal (see CLAUDE.md, "Usage guard"), and feed the Insights page.
 

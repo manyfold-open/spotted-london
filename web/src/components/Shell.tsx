@@ -6,6 +6,7 @@ import { useExit } from '../lib/motion';
 import { useMe, useToast } from '../lib/hooks';
 import { useTasteSync } from '../lib/taste';
 import { setTrackingContext, takeSignedIn, track, usePageViews } from '../lib/track';
+import { gaView, setAnalyticsViewer } from '../lib/ga';
 import { useAfterSignIn } from '../lib/after-sign-in';
 import { useLocalSaves } from '../lib/local-saves';
 import { useAutoThumbs } from '../lib/thumbs';
@@ -36,6 +37,7 @@ export function Shell() {
   useEffect(() => {
     if (me === undefined) return;
     setTrackingContext({ signedIn: !!me, admin: me?.role === 'admin' });
+    setAnalyticsViewer(me?.role === 'admin');
     if (me && takeSignedIn()) track('signin_done');
   }, [me]);
   useAutoThumbs(me?.role === 'admin');
@@ -45,6 +47,8 @@ export function Shell() {
   const toast = useToast();
   const sheet = sp.get('p') ?? (loc.pathname.startsWith('/p/') ? decodeURIComponent(loc.pathname.slice(3)) : null);
   const [shownSheet, sheetLeaving] = useExit(sheet, 220);
+  // Google Analytics counts the page under the sheet here, and an open pop-up in its sheet (PopupSheet)
+  useEffect(() => { if (!sheet) gaView(loc.pathname); }, [loc.pathname, sheet]);
   const home = loc.pathname === '/' || loc.pathname.startsWith('/p/');
   const [menuOpen, setMenuOpen] = useState(false);
   const openMenu = useCallback(() => setMenuOpen(true), []);

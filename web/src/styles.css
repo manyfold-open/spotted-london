@@ -629,6 +629,7 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
 .mp-install > span { display: flex; flex-direction: column; min-width: 0 }
 .mp-install small { font-size: 12.5px; line-height: 1.35; color: var(--ink2) }
 .mp-install:active:not(.ios) { background: var(--paper2) }
+.mp-install.mp-ga { flex: none; border: 1.5px solid var(--hair); background: transparent }
 .mp-key { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 0 12px; margin-top: auto }
 .mp-key .mp-navh { padding: 0 0 2px }
 .mp-key p { margin: 4px 0 0; font-size: 13px; line-height: 1.35; color: var(--ink3) }

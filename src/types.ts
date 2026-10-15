@@ -34,6 +34,8 @@ export type Bindings = Cloudflare.Env & {
   APIFY_TOKEN?: string;
   /** Most Ask questions in one London day, for all visitors together. Defaults to 150; 0 switches Ask off. */
   ASK_DAILY_CAP?: string;
+  /** Google Analytics 4 measurement id (G-...). Unset: no page loads anything from Google (src/analytics.ts). */
+  GA_MEASUREMENT_ID?: string;
 };
 
 export interface UserRow {
