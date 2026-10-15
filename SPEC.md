@@ -493,7 +493,7 @@ CREATE TABLE audit_log (
 ## 8. 非功能需求
 - **效能**：列表/詳情 API p95 < 300ms；熱門列表 KV 快取 60s
 - **可用性**：依賴 Cloudflare SLA；D1 每日自動備份（Time Travel）
-- **隱私 / GDPR**（UK GDPR）：不存原始 IP；check-in 座標 30 天後刪除，只保留 distance 與 valid；Cookie 只用必要 session cookie；隱私政策與刪除帳號功能
+- **隱私 / GDPR**（UK GDPR）：不存原始 IP；check-in 座標 30 天後刪除，只保留 distance 與 valid；Cookie：必要的 session cookie，加上使用者同意後才有的 Google Analytics cookie（見 §12「Google Analytics」）；隱私政策與刪除帳號功能
 - **內容政策**：禁止非法活動、仇恨、成人內容；檢舉流程
 - **可觀測性**：Workers Logs + Analytics Engine（投票量、上傳量、驗證轉換率）
 - **在地化**：UI 英文為主；時區 Europe/London
@@ -567,6 +567,7 @@ CREATE TABLE audit_log (
 | 沒有日期或超過 180 天（2026-10-13） | 使用者仍然可以提交：沒有結束日、完全沒有日期（開始日也可以不填），或超過 180 天。一律要附來源連結（讓管理員驗證），而且一律先進審核佇列，連高信任度的人也一樣（管理員自己發的除外）。Agent 不能自動上架這類貼文，也看不到它們。資料庫新增 `popups.date_kind`（`long`、`open_end`、`undated`；migration 0026）；沒有日期時 `start_at`、`end_at` 放替代值（一年後），畫面一律顯示「No end date announced」「Dates not announced」「Long run」，不會把替代值當成真的日期。列表排序上，超過 180 天的活動沒有「正在進行」加分。Scout 仍然略過常設活動，要等人工提交的量看過再決定是否開放。|
 | 合併重複（2026-10-13） | 管理員在 pop-up 彈窗（「Merge into another pop-up」）或審核佇列（「Merge」）把重複的活動併進另一筆已上架的。被併的那筆變 `removed`、記 `merged_into`，貼文者不扣 karma；它的收藏、連結（含它自己的來源網址）、照片（最多 5 張）會移到留下的那筆。投票不搬（投票綁定當時的位置與權重）。不能併進已移除的活動，也不能併進自己。建議清單在瀏覽器用現成的公開列表算（800 公尺內且日期重疊，或標題有共同字），也可以用標題或主辦搜尋。|
 | 找可疑重複（2026-10-13） | 後台 `/admin/duplicates` 列出「可能是同一個」的配對：日期重疊、800 公尺內、標題或主辦至少有一個相同的字（market、sale 這類泛用字不算），再依距離、相同字數、同分類、同來源連結算分數。在管理員的瀏覽器裡用公開列表算（Worker 的 CPU 只有約 10 ms）。只建議不自動處理：同一場地的兩個展也可能被列出來，所以由你決定「保留這個」（合併另一個進來）或「不是同一個」（記在 `settings`，所有管理員共用，之後不再出現）。|
+| Google Analytics（2026-10-15） | 加上 GA4（property「Spotted London」，`G-P9WVSTMG87`），和原本的匿名統計並存。只在正式站（APP_URL 的網域、production）的頁面放 property id，preview、workers.dev、本機都不會載入。英國、歐盟／EEA、瑞士和判斷不出國家的訪客先在地圖首頁看到詢問卡（排在 welcome 卡前面），按 Allow 之前完全不載入 Google 的程式；其他地區直接開啟。選單裡有開關，沒登入也能改，關掉時刪掉 cookie。管理員、Do Not Track、Global Privacy Control、Me 頁的統計開關都會讓它不啟動。廣告相關全部關閉（consent mode 拒絕 ad storage、Google signals 關閉），cookie 名稱 `spotted_ga*`、只限本站路徑、13 個月。頁面瀏覽由程式自己送，網址不帶 query string（搜尋字在 `?q=`），GA 串流的 page changes、site search、form interactions 已關閉。隱私政策同步更新 |
 | 多段日期（2026-10-15） | 一個活動可以有好幾段分開的日期（例如 10/29 和 11/26 兩天，或兩段期間），不用再拆成好幾篇貼文，收藏與投票也不會被拆散。資料庫新增 `popups.date_ranges`（JSON，`[[開始,結束],...]`，兩段以上才有，最多 12 段，第一天到最後一天最多 365 天，每段最多 180 天；migration 0027）。`start_at`、`end_at` 永遠是整段範圍（第一天到最後一天），所以「結束過期」的 cron、索引、重複偵測的 SQL 都不用改；只有「現在有沒有開」「這個時間窗有沒有」改看各段（`src/shared/ranges.ts`，Worker 與瀏覽器共用）。列表與地圖只在某一段落在時間窗內才顯示；中間空檔不算「正在進行」，排序的 `hot` 也只看目前或下一段。Check-in 只在其中一段開放時才行，每人每個活動仍只能 check-in 一次。補上新日期不會重置「它是真的」的投票，改動或刪掉原有的某一段才會。管理員的 Edit 與 Add 頁都有「Add another date」；Scout 用 `submit_draft` 的 `dates`（每段一組 start_date、end_date）。Triage 的小修正不能改這類活動的日期。每段共用同一個 `hours_text`；不做每段不同時間、不做「每月第一個週六」這類規則、不做每段分開的收藏或投票。|
 | 舊草稿特例 | migration 0007 之前送的 Scout 草稿沒有 `evidence_check`，只要 Triage 自己引用的原文在網頁上找到、日期地點都對，就算 ready，不看 Scout 的原文與信心。這些草稿每天回到 Triage 佇列一次，直到 Triage 的 note 附上自己的引用原文為止（2026-10-02） |
 

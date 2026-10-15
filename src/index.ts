@@ -18,6 +18,7 @@ import { mcp } from './mcp';
 import { events } from './routes/events';
 import { insights } from './routes/insights';
 import { withMount } from './mount';
+import { withAnalytics } from './analytics';
 
 const app = new Hono<AppEnv>();
 
@@ -63,8 +64,12 @@ app.onError((err, c) => {
   return c.json({ error: { code: 'server_error', message: 'Something went wrong on our side. Try again.' } }, 500);
 });
 
+const mounted = withMount<Bindings>((request, env, ctx) => app.fetch(request, env, ctx));
+
 export default {
-  fetch: withMount<Bindings>((request, env, ctx) => app.fetch(request, env, ctx)),
+  // Pages on the public site name the Google Analytics property (src/analytics.ts). It reads the request as it arrived,
+  // with its own host and Cloudflare's country.
+  fetch: async (request, env, ctx) => withAnalytics(await mounted(request, env, ctx), request, env),
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(runCron(controller.cron, env));
   },

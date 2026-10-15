@@ -20,6 +20,10 @@ describe('nextStep', () => {
   it('shows nothing when nothing is due', () => {
     expect(nextStep({ welcome: false, location: false, taste: false })).toBeNull();
   });
+  it('asks the Google Analytics question before anything else, where it is owed', () => {
+    expect(nextStep({ consent: true, welcome: true, location: true, taste: true })).toBe('consent');
+    expect(nextStep({ consent: false, welcome: true, location: true, taste: true })).toBe('welcome');
+  });
   it('puts the welcome card ahead of the other two', () => {
     expect(nextStep({ welcome: true, location: true, taste: true })).toBe('welcome');
   });

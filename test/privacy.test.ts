@@ -32,3 +32,13 @@ describe('/privacy', () => {
     expect(body).not.toMatch(/[–—]| - /);
   });
 });
+
+describe('/privacy and Google Analytics', () => {
+  it('says what Google Analytics collects, its cookies, and where to turn it off', async () => {
+    const text = await (await exports.default.fetch(new Request('http://spotted.test/privacy'))).text();
+    expect(text).toContain('Google Analytics, if you allow it.');
+    expect(text).toContain('nothing goes to Google until you tap Allow');
+    expect(text).toContain('<code>spotted_ga</code> and <code>spotted_ga_&lt;id&gt;</code>');
+    expect(text).toContain('Google Analytics switch in the menu');
+  });
+});

@@ -14,6 +14,7 @@ import { EditPanel } from '../components/EditPanel';
 import { MergePanel } from '../components/MergePanel';
 import { flushTaste, forgetTaste } from '../lib/taste';
 import { markSigningIn, setTrackingOptOut, trackingOptedOut } from '../lib/track';
+import { syncAnalytics } from '../lib/ga';
 import { appUrl } from '../lib/base';
 
 /* ---------------- Saved ---------------- */
@@ -196,7 +197,7 @@ export function MePage() {
         <Link className="mrow" to="/connect"><Icon name="i-sparkle" /><span>Use with your AI<span className="sub">Ask ChatGPT, Claude or Codex what is on</span></span><Icon name="i-down" className="i chev" /></Link>
         <div className="mrow static"><Icon name="i-mail" /><span>Weekly digest<span className="sub">Coming soon</span></span></div>
         <div className="mrow static"><Icon name="i-bell" /><span>Reminders<span className="sub">Coming soon</span></span></div>
-        <button className="mrow" role="switch" aria-checked={!statsOff} onClick={() => { setTrackingOptOut(!statsOff); setStatsOff(trackingOptedOut()); }}><Icon name="i-info" /><span>Anonymous usage stats<span className="sub">{statsOff ? 'Off on this device. Nothing is counted.' : 'On. Counts visits and taps, never who you are.'}</span></span></button>
+        <button className="mrow" role="switch" aria-checked={!statsOff} onClick={() => { setTrackingOptOut(!statsOff); setStatsOff(trackingOptedOut()); syncAnalytics(); }}><Icon name="i-info" /><span>Anonymous usage stats<span className="sub">{statsOff ? 'Off on this device. Nothing is counted.' : 'On. Counts visits and taps, never who you are.'}</span></span></button>
         <button className="mrow" onClick={() => logout.mutate()}><Icon name="i-x" /><span>Sign out</span></button>
         <button className="mrow" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(v => !v)}><Icon name="i-flag" /><span>Delete account<span className="sub">Removes your email, name and saved list</span></span></button>
       </div>
