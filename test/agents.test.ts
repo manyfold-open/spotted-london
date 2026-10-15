@@ -1177,3 +1177,50 @@ describe('photos on Scout drafts', () => {
     expect((await stored(fromPage.structuredContent.id))[0]).toMatchObject({ origin_url: 'https://kinfolk.test/og.jpg', credit: 'kinfolk.test' });
   });
 });
+
+describe('Scout drafts with several date ranges', () => {
+  const BOE = [{ start_date: '2026-10-29', end_date: '2026-10-29' }, { start_date: '2026-11-26', end_date: '2026-11-26' }];
+  const noDates = (d: Record<string, unknown>) => { const { start_date, end_date, ...rest } = d; void start_date; void end_date; return rest; };
+
+  it('saves the ranges, lists them in search results, and does not need start_date and end_date', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const rest = noDates(draft(runId, { title: 'Bank of England tours', lat: 51.5142, lng: -0.0885, evidence: 'Tours on 29 October and 26 November at 12:30', dates: BOE }));
+    const sent = await tool('submit_draft', rest, key);
+    expect(sent.structuredContent).toMatchObject({ sent: true, status: 'pending' });
+    const row = await env.DB.prepare('SELECT start_at, end_at, date_ranges FROM popups WHERE id = ?').bind(sent.structuredContent.id).first<any>();
+    expect(JSON.parse(row.date_ranges)).toHaveLength(2);
+    expect(row.start_at).toBe(Date.UTC(2026, 9, 29, 0)); // BST ended on 25 Oct
+    expect(row.end_at).toBe(Date.UTC(2026, 10, 26, 23, 59)); // 26 Nov 23:59 London is GMT
+    // publish it as an admin and read it back as an assistant would
+    await call('POST', `/admin/popups/${sent.structuredContent.id}/decision`, { user: admin, body: { action: 'approve' } });
+    const found = await tool('search_popups', { query: 'bank of england', when: 'all' });
+    const hit = found.structuredContent.popups.find((p: { title: string }) => p.title === 'Bank of England tours');
+    expect(hit.dates).toBe('2026-10-29, 2026-11-26');
+    expect(hit.date_ranges).toBe(2);
+  });
+
+  it('refuses a draft with neither form of dates or too many ranges, and sends the same pop-up only once', async () => {
+    const key = await connect('scout');
+    const runId = await startRun('scout');
+    const rest = noDates(draft(runId, { title: 'Dates missing', lat: 51.51, lng: -0.12 }));
+    const none = await tool('submit_draft', rest, key);
+    expect(none.isError).toBe(true);
+    expect(none.content[0].text).toMatch(/start_date and end_date, or dates/);
+    const many = await tool('submit_draft', { ...rest, dates: Array.from({ length: 13 }, (_, i) => ({ start_date: `2026-10-${String(10 + i).padStart(2, '0')}`, end_date: `2026-10-${String(10 + i).padStart(2, '0')}` })) }, key);
+    expect(many.isError).toBe(true);
+    const again = { ...rest, title: 'Power Up nights', lat: 51.4978, lng: -0.1745, dates: BOE, evidence: 'Power Up on 29 October and 26 November' };
+    expect((await tool('submit_draft', again, key)).structuredContent.sent).toBe(true);
+    expect((await tool('submit_draft', again, key)).structuredContent.sent).toBe(false);
+  });
+
+  it('a Triage fix cannot move the dates of a pop-up with several ranges', async () => {
+    const { applyFixes } = await import('../src/db/triage');
+    const id = 'multi_fix_target';
+    const ranges = [[Date.UTC(2026, 9, 29), Date.UTC(2026, 9, 29, 23, 59)], [Date.UTC(2026, 10, 26), Date.UTC(2026, 10, 26, 23, 59)]];
+    await env.DB.prepare(`INSERT INTO popups (id, slug, title, category, lat, lng, geohash, start_at, end_at, date_ranges, status, created_by, created_at, updated_at) VALUES (?, ?, 'Fix target', 'event', 51.5, -0.1, 'gcpvj', ?, ?, ?, 'pending', 'agent_scout', ?, ?)`)
+      .bind(id, id, ranges[0][0], ranges[1][1], JSON.stringify(ranges), NOW, NOW).run();
+    const p = (await env.DB.prepare('SELECT * FROM popups WHERE id = ?').bind(id).first<any>())!;
+    await expect(applyFixes(env.DB, p, { remove_text: [], clear: [], set: { start_date: '2026-10-30' } } as any, 'Tours from 30 October 2026', { id: 'triage', user_id: 'agent_triage' }, NOW)).rejects.toThrow(/several date ranges/);
+  });
+});

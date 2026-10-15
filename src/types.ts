@@ -69,6 +69,8 @@ export interface PopupRow {
   source_url: string | null;
   /** null for an ordinary pop-up, else why its dates are not a normal short run (see migration 0026) */
   date_kind: 'long' | 'open_end' | 'undated' | null;
+  /** null for one range, else the JSON list of two or more [start, end] ranges (migration 0027); start_at and end_at are then the whole span */
+  date_ranges: string | null;
   status: Status;
   final_verdict: 'real' | 'fake' | null;
   merged_into: string | null;

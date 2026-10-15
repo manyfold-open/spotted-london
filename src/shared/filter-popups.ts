@@ -6,6 +6,7 @@ import { boxAround, haversine } from '../lib/geo';
 import { windowFor, type When } from '../lib/time';
 import { CATEGORIES, isCategory } from './categories';
 import { tagFilter } from './tags';
+import { overlaps, type Range } from './ranges';
 
 const PUBLIC = ['community', 'verified_community', 'verified_admin'];
 const VERIFIED = ['verified_community', 'verified_admin'];
@@ -13,7 +14,7 @@ const VERIFIED = ['verified_community', 'verified_admin'];
 export interface ListItem {
   id: string; status: string; category: string; tags?: string[] | null; title: string; host: string | null; hot: number;
   price: { type: string | null }; location: { borough: string | null; lat: number; lng: number };
-  start_at: number; end_at: number;
+  start_at: number; end_at: number; ranges?: Range[];
 }
 
 /**
@@ -28,7 +29,7 @@ export function filterPopups<T extends ListItem>(all: T[], q: Record<string, str
   const offset = q.cursor ? parseInt(q.cursor, 36) || 0 : 0;
 
   const statuses = q.verified === '1' ? VERIFIED : PUBLIC;
-  let rows = all.filter(p => p.end_at > from && p.start_at < to && statuses.includes(p.status));
+  let rows = all.filter(p => p.end_at > from && p.start_at < to && statuses.includes(p.status) && overlaps(p, from, to));
 
   if (q.category) {
     const cats: string[] = q.category.split(',').filter(isCategory);

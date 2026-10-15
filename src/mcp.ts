@@ -23,7 +23,9 @@ import { LINK_KINDS, linkKind, linksFor, nextDue, normalizeUrl, SEEN_FOR, SKIP_O
 import { ApiError, newId, slugify } from './lib/util';
 import { publishMode, publishReady } from './db/publish';
 import { snapshotItems, type SnapshotItem } from './db/snapshot';
+import { hotSpan } from './db/popups';
 import { filterPopups } from './shared/filter-popups';
+import { MAX_RANGES, parseRangesColumn } from './shared/ranges';
 import { cleanTags, formatTagColumn, MAX_TAGS, TAG_INFO, TAGS, type Tag } from './shared/tags';
 import { AGENT_TAG_EDITS_PER_DAY, readTagChange, readTagQuotes, TagError, type TagQuote } from './lib/tagging';
 import { currentTags, mergeTags, setAgentTags, tagEditsInLastDay, vetClaimTags, type Dropped } from './db/tags';
@@ -84,7 +86,11 @@ function brief(p: ReturnType<typeof toPublic>, origin: string) {
     tags: p.tags ?? null,
     host: p.host,
     // An open or very long run has stand-in dates (migration 0026): say so, never present them as announced.
-    dates: p.date_kind === 'undated' ? 'not announced' : p.date_kind === 'open_end' ? `from ${londonDateString(p.start_at)}, no end date announced` : `${londonDateString(p.start_at)} to ${londonDateString(p.end_at)}`,
+    dates: p.date_kind === 'undated' ? 'not announced' : p.date_kind === 'open_end' ? `from ${londonDateString(p.start_at)}, no end date announced`
+      // Several separate date ranges (migration 0027): start_at and end_at are the whole span, so list each range and never present the span as open.
+      : p.ranges ? p.ranges.map(([s, e]) => { const a = londonDateString(s), b = londonDateString(e); return a === b ? a : `${a} to ${b}`; }).join(', ')
+      : `${londonDateString(p.start_at)} to ${londonDateString(p.end_at)}`,
+    ...(p.ranges ? { date_ranges: p.ranges.length } : {}),
     ...(p.date_kind ? { long_run: p.date_kind === 'long' ? 'Runs for more than 180 days' : 'No end date announced' } : {}),
     hours: p.hours_text,
     address: p.location.address,
@@ -112,11 +118,29 @@ async function useItem(x: Ctx, run: RunRow) {
   if (!r.meta.changes) throw new ToolError(`You reached this run's limit of ${x.agent!.max_items}. Call finish_run now.`);
 }
 
+/** One day pair 'YYYY-MM-DD' to Unix ms: the first day at 00:00 and the last day at 23:59, London. */
+function dayRange(start: string, end: string): [number, number] {
+  const s = parseLondonDate(start, 0, 0), e = parseLondonDate(end, 23, 59);
+  if (s === null || e === null) throw new ToolError('Dates must look like 2026-10-03.');
+  return [s, e];
+}
+
+/**
+ * The dates of a draft: `dates` (a list of separate ranges, for a pop-up that runs on more than one) or start_date and
+ * end_date. `ranges` is always set so nothing an agent sends under that name is read as raw milliseconds.
+ */
 function dates(a: Args) {
-  const start = str(a, 'start_date', 10, true)!, end = str(a, 'end_date', 10, true)!;
-  const start_at = parseLondonDate(start, 0, 0), endDay = parseLondonDate(end, 23, 59);
-  if (start_at === null || endDay === null) throw new ToolError('Dates must look like 2026-10-03.');
-  return { start_at, end_at: endDay };
+  if (a.dates !== undefined && a.dates !== null) {
+    if (!Array.isArray(a.dates) || !a.dates.length || a.dates.length > MAX_RANGES) throw new ToolError(`dates must be a list of 1 to ${MAX_RANGES} ranges, each with start_date and end_date.`);
+    const ranges = a.dates.map(d => {
+      const o = (d && typeof d === 'object' ? d : {}) as Args;
+      return dayRange(str(o, 'start_date', 10, true)!, str(o, 'end_date', 10, true)!);
+    });
+    return { start_at: Math.min(...ranges.map(r => r[0])), end_at: Math.max(...ranges.map(r => r[1])), ranges };
+  }
+  if (a.start_date === undefined || a.end_date === undefined) throw new ToolError('Give start_date and end_date, or dates for a pop-up with several separate date ranges.');
+  const [start_at, end_at] = dayRange(str(a, 'start_date', 10, true)!, str(a, 'end_date', 10, true)!);
+  return { start_at, end_at, ranges: null };
 }
 
 /** How long a removed post still counts as a duplicate for agents. */
@@ -311,7 +335,7 @@ async function autoAction(
     if (!o.dup || o.dup === p.id) return { why: 'give duplicate_of: the pop-up it repeats' };
     const target = await db.prepare('SELECT id, status, created_at FROM popups WHERE id = ?').bind(o.dup).first<Pick<PopupRow, 'id' | 'status' | 'created_at'>>();
     if (!target || !(PUBLIC_STATUSES.includes(target.status as never) || (target.status === 'pending' && target.created_at <= p.created_at))) return { why: 'duplicate_of must be a published pop-up, or an older post waiting for review' };
-    const same = await findDuplicates(db, { title: p.title, lat: p.lat, lng: p.lng, start_at: p.start_at, end_at: p.end_at });
+    const same = await findDuplicates(db, { title: p.title, lat: p.lat, lng: p.lng, start_at: p.start_at, end_at: p.end_at, ranges: parseRangesColumn(p.date_ranges) });
     if (!same.some(d => d.id === target.id)) return { why: 'that pop-up is not at the same place, on overlapping dates, with a similar title, so the admin decides' };
     mergedInto = target.id;
   } else {
@@ -561,6 +585,7 @@ const TOOLS: Record<string, Tool> = {
       category: S('Best fitting category. A dated dinner or residency by a chef or restaurant is dining, a stall, bar or tasting is food, a market of stalls or an art fair is market, a gallery or museum show is exhibition, a one-off installation or public art is art, a late, festival, party or talk is event. A brand shop stays fashion, beauty or tech, and a discount is sample. When none fits, other.', { enum: [...CATEGORIES] }),
       start_date: S('The real first day, YYYY-MM-DD, London. Give it even if it is in the past for a pop-up that is still running.'),
       end_date: S('Last day, YYYY-MM-DD, London. Same as start_date for one-day events. Must not have passed.'),
+      dates: { type: 'array', minItems: 1, maxItems: MAX_RANGES, description: `Only for a pop-up that runs on separate dates (two or more days or periods with gaps, for example 29 Oct and 26 Nov). Send the list instead of start_date and end_date: one { start_date, end_date } per range, YYYY-MM-DD, London, same day twice for a single day. Up to ${MAX_RANGES}, at most 365 days from the first to the last, each range at most 180 days. A range that has passed may stay in the list. Never stretch one range over the gap between dates.`, items: obj({ start_date: S('First day of this range, YYYY-MM-DD.'), end_date: S('Last day of this range, YYYY-MM-DD.') }, ['start_date', 'end_date']) },
       lat: N('Latitude from find_place.'),
       lng: N('Longitude from find_place.'),
       address: S('Street address.'),
@@ -580,7 +605,7 @@ const TOOLS: Record<string, Tool> = {
       tag_quotes: TAG_QUOTES_SCHEMA,
       image_url: S('Optional. A photo of the pop-up itself: the main picture of the organiser page (its og:image), or an address from get_social_posts images. Spotted copies it, credits the page and shows it on the pop-up. Skip logos, maps and screenshots. When you leave it out, Spotted tries the post images and then the page picture.'),
       source_id: S('Id from list_sources of the source that led you here, if any.'),
-    }, ['run_id', 'title', 'category', 'start_date', 'end_date', 'lat', 'lng', 'address', 'source_url', 'evidence']),
+    }, ['run_id', 'title', 'category', 'lat', 'lng', 'address', 'source_url', 'evidence']),
     async run(a, x) {
       const run = await requireRun(x, a);
       const db = x.c.env.DB;
@@ -599,7 +624,7 @@ const TOOLS: Record<string, Tool> = {
       }
       const evidence = str(a, 'evidence', EVIDENCE_MAX + 1, true)!;
       if (evidence.length < EVIDENCE_MIN || evidence.length > EVIDENCE_MAX) throw new ToolError(`evidence must be ${EVIDENCE_MIN} to ${EVIDENCE_MAX} characters, copied word for word; it is ${evidence.length}.`);
-      const dupes = await findDuplicates(db, input as { title: string; lat: number; lng: number; start_at: number; end_at: number }, { removedSince: x.now - TURNED_DOWN_FOR });
+      const dupes = await findDuplicates(db, { ...(input as { title: string; lat: number; lng: number; start_at: number; end_at: number }), ranges: parseRangesColumn(input.date_ranges) }, { removedSince: x.now - TURNED_DOWN_FOR });
       if (dupes.length) {
         await markSeen(x, run, seenUrl, 'duplicate', { sourceId, popupId: dupes[0].id });
         await markPostsHandled(db, [seenUrl, ...links.map(l => l.url)], x.now);
@@ -634,7 +659,7 @@ const TOOLS: Record<string, Tool> = {
         // Only when the Scout looked and nothing was held back for a person: null leaves the column out, so it stays NULL (not looked at).
         ...(tagged && !tagged.dropped.some(d => d.tag === 'all') ? { tags: formatTagColumn(tagged.tags) } : {}),
         created_by: x.agent!.user_id, quality_pos: 0, quality_neg: 0, created_at: x.now, updated_at: x.now,
-        hot: hot({ status: 'pending', qualityPos: 0, qualityNeg: 0, startAt: input.start_at!, endAt: input.end_at! }, x.now),
+        hot: hot({ status: 'pending', qualityPos: 0, qualityNeg: 0, ...hotSpan({ start_at: input.start_at!, end_at: input.end_at!, date_ranges: input.date_ranges }, x.now) }, x.now),
       };
       const cols = Object.keys(row);
       const note = str(a, 'note_for_admin', 600);

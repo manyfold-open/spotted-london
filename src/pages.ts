@@ -11,6 +11,7 @@ import { appBase, publicBase } from './middleware';
 import { llmsText } from './lib/llms';
 import { privacyBody } from './privacy';
 import { snapshotItems } from './db/snapshot';
+import { parseRangesColumn } from './shared/ranges';
 
 export const pages = new Hono<AppEnv>();
 
@@ -135,18 +136,26 @@ pages.get('/p/:slug', async c => {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
 
+const dayOf = (ts: number, weekday = true) => new Date(ts).toLocaleDateString('en-GB', { ...(weekday ? { weekday: 'short' as const } : {}), day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+
 function describe(p: PopupRow): string {
-  const day = new Date(p.start_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
-  const when = p.date_kind === 'undated' ? 'Dates not announced' : p.date_kind === 'open_end' ? `From ${day}, no end date announced` : day;
+  const day = dayOf(p.start_at);
+  const ranges = parseRangesColumn(p.date_ranges);
+  // Several separate dates: name the first few, never the span between them as if it were open the whole time.
+  const list = ranges ? ranges.slice(0, 3).map(([s]) => dayOf(s, false)).join(', ') + (ranges.length > 3 ? ` and ${ranges.length - 3} more dates` : '') : null;
+  const when = p.date_kind === 'undated' ? 'Dates not announced' : p.date_kind === 'open_end' ? `From ${day}, no end date announced` : list ? `On ${list}` : day;
   return [`${when}${p.borough ? ` in ${p.borough}` : ''}.`, p.description].filter(Boolean).join(' ').slice(0, 200);
 }
 
 export function headTags(p: PopupRow & { cover_key?: string | null }, origin: string): string {
   const url = `${origin}/p/${p.slug}`;
   const image = p.cover_key ? `${origin}/api/v1/images/${p.cover_key}` : null;
+  const ranges = parseRangesColumn(p.date_ranges);
+  const place = { '@type': 'Place', name: p.address ?? p.borough ?? 'London', address: { '@type': 'PostalAddress', streetAddress: p.address ?? undefined, addressLocality: 'London', addressCountry: 'GB' }, geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lng } };
   const ld = {
     '@context': 'https://schema.org',
-    '@type': 'Event',
+    // Separate dates are an event series with one event for each range (the span between them is not an event).
+    '@type': ranges ? 'EventSeries' : 'Event',
     name: p.title,
     description: p.description ?? undefined,
     // Stand-in dates (migration 0026) are not announced dates, so they are not given to search engines.
@@ -154,7 +163,8 @@ export function headTags(p: PopupRow & { cover_key?: string | null }, origin: st
     endDate: p.date_kind === 'undated' || p.date_kind === 'open_end' ? undefined : new Date(p.end_at).toISOString(),
     eventStatus: 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-    location: { '@type': 'Place', name: p.address ?? p.borough ?? 'London', address: { '@type': 'PostalAddress', streetAddress: p.address ?? undefined, addressLocality: 'London', addressCountry: 'GB' }, geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lng } },
+    location: place,
+    subEvent: ranges?.map(([s, e]) => ({ '@type': 'Event', name: p.title, startDate: new Date(s).toISOString(), endDate: new Date(e).toISOString(), eventStatus: 'https://schema.org/EventScheduled', eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode', location: place, url })),
     organizer: p.host ? { '@type': 'Organization', name: p.host } : undefined,
     image: image ?? undefined,
     isAccessibleForFree: p.price_type === 'free' ? true : undefined,

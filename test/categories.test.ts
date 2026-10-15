@@ -39,8 +39,8 @@ describe('popups schema after 0014', () => {
 
   it('keeps the columns added by later migrations', async () => {
     const cols = (await env.DB.prepare('PRAGMA table_info(popups)').all<{ name: string }>()).results.map(c => c.name);
-    expect(cols).toEqual(expect.arrayContaining(['is_example', 'evidence', 'evidence_url', 'evidence_check', 'lease_agent', 'lease_until', 'tags', 'date_kind']));
-    expect(cols).toHaveLength(40);
+    expect(cols).toEqual(expect.arrayContaining(['is_example', 'evidence', 'evidence_url', 'evidence_check', 'lease_agent', 'lease_until', 'tags', 'date_kind', 'date_ranges']));
+    expect(cols).toHaveLength(41);
   });
 });
 

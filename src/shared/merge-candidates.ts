@@ -1,7 +1,8 @@
 import { haversine } from '../lib/geo';
+import { rangesTouch, type Range } from './ranges';
 
 /** What the merge picker needs from a pop-up (the public list item has more). */
-export interface MergeItem { id: string; title: string; host: string | null; start_at: number; end_at: number; location: { lat: number; lng: number } }
+export interface MergeItem { id: string; title: string; host: string | null; start_at: number; end_at: number; ranges?: Range[]; location: { lat: number; lng: number } }
 
 /** Close enough that two posts may be the same place. Looser than the 300 m duplicate check on purpose: a person decides here. */
 export const NEAR_M = 800;
@@ -27,7 +28,7 @@ export function mergeCandidates(items: MergeItem[], from: MergeItem, query = '')
   }
   const mine = words(`${from.title} ${from.host ?? ''}`);
   const scored = others
-    .filter(p => p.start_at < from.end_at && p.end_at > from.start_at)
+    .filter(p => p.start_at < from.end_at && p.end_at > from.start_at && rangesTouch(p, from))
     .map(p => {
       const d = dist(p);
       let shared = 0;
@@ -78,7 +79,7 @@ export function duplicatePairs(items: PairItem[], dismissed: ReadonlySet<string>
       for (const j of grid.get(`${y + dy},${x + dx}`) ?? []) {
         if (j <= i) continue;
         const b = items[j];
-        if (a.id === b.id || a.start_at >= b.end_at || b.start_at >= a.end_at) continue;
+        if (a.id === b.id || a.start_at >= b.end_at || b.start_at >= a.end_at || !rangesTouch(a, b)) continue;
         const key = pairKey(a.id, b.id);
         if (dismissed.has(key)) continue;
         const d = haversine(a.location.lat, a.location.lng, b.location.lat, b.location.lng);

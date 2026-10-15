@@ -2,6 +2,11 @@ import type { PopupRow } from '../types';
 import { hot, KARMA, nextStatus, round, wilson, type Status } from '../lib/scoring';
 import { awardKarma } from './karma';
 import { parseTagColumn } from '../shared/tags';
+import { activeSpan, parseRangesColumn } from '../shared/ranges';
+
+/** What hot() looks at for a pop-up with several date ranges: the one open now or next (see src/shared/ranges.ts). */
+export const hotSpan = (p: Pick<PopupRow, 'start_at' | 'end_at' | 'date_ranges'>, now: number) =>
+  activeSpan({ start_at: p.start_at, end_at: p.end_at, ranges: parseRangesColumn(p.date_ranges) }, now);
 
 interface VoteRow { user_id: string; kind: 'existence' | 'quality'; value: 1 | -1; weight: number; ip_hash: string | null }
 
@@ -38,7 +43,7 @@ export async function recompute(db: D1Database, popupId: string, now: number): P
 
   const to = nextStatus({ status: p.status, startAt: p.start_at, endAt: p.end_at, existPos, existNeg, voterCount, checkinCount, reportWeight }, now);
   const confidence = round(wilson(existPos, existNeg), 4);
-  const h = hot({ status: to, qualityPos, qualityNeg, startAt: p.start_at, endAt: p.end_at }, now);
+  const h = hot({ status: to, qualityPos, qualityNeg, ...hotSpan(p, now) }, now);
 
   await db.prepare(
     `UPDATE popups SET exist_pos = ?, exist_neg = ?, voter_count = ?, checkin_count = ?, confidence = ?,
@@ -97,6 +102,8 @@ export function toPublic(p: PopupRow & { cover_key?: string | null; source_check
     location: { address: p.address, borough: p.borough, lat: p.lat, lng: p.lng },
     start_at: p.start_at,
     end_at: p.end_at,
+    // Two or more separate date ranges (migration 0027); start_at and end_at are then the whole span. Left out otherwise to keep the list small.
+    ...(p.date_ranges ? { ranges: parseRangesColumn(p.date_ranges) ?? undefined } : {}),
     // Only when the dates are not a normal short run (migration 0026); start_at and end_at are then stand-ins. Left out otherwise to keep the list small.
     ...(p.date_kind ? { date_kind: p.date_kind } : {}),
     hours_text: p.hours_text,

@@ -6,7 +6,7 @@ import type { Context } from 'hono';
 import type { AppEnv, PopupRow } from '../types';
 import { DAY, hot, PUBLIC_STATUSES, type Status } from '../lib/scoring';
 import { sha256 } from '../lib/util';
-import { SOURCE_CHECKED_SQL, toPublic } from './popups';
+import { hotSpan, SOURCE_CHECKED_SQL, toPublic } from './popups';
 
 /**
  * D1 allows about 2 MB in a row, so a list bigger than CHUNK_BYTES is stored as several rows: 'popups' holds the
@@ -35,7 +35,7 @@ export async function loadSnapshotItems(db: D1Database, now: number) {
   return results.map(p => ({
     ...toPublic(p),
     description: null as string | null,
-    hot: hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, startAt: p.start_at, endAt: p.end_at }, now),
+    hot: hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, ...hotSpan(p, now) }, now),
   }));
 }
 

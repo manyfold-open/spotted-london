@@ -7,7 +7,8 @@ import { CATEGORIES, safeUrl } from '../lib/extract';
 import { boxAround, CHECKIN_RADIUS_M, geohash, haversine, inLondon } from '../lib/geo';
 import { DAY, hot, initialStatus, KARMA, PUBLIC_STATUSES, voteWeight } from '../lib/scoring';
 import { MAX_DURATION, resolveDates, windowFor, type When } from '../lib/time';
-import { recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
+import { hotSpan, recompute, SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
+import { isProblem, normaliseRanges, openAt, parseRangesColumn, rangesOf, rangesTouch, type Range } from '../shared/ranges';
 import { tagFilter } from '../shared/tags';
 import { buildPopupSnapshot, entersOrLeavesPublic, readSnapshot, rebuildSnapshotSoon } from '../db/snapshot';
 import { awardKarma } from '../db/karma';
@@ -45,8 +46,9 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
   const limit = Math.min(50, Math.max(1, Number(q.limit) || 20));
   const offset = q.cursor ? parseInt(q.cursor, 36) || 0 : 0;
 
-  const where: string[] = ['end_at > ?', 'start_at < ?'];
-  const args: unknown[] = [from, to];
+  // start_at and end_at are the whole span, so they narrow the rows first; a pop-up with several date ranges must then have one inside the window (src/shared/ranges.ts `overlaps`).
+  const where: string[] = ['end_at > ?', 'start_at < ?', "(date_ranges IS NULL OR EXISTS (SELECT 1 FROM json_each(date_ranges) r WHERE json_extract(r.value, '$[1]') > ? AND json_extract(r.value, '$[0]') < ?))"];
+  const args: unknown[] = [from, to, from, to];
   const statuses = q.verified === '1' ? ['verified_community', 'verified_admin'] : PUBLIC_STATUSES;
   where.push(`status IN (${statuses.map(() => '?').join(',')})`);
   args.push(...statuses);
@@ -165,10 +167,10 @@ popups.post('/', async c => {
 
   // Duplicate check: same few hundred metres, overlapping dates, similar title (SPEC §3.2).
   if (b.force !== true) {
-    const dupes = await findDuplicates(db, input as DupeInput);
+    const dupes = await findDuplicates(db, { ...(input as DupeInput), ranges: parseRangesColumn(input.date_ranges) });
     if (dupes.length) {
       throw new ApiError(409, 'possible_duplicate', 'This looks like a pop-up that is already listed. Vote on it instead, or send again with "force": true.', {
-        candidates: dupes.map(p => ({ id: p.id, slug: p.slug, title: p.title, start_at: p.start_at, end_at: p.end_at })),
+        candidates: dupes.map(p => ({ id: p.id, slug: p.slug, title: p.title, start_at: p.start_at, end_at: p.end_at, ...(p.date_ranges ? { ranges: parseRangesColumn(p.date_ranges) } : {}) })),
       });
     }
   }
@@ -181,7 +183,7 @@ popups.post('/', async c => {
   const row = {
     id, slug: slugify(input.title!), ...input, geohash: geohash(input.lat!, input.lng!), status,
     created_by: u.id, quality_pos: 1, quality_neg: 0, created_at: now, updated_at: now,
-    hot: hot({ status, qualityPos: 1, qualityNeg: 0, startAt: input.start_at!, endAt: input.end_at! }, now),
+    hot: hot({ status, qualityPos: 1, qualityNeg: 0, ...hotSpan({ start_at: input.start_at!, end_at: input.end_at!, date_ranges: input.date_ranges }, now) }, now),
     final_verdict: status === 'verified_admin' ? 'real' : null,
   };
   const cols = Object.keys(row);
@@ -195,7 +197,7 @@ popups.post('/', async c => {
   return c.json(toPublic(created), 201);
 });
 
-type DupeInput = { title: string; lat: number; lng: number; start_at: number; end_at: number };
+type DupeInput = { title: string; lat: number; lng: number; start_at: number; end_at: number; ranges?: Range[] | null };
 
 /**
  * Same few hundred metres, overlapping dates, similar title (SPEC §3.2). A removed post does not count, so a person can
@@ -208,7 +210,8 @@ export async function findDuplicates(db: D1Database, x: DupeInput, opts: { remov
     `SELECT * FROM popups WHERE lat BETWEEN ?1 AND ?2 AND lng BETWEEN ?3 AND ?4 AND start_at < ?5 AND end_at > ?6
        AND (status != 'removed' OR updated_at >= ?7) LIMIT 50`,
   ).bind(box.south, box.north, box.west, box.east, x.end_at, x.start_at, opts.removedSince ?? Number.MAX_SAFE_INTEGER).all<PopupRow>();
-  return results.filter(p => titleSimilarity(p.title, x.title) >= 0.8);
+  // The SQL looked at the whole span; two pop-ups that only overlap in a gap between dates are not the same.
+  return results.filter(p => titleSimilarity(p.title, x.title) >= 0.8 && rangesTouch({ start_at: p.start_at, end_at: p.end_at, ranges: parseRangesColumn(p.date_ranges) }, x));
 }
 
 /* ---------- PATCH /popups/:id ---------- */
@@ -221,11 +224,16 @@ popups.patch('/:id', async c => {
     throw new ApiError(403, 'not_editable', 'Only the poster can edit this, and only before it is verified.');
   }
   const b = await jsonBody(c.req);
-  const input = parsePopupInput({ ...fromRow(p), ...b }, now, false, { openDates: true });
+  // A request that sets start_at or end_at without `ranges` (an older client) replaces the dates, so the stored ranges must not come back.
+  const own = fromRow(p);
+  const input = parsePopupInput({ ...own, ...(('start_at' in b || 'end_at' in b) && !('ranges' in b) ? { ranges: null } : {}), ...b }, now, false, { openDates: true });
   // Stand-in dates are made from "now", so an edit that leaves them alone keeps them (and the votes that went with them).
   if (input.date_kind === p.date_kind && p.date_kind === 'undated') { input.start_at = p.start_at; input.end_at = p.end_at; }
   if (input.date_kind === p.date_kind && p.date_kind === 'open_end' && input.start_at === p.start_at) input.end_at = p.end_at;
-  const moved = input.lat !== p.lat || input.lng !== p.lng || input.start_at !== p.start_at || input.end_at !== p.end_at;
+  // Adding a date to a list does not reset what people confirmed; changing or removing one that was there does.
+  const nextRanges = rangesOf({ start_at: input.start_at, end_at: input.end_at, ranges: parseRangesColumn(input.date_ranges) });
+  const datesMoved = !rangesOf({ start_at: p.start_at, end_at: p.end_at, ranges: parseRangesColumn(p.date_ranges) }).every(r => nextRanges.some(n => n[0] === r[0] && n[1] === r[1]));
+  const moved = input.lat !== p.lat || input.lng !== p.lng || datesMoved;
   // A live post that is edited into open or very long dates goes back to an admin: that is the same rule as adding one.
   const held = !isAdmin && !!input.date_kind && !p.date_kind && p.status !== 'pending';
   const set = { ...input, ...(held ? { status: 'pending' } : {}), geohash: geohash(input.lat!, input.lng!), updated_at: now };
@@ -291,7 +299,7 @@ popups.post('/:id/checkin', async c => {
   const db = c.env.DB;
   const p = await load(db, c.req.param('id'));
   if (!PUBLIC_STATUSES.includes(p.status)) throw new ApiError(409, 'checkin_closed', 'Check-ins are closed on this pop-up.');
-  if (p.start_at > now || p.end_at < now) throw new ApiError(409, 'not_live', 'You can check in only while the pop-up is open.');
+  if (!openAt({ start_at: p.start_at, end_at: p.end_at, ranges: parseRangesColumn(p.date_ranges) }, now)) throw new ApiError(409, 'not_live', 'You can check in only while the pop-up is open.');
   if (p.created_by === u.id) throw new ApiError(403, 'own_post', 'You cannot check in to your own pop-up.');
 
   const distance = haversine(lat, lng, p.lat, p.lng);
@@ -455,8 +463,21 @@ function fromRow(p: PopupRow) {
     price_text: p.price_text, address: p.address, borough: p.borough, lat: p.lat, lng: p.lng,
     // Stand-in dates (migration 0026) are not given back as if a person had typed them, or an edit would turn them into real ones.
     start_at: p.date_kind === 'undated' ? null : p.start_at, end_at: p.date_kind === 'open_end' || p.date_kind === 'undated' ? null : p.end_at,
+    ranges: parseRangesColumn(p.date_ranges),
     hours_text: p.hours_text, source_url: p.source_url,
   };
+}
+
+/** Reads `ranges` ([[start, end], ...] in Unix ms) from a request. Absent or null: none given. */
+export function readRanges(b: Record<string, unknown>) {
+  const v = b.ranges;
+  if (v === undefined || v === null || (Array.isArray(v) && !v.length)) return null;
+  if (!Array.isArray(v) || v.some(r => !Array.isArray(r) || r.length !== 2 || typeof r[0] !== 'number' || typeof r[1] !== 'number')) {
+    throw bad('ranges_invalid', 'ranges must be a list of [start, end] pairs in Unix milliseconds.');
+  }
+  const n = normaliseRanges(v as [number, number][]);
+  if (isProblem(n)) throw bad(n.code, n.message);
+  return n;
 }
 
 /**
@@ -470,10 +491,16 @@ export function parsePopupInput(b: Record<string, unknown>, now: number, creatin
   const category = oneOf(b, 'category', CATEGORIES, { required: true });
   const lat = num(b, 'lat', { required: true }), lng = num(b, 'lng', { required: true });
   if (!inLondon(lat!, lng!)) throw bad('outside_london', 'The location must be in London.');
-  const given = { start: num(b, 'start_at', { required: !opts.openDates }), end: num(b, 'end_at', { required: !opts.openDates }) };
+  // Several date ranges (migration 0027): `ranges` is a list of [start, end]. Joined and checked by normaliseRanges; one range left is an ordinary pop-up.
+  const multi = readRanges(b);
+  const given = multi
+    ? { start: multi.start_at, end: multi.end_at }
+    : { start: num(b, 'start_at', { required: !opts.openDates }), end: num(b, 'end_at', { required: !opts.openDates }) };
   const { start_at, end_at, date_kind } = opts.openDates ? resolveDates(given.start, given.end, now) : { start_at: given.start!, end_at: given.end!, date_kind: null };
+  const date_ranges = multi?.ranges ? JSON.stringify(multi.ranges) : null;
+  if (date_ranges && date_kind) throw bad('ranges_invalid', 'A pop-up with several dates needs a first and last day each; it cannot also be open ended or undated.');
   if (end_at <= start_at) throw bad('dates_invalid', 'The end must be after the start.');
-  if (!opts.openDates && end_at - start_at > MAX_DURATION) throw bad('too_long', `A pop-up can run for at most ${MAX_DURATION / DAY} days.`);
+  if (!opts.openDates && !date_ranges && end_at - start_at > MAX_DURATION) throw bad('too_long', `A pop-up can run for at most ${MAX_DURATION / DAY} days.`);
   // A pop-up that started a while ago and is still running is fine (someone may find it late). It must not have ended.
   if (creating && end_at < now) throw bad('already_ended', 'This pop-up has already ended.');
   let source_url: string | null = text(b, 'source_url', { max: 500 });
@@ -484,7 +511,7 @@ export function parsePopupInput(b: Record<string, unknown>, now: number, creatin
   }
   if (date_kind && !source_url) throw bad('source_required', 'Add a link to a page that shows this pop-up, so an admin can check it.');
   return {
-    title, category, lat, lng, start_at, end_at, date_kind, source_url,
+    title, category, lat, lng, start_at, end_at, date_kind, date_ranges, source_url,
     host: text(b, 'host', { max: 100 }),
     description: text(b, 'description', { max: 2000 }),
     address: text(b, 'address', { max: 200 }),

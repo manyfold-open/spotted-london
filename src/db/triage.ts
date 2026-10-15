@@ -9,7 +9,7 @@ import { normalizeQuote } from '../lib/evidence';
 import { AGENT_ACTIONS_PER_DAY, cutText, dateOnPage, FixError, MAX_DATE_SHIFT_DAYS, MIN_DESCRIPTION, type Fixes } from '../lib/triage';
 
 export interface ActingAgent { id: string; user_id: string }
-export type FixTarget = Pick<PopupRow, 'id' | 'status' | 'description' | 'address' | 'price_text' | 'hours_text' | 'start_at' | 'end_at' | 'voter_count'>;
+export type FixTarget = Pick<PopupRow, 'id' | 'status' | 'description' | 'address' | 'price_text' | 'hours_text' | 'start_at' | 'end_at' | 'date_ranges' | 'voter_count'>;
 
 export const AGENT_ACTIONS = ['popup.agent_fix', 'popup.agent_remove', 'popup.agent_end'];
 
@@ -58,6 +58,7 @@ export async function applyFixes(db: D1Database, p: FixTarget, fixes: Fixes, quo
     let start = p.start_at, end = p.end_at;
     for (const [field, value] of set) {
       if (field === 'start_date' || field === 'end_date') {
+        if (p.date_ranges) throw new FixError('This post has several date ranges, so an agent cannot move its dates. Say what is wrong in the note instead.');
         const at = parseLondonDate(value, field === 'start_date' ? 0 : 23, field === 'start_date' ? 0 : 59);
         if (at === null) throw new FixError('Dates must look like 2026-10-03.');
         if (!dateOnPage(quote, value)) throw new FixError(`Your quote does not state ${value}. Quote the sentence that gives the ${field === 'start_date' ? 'start' : 'end'} date.`);
