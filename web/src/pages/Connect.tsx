@@ -4,7 +4,7 @@ import { useToast } from '../lib/hooks';
 import { usePhone } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { APP_LIST, browsePrompt, EXAMPLE_ASKS, pickApp, setupFor, TEST_PROMPT, TROUBLE, type AppKey } from '../../../src/shared/connect';
-import { shareUrl } from '../lib/base';
+import { siteUrl } from '../lib/base';
 
 // How to connect an AI assistant to Spotted. The server needs no sign-in or key, so this page is only instructions
 // and things to copy. The words live in src/shared/connect.ts, which /llms.txt (src/lib/llms.ts) reads too.
@@ -32,7 +32,7 @@ function CopyBox({ text, label, code }: { text: string; label: string; code?: bo
 }
 
 export function Connect() {
-  const origin = shareUrl('');
+  const origin = siteUrl(); // includes the mount prefix, so /llms.txt, /mcp and /connect below are real addresses
   const url = `${origin}/mcp`;
   const toast = useToast();
   const phone = usePhone();
