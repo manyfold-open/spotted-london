@@ -10,6 +10,7 @@ import { Icon } from '../components/Icon';
 import { CardSkeletons, Cover, MAX_CROP_SMALL, PopupCard, StatusTag } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { Logo } from '../components/Shell';
+import { EditPanel } from '../components/EditPanel';
 import { MergePanel } from '../components/MergePanel';
 import { flushTaste, forgetTaste } from '../lib/taste';
 import { markSigningIn, setTrackingOptOut, trackingOptedOut } from '../lib/track';
@@ -279,6 +280,7 @@ export function AdminQueue() {
   const onError = useErrorToast();
   const { open } = useSheet();
   const [merging, setMerging] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const q = useQuery({ queryKey: ['queue'], queryFn: () => api<{ items: QueueItem[] }>('/admin/queue'), enabled: me?.role === 'admin' });
   const decide = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' | 'hide' | 'restore' }) => api(`/admin/popups/${id}/decision`, { method: 'POST', json: { action } }),
@@ -330,9 +332,11 @@ export function AdminQueue() {
             <div className="qactions">
               {p.status === 'hidden' ? <button className="btn sm" onClick={() => decide.mutate({ id: p.id, action: 'restore' })}>Restore</button> : null}
               <button className="btn sm primary" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, action: 'approve' })}><Icon name="i-shield" />Verify</button>
-              <button className="btn sm" disabled={decide.isPending} onClick={() => setMerging(merging === p.id ? null : p.id)}><Icon name="i-link" />Merge</button>
+              <button className="btn sm" disabled={decide.isPending} onClick={() => { setMerging(null); setEditing(editing === p.id ? null : p.id); }}>Edit</button>
+              <button className="btn sm" disabled={decide.isPending} onClick={() => { setEditing(null); setMerging(merging === p.id ? null : p.id); }}><Icon name="i-link" />Merge</button>
               <button className="btn sm danger" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, action: 'reject' })}><Icon name="i-x" />Remove</button>
             </div>
+            {editing === p.id ? <div style={{ gridColumn: '1 / -1' }}><EditPanel slug={p.slug} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} /></div> : null}
             {merging === p.id ? <div style={{ gridColumn: '1 / -1' }}><MergePanel p={p} onDone={() => setMerging(null)} onCancel={() => setMerging(null)} /></div> : null}
           </div>
         ))}</div>
