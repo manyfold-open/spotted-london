@@ -11,6 +11,8 @@ const NOTES = {
   autofill: 'Pasted links, text and screenshots on the Add page. Failed means the AI did not work. A page that blocks us, or text with nothing in it, is counted as "not ours".',
   mcp: 'Searches and lookups that visitors\' own AI assistants make through the Use with AI page. Failed means a tool broke on our side. A bad request is counted as "not ours", and calls stopped by the rate limit are not counted.',
 } as const;
+/** Bars are drawn against at least this many calls, so a single call is a short bar and not a full-height block. */
+const MIN_PEAK = 10;
 const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const secs = (ms: number | null) => (ms === null ? 'none' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
@@ -36,7 +38,9 @@ export function HealthPanel() {
 
 function Feature({ f }: { f: FeatureHealth }) {
   const today = f.days[f.days.length - 1]!;
-  const peak = Math.max(1, ...f.days.map(d => d.ok + d.failed + d.other));
+  const total = (d: (typeof f.days)[number]) => d.ok + d.failed + d.other;
+  const busiest = Math.max(0, ...f.days.map(total));
+  const peak = Math.max(MIN_PEAK, busiest);
   const rate = f.rate_today === null ? 'No calls today' : `${Math.round(f.rate_today * 100)}% worked today`;
   return (
     <div className="hl-feature">
@@ -45,12 +49,13 @@ function Feature({ f }: { f: FeatureHealth }) {
         <span className={`tag ${f.flagged ? 't-err' : f.rate_today === null ? '' : 't-eng'}`}>{f.flagged ? `${rate}: look into it` : rate}</span>
         <Test f={f} />
       </div>
-      <div className="hl-bars" role="img" aria-label={`${NAMES[f.feature]} each day, busiest day ${peak} calls`}>
+      <div className="hl-bars" role="img" aria-label={`${NAMES[f.feature]} each day, busiest day ${busiest} calls`}>
         {f.days.map(d => {
-          const n = d.ok + d.failed + d.other;
+          const n = total(d);
           return (
             <div key={d.day} className="hl-col" title={`${day.format(new Date(d.day))}: ${d.ok} worked, ${d.failed} failed, ${d.other} not ours${d.avg_ms === null ? '' : `. Average ${secs(d.avg_ms)}, slowest ${secs(d.max_ms)}`}`}>
-              <div style={{ height: `${n ? Math.max(4, (n / peak) * 100) : 0}%` }}>
+              {n ? null : <b className="hl-zero" />}
+              <div style={{ height: `${n ? Math.max(6, (n / peak) * 100) : 0}%` }}>
                 {d.failed ? <i className="bad" style={{ flexGrow: d.failed }} /> : null}
                 {d.other ? <i className="other" style={{ flexGrow: d.other }} /> : null}
                 {d.ok ? <i className="good" style={{ flexGrow: d.ok }} /> : null}
@@ -59,6 +64,7 @@ function Feature({ f }: { f: FeatureHealth }) {
           );
         })}
       </div>
+      <div className="row small muted hl-axis"><span>{day.format(new Date(f.days[0]!.day))}</span><span>{busiest === 0 ? 'No calls in these 14 days' : `Tallest bar: ${busiest} ${busiest === 1 ? 'call' : 'calls'}`}</span><span>Today</span></div>
       <p className="small muted">
         Today: {today.ok} worked, {today.failed} failed{today.other ? `, ${today.other} not ours` : ''}. Average {secs(today.avg_ms)}, slowest {secs(today.ok + today.failed ? today.max_ms : null)}.
         {f.last_error ? <> Last error in these 14 days: <span className="hl-err">{f.last_error}</span></> : null}
