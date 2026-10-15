@@ -12,7 +12,8 @@ import { Icon } from '../components/Icon';
 import { Cover, MAX_CROP_SMALL, useShare } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
-import { datesProblem, ExtraDates, rangesPayload, type DateRow } from '../components/ExtraDates';
+import { ExtraDates } from '../components/ExtraDates';
+import { datesProblem, rangesPayload, type DateRow } from '../lib/date-rows';
 import { track } from '../lib/track';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));

@@ -5,7 +5,8 @@ import { popupQuery } from '../lib/cache';
 import { CAT_LIST, CATS, catIcon, londonDate, londonTs } from '../lib/format';
 import { useDebounced, useErrorToast, useToast } from '../lib/hooks';
 import { DatePicker } from './DatePicker';
-import { datesProblem, ExtraDates, rangesPayload, rowsOf, type DateRow } from './ExtraDates';
+import { ExtraDates } from './ExtraDates';
+import { datesProblem, rangesPayload, rowsOf, type DateRow } from '../lib/date-rows';
 import { Icon } from './Icon';
 
 const PinPicker = lazy(() => import('./maps').then(m => ({ default: m.PinPicker })));

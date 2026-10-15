@@ -85,4 +85,13 @@ describe('duplicatePairs', () => {
     expect(duplicatePairs(many)).toEqual([]);
     expect(Date.now() - t0).toBeLessThan(1500);
   });
+
+  it('a pop-up with several dates is not matched on a day in the gap between them', () => {
+    const several = item('m', 'Bank tours', 51.5135, -0.134, { start_at: T, end_at: T + 30 * DAY, ranges: [[T, T + DAY], [T + 29 * DAY, T + 30 * DAY]] });
+    const inGap = item('n', 'Bank tours extra', 51.5136, -0.1341, { start_at: T + 10 * DAY, end_at: T + 11 * DAY });
+    const onDate = item('o', 'Bank tours extra', 51.5136, -0.1341, { start_at: T + 29 * DAY, end_at: T + 30 * DAY });
+    expect(mergeCandidates([several, inGap, onDate], several).map(p => p.id)).toEqual(['o']);
+    expect(duplicatePairs([several, inGap], new Set()).length).toBe(0);
+    expect(duplicatePairs([several, onDate], new Set()).length).toBe(1);
+  });
 });
