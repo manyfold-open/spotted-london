@@ -21,5 +21,8 @@ export const joinBase = (base: string, path: string): string =>
 /** An in-app path ('/api/v1/e', '/p/some-slug', '/api/v1/images/a.jpg') as the browser must ask for it. Safe to apply twice. */
 export const appUrl = (path: string): string => joinBase(BASE, path);
 
+/** The site's own address on the host in use, with the mount prefix and no trailing slash: https://app.manyfold.ai/spotted-london. */
+export const siteUrl = (): string => `${browser.location.origin}${BASE}`;
+
 /** The address a person can share for an in-app path, on the host they are using. */
 export const shareUrl = (path: string): string => `${browser.location.origin}${appUrl(path)}`;
