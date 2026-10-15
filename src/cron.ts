@@ -5,6 +5,7 @@ import { DAY, hot, KARMA } from './lib/scoring';
 import { awardKarma } from './db/karma';
 import { runAgents } from './db/agents';
 import { SEEN_KEEP } from './db/scout';
+import { hotSpan } from './db/popups';
 import { purgeSocial, runSocial } from './db/social';
 import { buildPopupSnapshot } from './db/snapshot';
 import { purgeAsks } from './db/ask';
@@ -62,10 +63,10 @@ const HOT_EPSILON = 0.01;
  */
 export async function recomputeHot(db: D1Database, now: number) {
   const { results } = await db.prepare(
-    "SELECT id, status, quality_pos, quality_neg, start_at, end_at, hot FROM popups WHERE end_at >= ? AND status IN ('community', 'verified_community', 'verified_admin')",
-  ).bind(now).all<Pick<PopupRow, 'id' | 'status' | 'quality_pos' | 'quality_neg' | 'start_at' | 'end_at' | 'hot'>>();
+    "SELECT id, status, quality_pos, quality_neg, start_at, end_at, date_ranges, hot FROM popups WHERE end_at >= ? AND status IN ('community', 'verified_community', 'verified_admin')",
+  ).bind(now).all<Pick<PopupRow, 'id' | 'status' | 'quality_pos' | 'quality_neg' | 'start_at' | 'end_at' | 'date_ranges' | 'hot'>>();
   const stmts = results.flatMap(p => {
-    const h = hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, startAt: p.start_at, endAt: p.end_at }, now);
+    const h = hot({ status: p.status, qualityPos: p.quality_pos, qualityNeg: p.quality_neg, ...hotSpan(p, now) }, now);
     return Math.abs(h - p.hot) >= HOT_EPSILON ? [db.prepare('UPDATE popups SET hot = ? WHERE id = ?').bind(h, p.id)] : [];
   });
   for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));

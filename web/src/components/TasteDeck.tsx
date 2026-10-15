@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import type { Popup } from '../lib/api';
-import { CATS, catIcon, dateRange, isLive } from '../lib/format';
+import { CATS, catIcon, dateShort, isLive } from '../lib/format';
 import { haptic, reducedMotion } from '../lib/motion';
 import { getTaste, updateTaste, useKeptNote } from '../lib/taste';
 import { DECK_SIZE, forgetSwipes, learn, likedCategories, pickDeck, type Taste } from '../../../src/shared/taste';
@@ -170,7 +170,7 @@ function TasteCard({ p, behind, style, lean = 0, onDown, onMove, onUp }: {
       <div className="td-body">
         <h3>{p.title}</h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ') || 'London'}</span></div>
-        <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
+        <div className="meta"><Icon name="i-clock" /><span className="t num">{dateShort(p)}</span></div>
         {price ? <div className="meta"><Icon name="i-pound" /><span className="t">{price}</span></div> : null}
       </div>
     </article>

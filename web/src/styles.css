@@ -281,6 +281,8 @@ textarea.input { min-height: 96px; max-height: 360px; resize: none; field-sizing
 .input.bad { border-color: var(--err) }
 .filling .input:not(.src) { color: transparent; border-color: var(--hair); background: linear-gradient(90deg, var(--soft) 0, var(--card) 50%, var(--soft) 100%); background-size: 200% 100%; animation: sheen 1.35s linear infinite }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
+/* one more date range under Starts and Ends (ExtraDates) */
+.extradate { display: grid; gap: 8px; padding-top: 12px; border-top: 1.5px dashed var(--ink3) }
 .aibox { border: 1.5px solid var(--ai); border-radius: 16px; background: var(--card); padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 4px 4px 0 var(--ai) }
 .aibox h2 { font-size: 18px }
 .aibox.drag { background: var(--ai-bg); border-style: dashed }

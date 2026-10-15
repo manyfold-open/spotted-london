@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from '
 import { useQueryClient } from '@tanstack/react-query';
 import type { AskPick, Popup } from '../lib/api';
 import { ask, clearAsk, clearAskError, closeAsk, isAsking, markAskSeen, useAsk, useAskStatus, type Turn } from '../lib/ask';
-import { CATS, catIcon, dateRange, distance, isLive } from '../lib/format';
+import { CATS, catIcon, dateShort, distance, isLive } from '../lib/format';
 import { isPhone } from '../lib/motion';
 import { useTaste } from '../lib/taste';
 import { composeQuestion, REFINE_LABELS, shapePicks, type Refine } from '../../../src/shared/ask-chat';
@@ -198,7 +198,7 @@ function AskRow({ pick, p, metres, onOpen }: { pick?: AskPick; p: Popup | null; 
         <span className={`sw ${p ? `pat-${p.category}` : ''}`}>{p ? (p.cover_url ? <Img src={p.cover_url} /> : <Icon name={catIcon(p.category)} className="i" />) : <Icon name="i-pin" className="i" />}</span>
         <span className="ask-t">
           <b>{title}</b>
-          {p ? <span className="ask-m">{[p.location.borough, CATS[p.category]].filter(Boolean).join(' · ')} · {dateRange(p)}{isLive(p) ? ' · on now' : ''}{p.price.type === 'free' ? ' · Free' : ''}</span> : null}
+          {p ? <span className="ask-m">{[p.location.borough, CATS[p.category]].filter(Boolean).join(' · ')} · {dateShort(p)}{isLive(p) ? ' · on now' : ''}{p.price.type === 'free' ? ' · Free' : ''}</span> : null}
           {pick?.reason ? <span className="ask-why">{pick.reason}</span> : null}
         </span>
         {metres !== undefined ? <span className="mp-dist">{distance(metres)}</span> : null}

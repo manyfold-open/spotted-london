@@ -211,6 +211,8 @@ Scout has a memory: a list of sources to check, and every page it already read.
 7. `submit_draft`:
    - `title`: the organiser's name for it, like "Aesop Sample Sale" or "Jollibee Pop-up at Boxpark
      Wembley". No dates or prices in the title.
+   - `start_date` and `end_date`: the first and last day of the run, YYYY-MM-DD, London. One-day events use the same day twice.
+   - `dates`: only when the page lists separate dates with gaps (for example 29 Oct and 26 Nov, or 15 Oct, 12 Nov and 10 Dec). Send one `{ start_date, end_date }` for each range instead of `start_date` and `end_date`. Never stretch one range over the gap: the map would show it as open the whole time. Up to 12 ranges, at most 365 days from the first to the last, each range at most 180 days. A range that has passed can stay in the list. One shared `hours_text` covers every range ("12:30 on tour days"). Your `evidence` quote should show the dates.
    - `description`: two or three plain sentences. What it is, what you can do or buy, anything
      useful (free entry, queue expected, cash only). Written by you, not copied. Every fact in it
      (dishes, prices, guests, free gifts) must be on a page you opened in this run. Nothing from

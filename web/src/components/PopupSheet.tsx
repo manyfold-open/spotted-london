@@ -314,7 +314,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
                 </div>
                 <button className="btn block" style={{ marginTop: 10 }} disabled={!live || checkin.isPending} onClick={requireAuth(() => checkin.mutate(), 'Sign in to check in', { then: 'check in' })}>
                   {locating ? <span className="spin" /> : <Icon name="i-locate" />}
-                  {locating ? 'Finding you' : live ? "I'm here, check me in" : 'Check-in opens when it starts'}
+                  {locating ? 'Finding you' : live ? "I'm here, check me in" : started && p.ranges ? 'Check-in opens on the next date' : 'Check-in opens when it starts'}
                 </button>
                 <p className="weightnote" style={{ marginTop: 10 }}>
                   {me ? <>Your vote counts <b className="num">{weight.toFixed(1)}x</b>. Checked in within 200 m it counts <b className="num">{(weight * 3).toFixed(1)}x</b>. </> : null}

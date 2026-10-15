@@ -17,7 +17,10 @@ export interface Popup {
   tags?: Tag[] | null;
   price: { type: string | null; text: string | null };
   location: { address: string | null; borough: string | null; lat: number; lng: number };
+  /** With `ranges` these are the first and the last day, not the dates the pop-up is on. */
   start_at: number; end_at: number;
+  /** Two or more separate date ranges ([start, end] in Unix ms), when it runs on separate dates (migration 0027). */
+  ranges?: [number, number][];
   /** Set when the dates are not a normal short run: start_at and end_at are then stand-ins (migration 0026). */
   date_kind?: 'long' | 'open_end' | 'undated';
   hours_text: string | null; source_url: string | null; status: Status;
