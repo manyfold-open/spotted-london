@@ -17,6 +17,7 @@ import { agentsAdmin } from './routes/agents';
 import { mcp } from './mcp';
 import { events } from './routes/events';
 import { insights } from './routes/insights';
+import { health } from './routes/health';
 import { withMount } from './mount';
 import { withAnalytics } from './analytics';
 
@@ -40,6 +41,7 @@ api.route('/me', me);
 api.route('/users', users);
 api.route('/admin/agents', agentsAdmin);
 api.route('/admin/insights', insights);
+api.route('/admin/health', health);
 api.route('/admin', admin);
 api.route('/newsletter', newsletter);
 api.route('/images', images);

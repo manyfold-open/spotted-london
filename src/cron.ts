@@ -9,6 +9,7 @@ import { hotSpan } from './db/popups';
 import { purgeSocial, runSocial } from './db/social';
 import { buildPopupSnapshot } from './db/snapshot';
 import { purgeAsks } from './db/ask';
+import { rollupAsks } from './db/health';
 import { backfillPhotos } from './db/photo-backfill';
 import { guardOn, refreshGuard } from './db/usage';
 
@@ -30,6 +31,8 @@ export async function runCron(cron: string, env: Bindings, now = Date.now()) {
       await refreshGuard(env, now).catch(e => console.warn('usage guard skipped', e));
       await recomputeHot(env.DB, now);
       await reminders(env.DB, now);
+      // Last, and caught: before migration 0028 there is no health_daily table, and that must not stop anything else.
+      await rollupAsks(env.DB, now).catch(e => console.warn('health rollup skipped', e));
       break;
     case '0 4 * * *':
       await settleKarma(env.DB, now);

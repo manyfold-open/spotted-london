@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv, Bindings } from '../types';
 import { requireUser } from '../middleware';
 import { ApiError, bad, sha256 } from '../lib/util';
@@ -6,6 +6,9 @@ import { jsonBody, text } from '../lib/validate';
 import { DAY } from '../lib/scoring';
 import { resolveImageUrl } from '../lib/photo';
 import { londonDateString } from '../lib/time';
+import { classifyAutofillError } from '../lib/health';
+import { recordAutofill } from '../db/health';
+import { safeErrorText } from '../lib/a2a';
 import {
   emptyExtraction, finalise, fromLlm, llmPrompt, llmVisionPrompt, LLM_SCHEMA, mergeInto, missing, parseJsonLdEvent,
   parseOpenGraph, platformOf, readableText, safeUrl, type Extracted, type Source,
@@ -19,7 +22,7 @@ const MAX_HTML = 1_000_000;
  * POST /extract  { url } or { text }
  * Returns form fields with per-field confidence. Never creates a pop-up (SPEC §3.8).
  */
-extract.post('/', async c => {
+extract.post('/', c => withHealth(c, async h => {
   const u = requireUser(c);
   const now = c.get('now');
   const b = await jsonBody(c.req);
@@ -31,22 +34,12 @@ extract.post('/', async c => {
   if (rawUrl && !url) throw bad('url_invalid', 'That does not look like a public web link.');
   await rateLimit(c.env, u.id, now, now - u.created_at < 7 * DAY ? 3 : 10);
 
-  if (pasted && !url) {
-    if (!c.env.AI) throw new ApiError(501, 'ai_unavailable', 'Reading pasted text needs AI, which is not switched on yet. Fill in the form yourself.');
-    const e = emptyExtraction();
-    const fail = await llmPass(c.env, e, c.env.AI_TEXT_MODEL, llmPrompt(pasted.slice(0, 8000), now), 'llm_text');
-    if (fail) throw aiError(fail);
-    finalise(e, pasted, now);
-    if (!e.title && !e.start_date && !e.address) {
-      throw new ApiError(422, 'unreadable_text', 'We could not find a name, date or place in that text. Paste more of the post, or fill in the form yourself.');
-    }
-    return c.json({ fields: e, platform: null, cached: false });
-  }
+  if (pasted && !url) return c.json({ fields: await extractFromText(c.env, pasted, now), platform: null, cached: false });
 
   if (!url) throw bad('url_invalid', 'That does not look like a public web link.');
   const key = `ex:${await sha256(url.toString())}`;
   const hit = await c.env.CACHE.get<Extracted>(key, 'json');
-  if (hit) return c.json({ fields: hit, platform: platformOf(url), cached: true });
+  if (hit) { h.skip(); return c.json({ fields: hit, platform: platformOf(url), cached: true }); }
 
   const html = await fetchPage(url);
   const e = emptyExtraction();
@@ -56,7 +49,7 @@ extract.post('/', async c => {
   if (missing(e).length && c.env.AI) {
     const og = parseOpenGraph(html);
     const page = [og.title, og.description, readableText(html)].filter(Boolean).join('\n');
-    await llmPass(c.env, e, c.env.AI_TEXT_MODEL, llmPrompt(page.slice(0, 8000), now), 'llm_text');
+    h.aiFailed = await llmPass(c.env, e, c.env.AI_TEXT_MODEL, llmPrompt(page.slice(0, 8000), now), 'llm_text');
   }
   finalise(e, readableText(html, 2000), now);
   if (!e.title && !e.start_date) {
@@ -65,7 +58,7 @@ extract.post('/', async c => {
   e.image_url = resolveImageUrl(e.image_url, url.toString()); // the form copies it, so it must be an absolute public address
   await c.env.CACHE.put(key, JSON.stringify(e), { expirationTtl: 86_400 });
   return c.json({ fields: e, platform: platformOf(url), cached: false });
-});
+}));
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE = 2 * 1024 * 1024;
@@ -74,7 +67,7 @@ const MAX_IMAGE = 2 * 1024 * 1024;
  * POST /extract/image  raw image body (JPEG, PNG or WebP, up to 2 MB)
  * Reads a screenshot of a post with the vision model. The web app shrinks screenshots first.
  */
-extract.post('/image', async c => {
+extract.post('/image', c => withHealth(c, async () => {
   const u = requireUser(c);
   const now = c.get('now');
   const type = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
@@ -94,7 +87,7 @@ extract.post('/image', async c => {
     throw new ApiError(422, 'unreadable_image', 'We could not read pop-up details in that screenshot. Try one that shows the caption, or fill in the form yourself.');
   }
   return c.json({ fields: e, platform: null, cached: false });
-});
+}));
 
 const tooLarge = () => new ApiError(413, 'image_too_large', 'That screenshot is too big. Crop it to the post and try again.');
 
@@ -138,6 +131,47 @@ async function fetchPage(url: URL): Promise<string> {
 }
 
 type AiFailure = 'quota' | 'error';
+
+/** Pasted text through the model. Shared by POST /extract and the admin's autofill test (src/routes/health.ts). */
+export async function extractFromText(env: Bindings, pasted: string, now: number): Promise<Extracted> {
+  if (!env.AI) throw new ApiError(501, 'ai_unavailable', 'Reading pasted text needs AI, which is not switched on yet. Fill in the form yourself.');
+  const e = emptyExtraction();
+  const fail = await llmPass(env, e, env.AI_TEXT_MODEL, llmPrompt(pasted.slice(0, 8000), now), 'llm_text');
+  if (fail) throw aiError(fail);
+  finalise(e, pasted, now);
+  if (!e.title && !e.start_date && !e.address) {
+    throw new ApiError(422, 'unreadable_text', 'We could not find a name, date or place in that text. Paste more of the post, or fill in the form yourself.');
+  }
+  return e;
+}
+
+interface HealthHandle {
+  /** This request says nothing about the AI (an answer from the cache): leave it out of the numbers. */
+  skip(): void;
+  /** The model failed on a page that then gave nothing: that is ours, not the site's. */
+  aiFailed: AiFailure | null;
+}
+
+/** Counts how the request ended in the daily health numbers (src/db/health.ts), after the response has gone out. */
+async function withHealth(c: Context<AppEnv>, run: (h: HealthHandle) => Promise<Response>): Promise<Response> {
+  const started = Date.now();
+  const h: HealthHandle & { skipped: boolean } = { skipped: false, skip() { this.skipped = true; }, aiFailed: null };
+  const record = (outcome: Parameters<typeof recordAutofill>[2], error?: string) => {
+    if (h.skipped) return;
+    const p = recordAutofill(c.env.DB, c.get('now'), outcome, Date.now() - started, error);
+    try { c.executionCtx.waitUntil(p); } catch { /* no execution context (some tests): the write still runs */ }
+  };
+  try {
+    const res = await run(h);
+    record('ok');
+    return res;
+  } catch (e) {
+    const outcome = h.aiFailed && e instanceof ApiError && e.code === 'unreadable_link' ? 'failed' : classifyAutofillError(e);
+    if (outcome) record(outcome, outcome === 'failed' ? (h.aiFailed ? `ai_${h.aiFailed}` : e instanceof ApiError ? e.code : safeErrorText(e)) : undefined);
+    throw e;
+  }
+}
+
 
 /** One model call. Fills empty fields and returns why it failed, if it did. */
 async function llmPass(env: Bindings, e: Extracted, model: string, messages: unknown[], source: Source): Promise<AiFailure | null> {

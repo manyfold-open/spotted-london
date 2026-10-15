@@ -6,6 +6,7 @@ import { useMe } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CATS } from '../lib/format';
 import { appUrl } from '../lib/base';
+import { HealthPanel } from '../components/HealthPanel';
 
 // Admin only. How people use Spotted, as counts: visitors, what they open and save, whether they come back.
 // Nothing here says who anyone is. The events are anonymous (src/lib/events.ts); the account counts come from D1.
@@ -39,6 +40,7 @@ export default function InsightsPage() {
         </div>
         <span className="small muted">{d ? `Updated ${clock.format(d.updated_at)}. ` : ''}Refreshes every 5 minutes.</span>
       </div>
+      <HealthPanel />
       {q.isPending ? <div className="sk" style={{ height: 220, borderRadius: 16, marginTop: 18 }} /> : q.isError || !d ? (
         <div className="empty" style={{ marginTop: 18 }}><p>{q.error?.message ?? 'Could not load the numbers.'}</p><button className="btn sm" onClick={() => q.refetch()}>Try again</button></div>
       ) : (

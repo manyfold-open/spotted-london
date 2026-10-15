@@ -936,6 +936,21 @@ code { font-family: var(--mono); font-size: 12px; background: var(--soft); paddi
   .ins-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
 }
 
+/* Health panel on Insights: one bar a day per AI feature, stacked failed / not ours / worked */
+.hl-feature { margin-top: 18px; padding-top: 14px; border-top: 1.5px solid var(--line, var(--ink)) }
+.hl-feature:first-of-type { border-top: 0; padding-top: 0 }
+.hl-head { gap: 10px; flex-wrap: wrap; align-items: center }
+.hl-head h3 { font-family: var(--display); font-size: 18px; font-weight: 800; margin-right: 2px }
+.hl-test { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; min-width: 0; max-width: 100% }
+.hl-test .small { min-width: 0; overflow-wrap: anywhere }
+.hl-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; margin: 12px 0 6px; border-bottom: 1.5px solid var(--ink) }
+.hl-col { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end }
+.hl-col > div { width: 100%; display: flex; flex-direction: column; border-radius: 3px 3px 0 0; overflow: hidden }
+.hl-col i { display: block; min-height: 2px }
+.hl-col i.good { background: var(--eng) } .hl-col i.bad { background: var(--err) } .hl-col i.other { background: var(--ink2, #888); opacity: .45 }
+.hl-err { color: var(--err); font-weight: 600; overflow-wrap: anywhere }
+@media (max-width: 899px) { .hl-test { margin-left: 0; width: 100% } }
+
 /* Possible duplicates: two pop-ups side by side on a wide screen, stacked on a phone */
 .dup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px }
 .dup-side { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; padding: 12px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--card) }
