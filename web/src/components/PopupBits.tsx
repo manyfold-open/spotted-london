@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Popup } from '../lib/api';
 import { MY_STATE_KEY, patchMe, patchPopup, prefetchPopup } from '../lib/cache';
-import { CATS, catIcon, DATE_KIND_LABEL, dateRange, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
+import { CATS, catIcon, DATE_KIND_LABEL, dateShort, distance, isLive, meterClass, startsTomorrow } from '../lib/format';
 import { useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
 import { track } from '../lib/track';
 import { hasLocalSave, localSaveIds, setLocalSave } from '../lib/local-saves';
@@ -151,7 +151,7 @@ export function useShare(p: Popup) {
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     if (!navigator.share || !touch) return copy();
     try {
-      await navigator.share({ title: p.title, text: `${p.title}, ${p.location.borough ?? 'London'} · ${dateRange(p)}`, url });
+      await navigator.share({ title: p.title, text: `${p.title}, ${p.location.borough ?? 'London'} · ${dateShort(p)}`, url });
       track('share', { slug: p.slug });
     } catch (e) {
       if ((e as { name?: string }).name !== 'AbortError') await copy(); // closing the share sheet is not an error
@@ -191,7 +191,7 @@ export function PopupCard({ p, i = 0 }: { p: Popup; i?: number }) {
         <div className="row" style={{ gap: 6 }}><StatusTag status={p.status} sourceChecked={p.source_checked} />{p.date_kind ? <span className="tag t-watch">{DATE_KIND_LABEL[p.date_kind]}</span> : null}{p.example ? <span className="tag t-sim">Example</span> : null}</div>
         <h3><Link className="stretch" to={`/p/${p.slug}`} onPointerEnter={warm} onPointerDown={warm} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.closest('.card')?.querySelector('.thumb')); }}>{p.title}</Link></h3>
         <div className="meta"><Icon name="i-pin" /><span className="t">{[p.location.borough, p.host].filter(Boolean).join(' · ')}{p.distance_m !== undefined ? ` · ${distance(p.distance_m)}` : ''}</span></div>
-        <div className="meta"><Icon name="i-clock" /><span className="t num">{dateRange(p)}</span></div>
+        <div className="meta"><Icon name="i-clock" /><span className="t num">{dateShort(p)}</span></div>
       </div>
       <div className="cfoot">
         {/* 0% on a red bar reads as "fake" next to a Verified tag; with no votes there is nothing to measure yet. */}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useRouteError, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AgentNote, type Popup } from '../lib/api';
-import { dateRange, initials, looksLikeEmail } from '../lib/format';
+import { dateRange, dateShort, initials, looksLikeEmail } from '../lib/format';
 import { useErrorToast, useGate, useMe, useMyState, useSheet, useToast } from '../lib/hooks';
 import { mergeMe } from '../lib/cache';
 import { useLocalSaves } from '../lib/local-saves';
@@ -29,7 +29,7 @@ export function Saved() {
     ? (q.data?.items ?? []).map(p => ({ ...p, me: { saved: true, existence_vote: 0, quality_vote: 0, ...p.me } }))
     : mergeMe((snap.data?.items ?? []).filter(p => local.some(s => s.id === p.id)), mine);
   const loading = isPending || (me ? q.isPending : snap.isPending);
-  const upcoming = items.filter(p => p.end_at >= Date.now());
+  const upcoming = items.filter(p => p.end_at >= Date.now());  // the span: a pop-up with later dates is still upcoming
   const past = items.filter(p => p.end_at < Date.now());
   return (
     <>
@@ -216,7 +216,7 @@ export function MePage() {
         <div className="stack">{mine.data.items.map(p => (
           <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
             <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
-            <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateRange(p)}</span></span><StatusTag status={p.status} />
+            <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateShort(p)}</span></span><StatusTag status={p.status} />
           </Link>
         ))}</div>
       ) : <div className="empty"><p>You have not added any pop-ups yet.</p><Link className="btn sm" to="/add"><Icon name="i-plus" />Add a pop-up</Link></div>}

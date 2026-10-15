@@ -5,6 +5,7 @@ import { popupQuery } from '../lib/cache';
 import { CAT_LIST, CATS, catIcon, londonDate, londonTs } from '../lib/format';
 import { useDebounced, useErrorToast, useToast } from '../lib/hooks';
 import { DatePicker } from './DatePicker';
+import { datesProblem, ExtraDates, rangesPayload, rowsOf, type DateRow } from './ExtraDates';
 import { Icon } from './Icon';
 
 const PinPicker = lazy(() => import('./maps').then(m => ({ default: m.PinPicker })));
@@ -35,8 +36,11 @@ function EditForm({ p, onDone, onCancel }: { p: Popup; onDone: () => void; onCan
   const [whereText, setWhereText] = useState(p.location.address ?? '');
   const [place, setPlace] = useState<Place | null>({ label: p.location.address ?? '', name: null, address: p.location.address ?? '', area: p.location.borough, lat: p.location.lat, lng: p.location.lng });
   const [dateMode, setDateMode] = useState<DateMode>(p.date_kind === 'undated' ? 'no_dates' : p.date_kind === 'open_end' ? 'no_end' : 'dates');
-  const [start, setStart] = useState(p.date_kind === 'undated' ? today() : londonDate(p.start_at));
-  const [end, setEnd] = useState(p.date_kind === 'undated' || p.date_kind === 'open_end' ? today() : londonDate(p.end_at));
+  // With several ranges, start_at and end_at are the whole span: the first range is the first one in the list.
+  const first = p.ranges?.[0] ?? [p.start_at, p.end_at];
+  const [start, setStart] = useState(p.date_kind === 'undated' ? today() : londonDate(first[0]));
+  const [end, setEnd] = useState(p.date_kind === 'undated' || p.date_kind === 'open_end' ? today() : londonDate(first[1]));
+  const [moreDates, setMoreDates] = useState<DateRow[]>(() => rowsOf(p));
   const [hours, setHours] = useState(p.hours_text ?? '');
   const [priceType, setPriceType] = useState<'free' | 'paid' | 'unknown'>((p.price.type as 'free' | 'paid' | 'unknown' | null) ?? 'unknown');
   const [price, setPrice] = useState(p.price.text ?? '');
@@ -61,7 +65,7 @@ function EditForm({ p, onDone, onCancel }: { p: Popup; onDone: () => void; onCan
       setPlace(r); setWhereText(r.label);
     } catch { /* keep the moved pin even if the address lookup fails */ }
   };
-  useEffect(() => { setError(null); }, [title, whereText, place, dateMode, start, end, src]);
+  useEffect(() => { setError(null); }, [title, whereText, place, dateMode, start, end, moreDates, src]);
 
   const save = useMutation({
     mutationFn: () => api<Popup & { votes_reset?: boolean }>(`/popups/${p.id}`, {
@@ -70,6 +74,7 @@ function EditForm({ p, onDone, onCancel }: { p: Popup; onDone: () => void; onCan
         title: title.trim(), host: host.trim() || null, category, description: desc.trim() || null,
         address: place!.address, borough: place!.area, lat: place!.lat, lng: place!.lng,
         start_at: dateMode === 'no_dates' ? null : londonTs(start, 0), end_at: dateMode === 'dates' ? londonTs(end, 23, 59) : null,
+        ranges: dateMode === 'dates' ? rangesPayload(start, end, moreDates) : null,
         hours_text: hours.trim() || null, price_type: priceType, price_text: price.trim() || null, source_url: src.trim() || null,
       },
     }),
@@ -85,6 +90,7 @@ function EditForm({ p, onDone, onCancel }: { p: Popup; onDone: () => void; onCan
     if (!place) return setError('Choose an address from the list, or drop the pin on the map.');
     if (dateMode !== 'no_dates' && !start) return setError('Pick a start date.');
     if (dateMode === 'dates' && (!end || end < start)) return setError('The end date must be on or after the start.');
+    if (dateMode === 'dates') { const bad = datesProblem(start, end, moreDates); if (bad) return setError(bad); }
     save.mutate();
   };
 
@@ -134,6 +140,7 @@ function EditForm({ p, onDone, onCancel }: { p: Popup; onDone: () => void; onCan
           {dateMode === 'dates' ? <div className="field"><span className="lbl" id={`end-${p.id}`}>Ends</span>
             <DatePicker title="Ends" labelledBy={`end-${p.id}`} value={end} today={today()} min={start} range={[start, end]} onChange={setEnd} /></div> : null}
         </div>
+        {dateMode === 'dates' ? <ExtraDates firstEnd={end} rows={moreDates} onChange={setMoreDates} /> : null}
         <label className="field"><span className="lbl">Opening hours <span className="muted small">(optional)</span></span>
           <input className="input" value={hours} onChange={e => setHours(e.target.value)} placeholder="e.g. Sat 10:00 to 16:00" /></label>
         <div className="field"><span className="lbl" id={`price-${p.id}`}>Price</span>

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 
 import { Link } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Category, type Extracted, type Place, type Popup } from '../lib/api';
-import { CAT_LIST, CATS, catIcon, dateRange, londonDate, londonTs } from '../lib/format';
+import { CAT_LIST, CATS, catIcon, dateShort, londonDate, londonTs } from '../lib/format';
 import { SignInPrompt } from './Account';
 import { useDebounced, useErrorToast, useMe, useSheet, useToast } from '../lib/hooks';
 import { haptic, scrollBehavior } from '../lib/motion';
@@ -12,12 +12,13 @@ import { Icon } from '../components/Icon';
 import { Cover, MAX_CROP_SMALL, useShare } from '../components/PopupBits';
 import { Turnstile, useNeedsTurnstile, useProviders } from '../components/Turnstile';
 import { DatePicker } from '../components/DatePicker';
+import { datesProblem, ExtraDates, rangesPayload, type DateRow } from '../components/ExtraDates';
 import { track } from '../lib/track';
 
 const PinPicker = lazy(() => import('../components/maps').then(m => ({ default: m.PinPicker })));
 
 type Flag = 'ai' | 'check' | undefined;
-type FieldKey = 'title' | 'host' | 'category' | 'where' | 'start' | 'end' | 'hours' | 'price' | 'desc' | 'src';
+type FieldKey = 'title' | 'host' | 'category' | 'where' | 'start' | 'end' | 'more' | 'hours' | 'price' | 'desc' | 'src';
 /** Which dates are known: all of them, no end date announced, or none (migration 0026). The last two, and a run over 180 days, wait for an admin and need a source link. */
 type DateMode = 'dates' | 'no_end' | 'no_dates';
 const DAY_MS = 86_400_000;
@@ -54,7 +55,7 @@ function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
       </p>
       <Link to={`/p/${p.slug}`} className="mini" style={i(2)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
         <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
-        <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {dateRange(p)}</span></span>
+        <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {dateShort(p)}</span></span>
       </Link>
       <div className="acts" style={i(3)}>
         <button className="btn primary" onClick={() => open(p.slug)}><Icon name="i-list" />See your pop-up</button>
@@ -80,6 +81,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const [start, setStart] = useState(today());
   const [end, setEnd] = useState(today());
   const [dateMode, setDateMode] = useState<DateMode>('dates');
+  // Further date ranges after the first (Starts and Ends): a pop-up on separate dates, such as 29 Oct and 26 Nov.
+  const [moreDates, setMoreDates] = useState<DateRow[]>([]);
   const [hours, setHours] = useState('');
   const [priceType, setPriceType] = useState<'free' | 'paid' | 'unknown'>('unknown');
   const [price, setPrice] = useState('');
@@ -194,7 +197,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   const hasSource = looksLikeUrl(src);
   const trust = (me?.trust ?? 0) + (hasSource ? 10 : 0);
   // No end date, no dates, or more than 180 days: an admin looks first, whatever the trust score (an admin's own post is already looked at).
-  const longRun = dateMode !== 'dates' || (!!start && !!end && Date.parse(end) - Date.parse(start) > 180 * DAY_MS);
+  const separate = dateMode === 'dates' ? moreDates : [];
+  const longRun = dateMode !== 'dates' || (!separate.length && !!start && !!end && Date.parse(end) - Date.parse(start) > 180 * DAY_MS);
   const held = longRun && me?.role !== 'admin';
   const auto = !held && (me?.role === 'admin' || me?.role === 'organizer' || trust >= 50);
 
@@ -206,7 +210,12 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
     if (dateMode !== 'no_dates' && !start) e.start = 'Pick a start date.';
     if (dateMode === 'dates') {
       if (!end || end < start) e.end = 'The end date must be on or after the start.';
-      if (end && end < today()) e.end = 'This pop-up has already ended.';
+      if (end && end < today() && !separate.length) e.end = 'This pop-up has already ended.';
+      if (separate.length) {
+        const bad = datesProblem(start, end, separate);
+        if (bad) e.more = bad;
+        else if (separate[separate.length - 1].end < today()) e.more = 'This pop-up has already ended.';
+      }
     }
     if (longRun && !hasSource) e.src = 'Add a link to a page that shows this pop-up, so an admin can check it. Paste it in the box at the top.';
     setErrors(e);
@@ -231,7 +240,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
         json: {
           title: title.trim(), host: host.trim() || null, category, description: desc.trim() || null,
           address: place!.address, borough: place!.area, lat: place!.lat, lng: place!.lng,
-          start_at: dateMode === 'no_dates' ? null : londonTs(start, 0), end_at: dateMode === 'dates' ? londonTs(end, 23, 59) : null, hours_text: hours.trim() || null,
+          start_at: dateMode === 'no_dates' ? null : londonTs(start, 0), end_at: dateMode === 'dates' ? londonTs(end, 23, 59) : null,
+          ranges: dateMode === 'dates' ? rangesPayload(start, end, moreDates) : null, hours_text: hours.trim() || null,
           price_type: priceType, price_text: price.trim() || null, source_url: hasSource ? src.trim() : null, force, turnstile_token: botToken,
         },
       });
@@ -346,6 +356,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
               <DatePicker title="Ends" labelledBy="endlbl" value={end} today={today()} min={start} range={[start, end]} className={state('end')}
                 onChange={v => { setEnd(v); clearFlag('end'); }} />{err('end')}</div> : null}
           </div>
+          {dateMode === 'dates' ? <ExtraDates firstEnd={end} rows={moreDates} onChange={r => { setMoreDates(r); setErrors(e => ({ ...e, more: undefined })); }} error={errors.more} /> : null}
           <label className="field">{lbl('hours', 'Opening hours', ' (optional)')}
             <input className={cls('hours')} value={hours} onChange={e => { setHours(e.target.value); clearFlag('hours'); }} placeholder="e.g. Sat 10:00 to 16:00" /></label>
           <div className="field"><span className="lbl" id="pricelbl">Price</span>
