@@ -309,6 +309,24 @@ describe('open and very long dates', () => {
     expect(later.json.votes_reset).toBe(false);
   });
 
+  it('an admin can fix the details of a waiting post; it stays waiting and the old values are kept in the audit log', async () => {
+    const poster = await user(), boss = await user({ role: 'admin' });
+    const waiting = (await post(poster, { title: 'Wrong address tiramisu', lat: 51.611, lng: -0.211, start_at: null, end_at: null })).json;
+    expect(waiting.status).toBe('pending');
+    const fixed = await api('PATCH', `/popups/${waiting.id}`, { user: boss, body: { address: '145 Mitcham Road, SW17 9PE', lat: 51.612, lng: -0.212, description: 'Corrected' } });
+    expect(fixed.status).toBe(200);
+    expect(fixed.json).toMatchObject({ status: 'pending', description: 'Corrected', location: { address: '145 Mitcham Road, SW17 9PE' } });
+    const row = await env.DB.prepare("SELECT admin_id, detail FROM audit_log WHERE action = 'popup.admin_edit' AND target_id = ?").bind(waiting.id).first<{ admin_id: string; detail: string }>();
+    expect(row!.admin_id).toBe(boss);
+    const detail = JSON.parse(row!.detail) as { from: Record<string, unknown>; to: Record<string, unknown> };
+    expect(detail.from.address).toBe('Druid Street, SE1');
+    expect(detail.to.address).toBe('145 Mitcham Road, SW17 9PE');
+    expect(detail.to).not.toHaveProperty('title');
+    // the poster editing their own post is not an admin action
+    await api('PATCH', `/popups/${waiting.id}`, { user: poster, body: { description: 'Mine' } });
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'popup.admin_edit' AND target_id = ?").bind(waiting.id).first<{ n: number }>())!.n).toBe(1);
+  });
+
   it('agents cannot publish one, even when their notes say it is ready', async () => {
     const { publishReady } = await import('../src/db/publish');
     const trusted = await user();

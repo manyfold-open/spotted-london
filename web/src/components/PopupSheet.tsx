@@ -12,6 +12,7 @@ import { compressImage } from '../lib/image';
 import { makeThumb } from '../lib/thumbs';
 import { TAG_LABELS } from '../../../src/shared/tags';
 import { Icon } from './Icon';
+import { EditPanel } from './EditPanel';
 import { MergePanel } from './MergePanel';
 import { PhotoViewer } from './PhotoViewer';
 import { Cover, Img, Meter, ScoreVotes, StatusTag, Ticker, useChanged, usePopupActions, useShare } from './PopupBits';
@@ -185,6 +186,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const [viewing, setViewing] = useState<number | null>(null);
   const [reporting, setReporting] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [editing, setEditing] = useState(false);
   // The reasons open at the bottom of the sheet, under the Save and Directions bar: bring them into view.
   const reportBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (reporting) reportBox.current?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }); }, [reporting]);
@@ -339,9 +341,12 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
           ) : <div><button className="btn sm subtle" onClick={requireAuth(() => setReporting(true), 'Sign in to report', { then: 'report a problem' })}><Icon name="i-flag" />Report a problem</button></div>
         ) : null}
         {me?.role === 'admin' && !partial && p.status !== 'removed' ? (
-          merging
-            ? <MergePanel p={p} onDone={onClose} onCancel={() => setMerging(false)} />
-            : <div><button className="btn sm subtle" onClick={() => setMerging(true)}><Icon name="i-link" />Merge into another pop-up</button></div>
+          merging ? <MergePanel p={p} onDone={onClose} onCancel={() => setMerging(false)} />
+            : editing ? <EditPanel slug={p.slug} onDone={() => setEditing(false)} onCancel={() => setEditing(false)} />
+            : <div className="row" style={{ gap: 8 }}>
+              <button className="btn sm subtle" onClick={() => setEditing(true)}>Edit details</button>
+              <button className="btn sm subtle" onClick={() => setMerging(true)}><Icon name="i-link" />Merge into another pop-up</button>
+            </div>
         ) : null}
       </div>
       <div className="dfoot">

@@ -236,6 +236,12 @@ popups.patch('/:id', async c => {
   // Changing where or when a pop-up is invalidates what people confirmed (SPEC §3.2).
   if (moved) stmts.push(c.env.DB.prepare("DELETE FROM votes WHERE popup_id = ? AND kind = 'existence'").bind(p.id));
   await c.env.DB.batch(stmts);
+  // An admin fixing someone else's post (often one that is waiting in the queue) leaves the old values behind.
+  if (isAdmin && p.created_by !== u.id) {
+    const changed = Object.keys(input).filter(k => (input as Record<string, unknown>)[k] !== (((p as unknown) as Record<string, unknown>)[k] ?? null));
+    const pick = (o: Record<string, unknown>) => Object.fromEntries(changed.map(k => [k, o[k] ?? null]));
+    if (changed.length) await audit(c.env.DB, u.id, 'popup.admin_edit', 'popup', p.id, { from: pick(p as unknown as Record<string, unknown>), to: pick(input) }, now);
+  }
   const change = await recompute(c.env.DB, p.id, now);
   if (PUBLIC_STATUSES.includes(p.status) || entersOrLeavesPublic(change)) rebuildSnapshotSoon(c); // a public pop-up changed
   return c.json(toPublic(await load(c.env.DB, p.id), { votes_reset: moved }));
