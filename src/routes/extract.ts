@@ -7,7 +7,7 @@ import { DAY } from '../lib/scoring';
 import { resolveImageUrl } from '../lib/photo';
 import { londonDateString } from '../lib/time';
 import { classifyAutofillError } from '../lib/health';
-import { recordAutofill } from '../db/health';
+import { recordCall } from '../db/health';
 import { safeErrorText } from '../lib/a2a';
 import {
   emptyExtraction, finalise, fromLlm, llmPrompt, llmVisionPrompt, LLM_SCHEMA, mergeInto, missing, parseJsonLdEvent,
@@ -156,9 +156,9 @@ interface HealthHandle {
 async function withHealth(c: Context<AppEnv>, run: (h: HealthHandle) => Promise<Response>): Promise<Response> {
   const started = Date.now();
   const h: HealthHandle & { skipped: boolean } = { skipped: false, skip() { this.skipped = true; }, aiFailed: null };
-  const record = (outcome: Parameters<typeof recordAutofill>[2], error?: string) => {
+  const record = (outcome: Parameters<typeof recordCall>[3], error?: string) => {
     if (h.skipped) return;
-    const p = recordAutofill(c.env.DB, c.get('now'), outcome, Date.now() - started, error);
+    const p = recordCall(c.env.DB, 'autofill', c.get('now'), outcome, Date.now() - started, error);
     try { c.executionCtx.waitUntil(p); } catch { /* no execution context (some tests): the write still runs */ }
   };
   try {

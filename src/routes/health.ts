@@ -9,6 +9,7 @@ import { HEALTH_FEATURES, type HealthFeature, type TestResult } from '../shared/
 import { advanceAsk, answerOf, availableAgent, createAsk, loadAsk, startAsk } from '../db/ask';
 import { ADMIN_TEST_WHO, lastTests, loadHealth, saveTest } from '../db/health';
 import { extractFromText } from './extract';
+import { mcpSelfTest } from '../mcp';
 
 /**
  * The Health panel on /admin/insights: how Ask and autofill have been doing, and a button that tries each one now.
@@ -21,11 +22,13 @@ health.get('/', async c => {
   return c.json({ health: await loadHealth(c.env.DB, c.get('now')) });
 });
 
+const LABELS = { ask: 'Ask', autofill: 'autofill', mcp: 'MCP' } as const;
+
 /** One try a minute for each feature, counted from when the last one started. */
 async function assertNotTooSoon(db: D1Database, feature: HealthFeature, now: number) {
   const last = (await lastTests(db))[feature];
   if (last && now >= last.at && now - last.at < TEST_GAP_MS) {
-    throw new ApiError(429, 'test_too_soon', `The last ${feature === 'ask' ? 'Ask' : 'autofill'} test started less than a minute ago. Wait a little and try again.`);
+    throw new ApiError(429, 'test_too_soon', `The last ${LABELS[feature]} test started less than a minute ago. Wait a little and try again.`);
   }
 }
 
@@ -45,6 +48,14 @@ health.post('/test', async c => {
     } catch (err) {
       result = { feature, ok: false, ms: Date.now() - started, at: now, detail: err instanceof ApiError ? err.message : safeErrorText(err) };
     }
+    await saveTest(c.env.DB, result, now);
+    return c.json({ result });
+  }
+
+  if (feature === 'mcp') {
+    const started = Date.now();
+    const r = await mcpSelfTest(c, now);
+    const result: TestResult = { feature, ok: r.ok, ms: Date.now() - started, at: now, detail: r.detail };
     await saveTest(c.env.DB, result, now);
     return c.json({ result });
   }

@@ -85,3 +85,19 @@ permissions and the one-a-minute limit; working with the table missing.
 
 Migration 0028 must be applied to the remote D1 before merge (`npx wrangler d1 migrations apply
 manyfold-spotted-london-db --remote`). The code is safe before that: reads return empty, writes are skipped.
+
+## Addendum: the public MCP tools (2026-10-15, Zack)
+
+A third feature, `mcp`: keyless calls to `search_popups` and `get_popup` at POST /mcp, made through a visitor's own AI.
+Migration 0029 rebuilds `health_daily` to allow `mcp` in `feature`.
+
+- **Recording** in `handle()` of `src/mcp.ts`, keyless callers only (agents have their own run history): `ok` when the tool
+  ends normally; `other` for a `ToolError` or `ApiError` (bad arguments, no such pop-up); `failed` for anything else, with
+  `<tool>: <error>` as the last error. One upsert through `waitUntil`, same as autofill.
+- **Not recorded**: calls stopped by the visitor rate limit (a rejected call must not cost a write), `tools/list`, unknown
+  tools, and agent-key calls.
+- **Which AI app connects is not recorded.** Zack chose this; it would be new data about visitors and the privacy page would
+  have to say so.
+- **Test now** (`mcpSelfTest`): the tool list has both public tools, a search finds a live pop-up whose link starts with this
+  site's address, and `get_popup` returns the same pop-up. It calls the tools directly, so it is not counted as a visitor and
+  does not use the visitor rate limit. The same one-a-minute limit applies.

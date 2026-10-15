@@ -5,10 +5,11 @@ import { api, type FeatureHealth, type Health, type TestResult } from '../lib/ap
 // Admin only. Are Ask and autofill working? Last 14 days from the database, and a button that tries each one now.
 // The numbers are counts and times (src/db/health.ts); nothing a visitor typed is kept.
 
-const NAMES = { ask: 'Ask', autofill: 'Autofill' } as const;
+const NAMES = { ask: 'Ask', autofill: 'Autofill', mcp: 'Assistants (MCP)' } as const;
 const NOTES = {
   ask: 'Questions typed into Ask. Failed means the Concierge did not answer, or not in a form Spotted can read.',
   autofill: 'Pasted links, text and screenshots on the Add page. Failed means the AI did not work. A page that blocks us, or text with nothing in it, is counted as "not ours".',
+  mcp: 'Searches and lookups that visitors\' own AI assistants make through the Use with AI page. Failed means a tool broke on our side. A bad request is counted as "not ours", and calls stopped by the rate limit are not counted.',
 } as const;
 const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });

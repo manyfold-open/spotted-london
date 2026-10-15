@@ -43,18 +43,18 @@ export async function rollupAsks(db: D1Database, now: number) {
   }
 }
 
-/** One finished autofill request. `ms` only counts when it worked or failed. Never throws: health must not break a request. */
-export async function recordAutofill(db: D1Database, now: number, outcome: Outcome, ms: number, error?: string) {
+/** One finished autofill request or public MCP call. `ms` only counts when it worked or failed. Never throws: health must not break a request. */
+export async function recordCall(db: D1Database, feature: 'autofill' | 'mcp', now: number, outcome: Outcome, ms: number, error?: string) {
   try {
     const timed = outcome === 'other' ? 0 : Math.max(0, Math.round(ms));
     await db.prepare(
-      `INSERT INTO health_daily (day, feature, ok, failed, other, ms_sum, ms_max, last_error) VALUES (?, 'autofill', ?, ?, ?, ?, ?, ?)
+      `INSERT INTO health_daily (day, feature, ok, failed, other, ms_sum, ms_max, last_error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (day, feature) DO UPDATE SET ok = ok + excluded.ok, failed = failed + excluded.failed, other = other + excluded.other,
          ms_sum = ms_sum + excluded.ms_sum, ms_max = MAX(ms_max, excluded.ms_max), last_error = COALESCE(excluded.last_error, last_error)`,
-    ).bind(londonDateString(now), outcome === 'ok' ? 1 : 0, outcome === 'failed' ? 1 : 0, outcome === 'other' ? 1 : 0, timed, timed,
+    ).bind(londonDateString(now), feature, outcome === 'ok' ? 1 : 0, outcome === 'failed' ? 1 : 0, outcome === 'other' ? 1 : 0, timed, timed,
       outcome === 'failed' && error ? error.slice(0, 200) : null).run();
   } catch (e) {
-    console.warn('autofill health not recorded', e);
+    console.warn(`${feature} health not recorded`, e);
   }
 }
 

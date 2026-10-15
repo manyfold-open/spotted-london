@@ -10,6 +10,9 @@
 
 import { Hono, type Context } from 'hono';
 import { withinPublicLimit } from './middleware';
+import { recordCall } from './db/health';
+import { safeErrorText } from './lib/a2a';
+import type { Outcome } from './lib/health';
 import type { AppEnv, PopupRow } from './types';
 import { AGENT_INFO, agentByKey, brief as runBrief, RUN_TIMEOUT, type AgentRow, type RunRow } from './db/agents';
 import { findDuplicates, parsePopupInput } from './routes/popups';
@@ -945,11 +948,21 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
       if (!x.agent && !(await withinPublicLimit(x.c, 'mcp'))) {
         return reply(msg.id, { isError: true, content: [{ type: 'text', text: 'Too many requests from this connection. Wait a minute and try again, and ask for fewer searches at a time.' }] });
       }
+      // Public calls are counted in the daily health numbers (src/db/health.ts); agents have their own run history.
+      const started = Date.now();
+      const record = (outcome: Outcome, error?: string) => {
+        if (x.agent) return;
+        const p = recordCall(x.c.env.DB, 'mcp', x.now, outcome, Date.now() - started, error);
+        try { x.c.executionCtx.waitUntil(p); } catch { /* no execution context (some tests): the write still runs */ }
+      };
       try {
         const out = await TOOLS[name].run(typeof args === 'object' && args ? args : {}, x);
+        record('ok');
         return reply(msg.id, { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out });
       } catch (e) {
-        if (e instanceof ToolError || e instanceof ApiError) return reply(msg.id, { isError: true, content: [{ type: 'text', text: e.message }] });
+        // Bad arguments or an unknown pop-up are the caller's doing; anything else broke on our side.
+        if (e instanceof ToolError || e instanceof ApiError) { record('other'); return reply(msg.id, { isError: true, content: [{ type: 'text', text: e.message }] }); }
+        record('failed', `${name}: ${safeErrorText(e)}`);
         console.error('mcp tool failed', name, e);
         return reply(msg.id, { isError: true, content: [{ type: 'text', text: 'The tool failed on our side. Try again later.' }] });
       }
@@ -957,6 +970,32 @@ async function handle(msg: Rpc, x: Ctx): Promise<object | null> {
     default:
       if (isNotification) return null;
       return fail(msg.id, -32601, `Method not found: ${msg.method}.`);
+  }
+}
+
+const originOf = (c: Context<AppEnv>) => (c.env.APP_URL ? c.env.APP_URL.replace(/\/+$/, '') : new URL(c.req.url).origin + mountOf(c));
+
+/**
+ * The admin's Test now for the public tools: the tool list is there, a search finds a live pop-up with a link on this site,
+ * and that pop-up can be fetched. It calls the tools directly, so it is not counted as a visitor's call and does not use the
+ * visitor rate limit.
+ */
+export async function mcpSelfTest(c: Context<AppEnv>, now: number): Promise<{ ok: boolean; detail: string }> {
+  const x: Ctx = { c, agent: null, now, origin: originOf(c) };
+  try {
+    const listed = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, x)) as { result?: { tools?: { name: string }[] } };
+    const names = listed.result?.tools?.map(t => t.name) ?? [];
+    const missing = PUBLIC_TOOLS.filter(n => !names.includes(n));
+    if (missing.length) return { ok: false, detail: `The tool list is missing ${missing.join(' and ')}.` };
+    const found = (await TOOLS.search_popups.run({ when: 'all', limit: 1 }, x)) as { popups?: { id: string; url: string }[] };
+    const first = found.popups?.[0];
+    if (!first) return { ok: false, detail: 'The search found no pop-ups, so there is nothing for an assistant to share. Check the public list.' };
+    if (!first.url.startsWith(`${x.origin}/p/`)) return { ok: false, detail: `The search returned a link that is not on this site (${first.url.slice(0, 80)}). Check APP_URL.` };
+    const got = (await TOOLS.get_popup.run({ id: first.id }, x)) as { id?: string };
+    if (got.id !== first.id) return { ok: false, detail: 'The search found a pop-up, but fetching it by id did not return the same one.' };
+    return { ok: true, detail: 'The tools are listed, a search found a pop-up with a link, and fetching it worked.' };
+  } catch (e) {
+    return { ok: false, detail: e instanceof ToolError || e instanceof ApiError ? e.message : safeErrorText(e) };
   }
 }
 
@@ -969,8 +1008,7 @@ mcp.post('/', async c => {
   }
   let body: unknown;
   try { body = await c.req.json(); } catch { return c.json(fail(null, -32700, 'The request body must be JSON.'), 400); }
-  const url = new URL(c.req.url);
-  const x: Ctx = { c, agent, now: c.get('now'), origin: c.env.APP_URL ? c.env.APP_URL.replace(/\/+$/, '') : url.origin + mountOf(c) };
+  const x: Ctx = { c, agent, now: c.get('now'), origin: originOf(c) };
   if (Array.isArray(body)) {
     const out = (await Promise.all(body.map(m => handle(m as Rpc, x)))).filter(Boolean);
     return out.length ? c.json(out) : c.body(null, 202);
