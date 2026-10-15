@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
-import { rollupAsks, clearHealth, recordAutofill, loadHealth } from '../src/db/health';
+import { rollupAsks, clearHealth, recordCall, loadHealth } from '../src/db/health';
 import { buildPopupSnapshot } from '../src/db/snapshot';
 import { ApiError } from '../src/lib/util';
 import { classifyAutofillError, isFlagged, successRate } from '../src/lib/health';
@@ -150,11 +150,43 @@ describe('autofill recording', () => {
   });
 
   it('adds up over a day, keeping the slowest', async () => {
-    await recordAutofill(env.DB, NOW, 'ok', 800);
-    await recordAutofill(env.DB, NOW, 'ok', 2200);
-    await recordAutofill(env.DB, NOW, 'failed', 400, 'ai_failed');
-    await recordAutofill(env.DB, NOW, 'ok', 100);
+    await recordCall(env.DB, 'autofill', NOW, 'ok', 800);
+    await recordCall(env.DB, 'autofill', NOW, 'ok', 2200);
+    await recordCall(env.DB, 'autofill', NOW, 'failed', 400, 'ai_failed');
+    await recordCall(env.DB, 'autofill', NOW, 'ok', 100);
     expect(await row('autofill')).toMatchObject({ ok: 3, failed: 1, ms_sum: 3500, ms_max: 2200, last_error: 'ai_failed' });
+  });
+});
+
+
+describe('public MCP recording', () => {
+  const rpc = (body: unknown, auth?: string) => exports.default.fetch(new Request('http://spotted.test/mcp', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-now': String(NOW), 'x-dev-ip': '203.0.113.31', ...(auth ? { authorization: auth } : {}) }, body: JSON.stringify(body),
+  })).then(async r => ({ status: r.status, json: (await r.json()) as any }));
+  const callTool = (name: string, args: unknown) => rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+
+  it('counts a search that worked, and a lookup of a pop-up that is not there as not ours', async () => {
+    expect((await callTool('search_popups', { when: 'all' })).json.result.isError).toBeUndefined();
+    const miss = await callTool('get_popup', { id: 'no-such-popup' });
+    expect(miss.json.result.isError).toBe(true);
+    expect(await row('mcp')).toMatchObject({ ok: 1, failed: 0, other: 1 });
+  });
+
+  it('counts a tool that broke on our side as failed, with the tool name', async () => {
+    // only the pop-up lookup fails, so the health write itself still works
+    const real = env.DB.prepare.bind(env.DB);
+    const spy = vi.spyOn(env.DB, 'prepare').mockImplementation(sql => { if (sql.includes('FROM popups WHERE id')) throw new Error('D1 is down'); return real(sql); });
+    const r = await callTool('get_popup', { id: 'hc-1' });
+    spy.mockRestore();
+    expect(r.json.result.isError).toBe(true);
+    expect(await row('mcp')).toMatchObject({ failed: 1, last_error: 'get_popup: D1 is down' });
+  });
+
+  it('does not count listing the tools, an unknown tool, or an agent key', async () => {
+    await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    await callTool('no_such_tool', {});
+    await callTool('submit_draft', {}); // needs an agent key
+    expect(await row('mcp')).toBeNull();
   });
 });
 
@@ -166,11 +198,11 @@ describe('GET /admin/health', () => {
   });
 
   it('gives 14 days for each feature with quiet days as zeros, and today from the live asks', async () => {
-    await recordAutofill(env.DB, NOW - 2 * DAY, 'ok', 1000);
-    await recordAutofill(env.DB, NOW, 'failed', 3000, 'ai_failed');
+    await recordCall(env.DB, 'autofill', NOW - 2 * DAY, 'ok', 1000);
+    await recordCall(env.DB, 'autofill', NOW, 'failed', 3000, 'ai_failed');
     for (let i = 0; i < 4; i++) await ask(`d${i}`, NOW - (i + 1) * 1000, i === 0 ? 'failed' : 'done', { took: 2000, error: 'No answer' });
     const h = (await call('GET', '/admin/health', { user: 'hc_admin' })).json.health;
-    expect(h.features.map((f: any) => f.feature)).toEqual(['ask', 'autofill']);
+    expect(h.features.map((f: any) => f.feature)).toEqual(['ask', 'autofill', 'mcp']);
     const [a, f] = h.features;
     expect(a.days).toHaveLength(14);
     expect(a.days[13]).toMatchObject({ day: TODAY, ok: 3, failed: 1, avg_ms: 2000, max_ms: 2000 }); // no cron has run yet
@@ -184,7 +216,7 @@ describe('GET /admin/health', () => {
   });
 
   it('flags a feature that failed most of today with at least five calls', async () => {
-    for (let i = 0; i < 5; i++) await recordAutofill(env.DB, NOW, i === 0 ? 'ok' : 'failed', 100, 'ai_failed');
+    for (let i = 0; i < 5; i++) await recordCall(env.DB, 'autofill', NOW, i === 0 ? 'ok' : 'failed', 100, 'ai_failed');
     const f = (await call('GET', '/admin/health', { user: 'hc_admin' })).json.health.features[1];
     expect(f).toMatchObject({ rate_today: 0.2, flagged: true });
   });
@@ -231,6 +263,29 @@ describe('Test now', () => {
     expect(again.status).toBe(429);
     expect(again.json.error.code).toBe('test_too_soon');
     expect((await post('hc_admin', 'autofill', NOW + 61_000)).status).toBe(200);
+  });
+
+
+  describe('MCP', () => {
+    it('passes when a search finds a live pop-up with a link on this site and it can be fetched', async () => {
+      const r = await post('hc_admin', 'mcp');
+      expect(r.status).toBe(200);
+      expect(r.json.result).toMatchObject({ feature: 'mcp', ok: true });
+      expect(r.json.result.detail).toMatch(/fetching it worked/);
+      expect(await row('mcp')).toBeNull(); // a test is not a visitor
+      expect((await call('GET', '/admin/health', { user: 'hc_admin' })).json.health.features[2].test).toMatchObject({ ok: true });
+      expect((await post('hc_admin', 'mcp', NOW + 1000)).status).toBe(429);
+    });
+
+    it('fails with the reason when the public list is empty', async () => {
+      await env.DB.prepare("UPDATE popups SET status = 'removed' WHERE id = 'hc_1'").run();
+      await buildPopupSnapshot(env.DB, NOW);
+      const r = await post('hc_admin', 'mcp');
+      await env.DB.prepare("UPDATE popups SET status = 'community' WHERE id = 'hc_1'").run();
+      await buildPopupSnapshot(env.DB, NOW);
+      expect(r.json.result.ok).toBe(false);
+      expect(r.json.result.detail).toMatch(/no pop-ups/);
+    });
   });
 
   describe('Ask', () => {
@@ -316,7 +371,7 @@ describe('before migration 0028 is applied', () => {
   it('shows nothing and breaks nothing', async () => {
     await env.DB.prepare('DROP TABLE health_daily').run();
     clearHealth();
-    await recordAutofill(env.DB, NOW, 'ok', 100); // must not throw
+    await recordCall(env.DB, 'autofill', NOW, 'ok', 100); // must not throw
     await rollupAsks(env.DB, NOW).catch(() => {}); // the cron catches this one
     expect((await call('GET', '/admin/health', { user: 'hc_admin' })).json).toEqual({ health: null });
     expect(await loadHealth(env.DB, NOW)).toBeNull();

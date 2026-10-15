@@ -1,6 +1,6 @@
 // The shape of GET /admin/health, shared by the Worker (src/db/health.ts) and the Insights page.
 
-export const HEALTH_FEATURES = ['ask', 'autofill'] as const;
+export const HEALTH_FEATURES = ['ask', 'autofill', 'mcp'] as const;
 export type HealthFeature = (typeof HEALTH_FEATURES)[number];
 
 export interface HealthDay {
