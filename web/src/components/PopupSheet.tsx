@@ -5,7 +5,7 @@ import { api, ApiError, type Popup } from '../lib/api';
 import { fromLists, MY_STATE_KEY, patchMe, patchPopup, popupQuery } from '../lib/cache';
 import { CATS, DATE_KIND_LABEL, dateRange, isLive, PUBLIC } from '../lib/format';
 import { currentPosition, useErrorToast, useMe, useRequireAuth, useSheet, useToast } from '../lib/hooks';
-import { track } from '../lib/track';
+import { takeOpenVia, track } from '../lib/track';
 import { gaView } from '../lib/ga';
 import { useLocalSaves } from '../lib/local-saves';
 import { bump, haptic, isPhone, scrollBehavior } from '../lib/motion';
@@ -182,7 +182,7 @@ function SheetBody({ p, onClose }: { p: Popup; onClose: () => void }) {
   const requireAuth = useRequireAuth();
   const { toggleSave } = usePopupActions(p);
   const statusChanged = useChanged(p.status);
-  useEffect(() => { track('popup_open', { slug: p.slug, detail: p.category }); }, [p.slug, p.category]);
+  useEffect(() => { track('popup_open', { slug: p.slug, detail: p.category, via: takeOpenVia() }); }, [p.slug, p.category]);
   useEffect(() => { gaView(`/p/${p.slug}`, p.title); }, [p.slug, p.title]);
   const partial = !p.images; // still showing the list copy while the full pop-up loads
   const [viewing, setViewing] = useState<number | null>(null);

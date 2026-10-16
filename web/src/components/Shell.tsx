@@ -38,7 +38,7 @@ export function Shell() {
     if (me === undefined) return;
     setTrackingContext({ signedIn: !!me, admin: me?.role === 'admin' });
     setAnalyticsViewer(me?.role === 'admin');
-    if (me && takeSignedIn()) track('signin_done');
+    if (me) { const back = takeSignedIn(); if (back) track('signin_done', { via: back.reason }); }
   }, [me]);
   useAutoThumbs(me?.role === 'admin');
   const localSaves = useLocalSaves();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterEvent, referrerHost, routeName, slugFromPath } from '../src/shared/tracking';
+import { emptyEvent, filterEvent, landingChannel, reasonWord, referrerHost, routeName, slugFromPath } from '../src/shared/tracking';
 
 describe('tracking helpers', () => {
   it('names a page with a fixed word and skips admin pages', () => {
@@ -40,5 +40,55 @@ describe('tracking helpers', () => {
     expect(filterEvent({ q: 'denim jacket' }, 'denim')).toBeNull();
     expect(filterEvent({ q: '  ' }, '')).toBeNull();
     expect(JSON.stringify(filterEvent({ q: 'my secret search' }, ''))).not.toContain('secret');
+  });
+
+  it('reads the channel from campaign tags first', () => {
+    expect(landingChannel('?utm_source=Instagram&utm_medium=social&utm_campaign=Autumn%20Pop-ups', '')).toEqual({ channel: 'instagram:social', campaign: 'autumn-pop-ups' });
+    expect(landingChannel('?utm_source=newsletter', 'google.com')).toEqual({ channel: 'newsletter', campaign: '' });
+    expect(landingChannel('?utm_source=share&utm_medium=link', '')).toEqual({ channel: 'share:link', campaign: '' });
+  });
+
+  it('counts a Google Ads click without keeping its code', () => {
+    const c = landingChannel('?gclid=Cj0KCQiA-secret-click-code', 'google.com');
+    expect(c).toEqual({ channel: 'google:cpc', campaign: '' });
+    expect(JSON.stringify(c)).not.toContain('secret');
+    expect(landingChannel('?gbraid=abc', '')?.channel).toBe('google:cpc');
+  });
+
+  it('falls back to the linking site, and says nothing for a direct visit', () => {
+    expect(landingChannel('', 'google.com')).toEqual({ channel: 'google:organic', campaign: '' });
+    expect(landingChannel('', 'google.co.uk')).toEqual({ channel: 'google:organic', campaign: '' });
+    expect(landingChannel('', 'l.instagram.com')).toEqual({ channel: 'instagram:referral', campaign: '' });
+    expect(landingChannel('', 'www.timeout.com')).toEqual({ channel: 'timeout:referral', campaign: '' });
+    expect(landingChannel('', 'news.bbc.co.uk')).toEqual({ channel: 'bbc:referral', campaign: '' });
+    expect(landingChannel('', '')).toBeNull();
+    expect(landingChannel('?p=denim-night', '')).toBeNull();
+  });
+
+  it('never lets a tag be anything but a short fixed word', () => {
+    const c = landingChannel('?utm_source=%3Cscript%3Ealert(1)%3C%2Fscript%3E&utm_medium=a%20b', '')!;
+    expect(c.channel).toMatch(/^[a-z0-9_.-]+:[a-z0-9_.-]+$/);
+    expect(landingChannel(`?utm_source=${'x'.repeat(200)}`, '')!.channel.length).toBe(30);
+  });
+
+  it('turns the sign-in sheet heading into a fixed reason', () => {
+    expect(reasonWord('Sign in to vote')).toBe('vote');
+    expect(reasonWord('Sign in to check in')).toBe('checkin');
+    expect(reasonWord('Sign in to report')).toBe('report');
+    expect(reasonWord('Sign in to save this')).toBe('save');
+    expect(reasonWord('Sign in to add a pop-up')).toBe('add');
+    expect(reasonWord('Sign in to do that')).toBe('other');
+    expect(reasonWord('')).toBe('other');
+  });
+
+  it('names what an empty list was filtered by, and never the search text', () => {
+    const base = { q: '', cat: '', verified: false, saved: false, when: 'week' };
+    expect(emptyEvent({ ...base, q: 'my secret search' })).toEqual({ name: 'search_empty', detail: '' });
+    expect(emptyEvent({ ...base, cat: 'food' })).toEqual({ name: 'filter_empty', detail: 'cat:food' });
+    expect(emptyEvent({ ...base, when: 'today' })).toEqual({ name: 'filter_empty', detail: 'when:today' });
+    expect(emptyEvent({ ...base, saved: true })).toEqual({ name: 'filter_empty', detail: 'saved:1' });
+    expect(emptyEvent({ ...base, verified: true })).toEqual({ name: 'filter_empty', detail: 'verified:1' });
+    expect(emptyEvent(base)).toBeNull(); // nothing filtered: an empty list is not a person's fault
+    expect(JSON.stringify(emptyEvent({ ...base, q: 'my secret search' }))).not.toContain('secret');
   });
 });

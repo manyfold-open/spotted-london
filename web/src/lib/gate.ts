@@ -10,6 +10,10 @@ export function rememberGate(ask: GateAsk) {
 export function forgetGate() {
   try { sessionStorage.removeItem(KEY); } catch { /* nothing to forget */ }
 }
+/** The remembered action, left in place. For counting why someone is signing in without taking the action away from Shell. */
+export function peekGate(): GateAsk | null {
+  try { return parseGate(sessionStorage.getItem(KEY), Date.now()); } catch { return null; }
+}
 /** The remembered action once, then forgotten. */
 export function takeGate(): GateAsk | null {
   let raw: string | null = null;

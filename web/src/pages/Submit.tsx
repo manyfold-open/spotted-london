@@ -54,12 +54,12 @@ function Submitted({ p, onAnother }: { p: Popup; onAnother: () => void }) {
       <p className="intro" style={{ ...i(1), marginTop: 0 }}>
         {live ? 'People can see it now, and the community starts checking it.' : 'An admin usually looks at new posts within 12 hours.'} You earn 10 karma when it is verified.
       </p>
-      <Link to={`/p/${p.slug}`} className="mini" style={i(2)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
+      <Link to={`/p/${p.slug}`} className="mini" style={i(2)} onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw'), 'own'); }}>
         <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
         <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{p.location.borough ?? 'London'} · {dateShort(p)}</span></span>
       </Link>
       <div className="acts" style={i(3)}>
-        <button className="btn primary" onClick={() => open(p.slug)}><Icon name="i-list" />See your pop-up</button>
+        <button className="btn primary" onClick={() => open(p.slug, null, 'own')}><Icon name="i-list" />See your pop-up</button>
         {live ? <button className="btn" onClick={share}><Icon name="i-link" />Share</button> : null}
         <button className="btn subtle" onClick={onAnother}><Icon name="i-plus" />Add another</button>
       </div>
@@ -131,9 +131,14 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
     } catch { /* keep the moved pin even if the address lookup fails */ }
   };
 
+  // How far people get: started (first edit or autofill), autofill used, a field that stopped them, posted. Fixed words only, never what they typed.
+  const began = useRef(false);
+  const started = () => { if (!began.current) { began.current = true; track('submit_start'); } };
+
   /* ----- AI autofill: a link, the post text, or a screenshot ----- */
   type Input = { kind: 'link' | 'text'; value: string } | { kind: 'image'; file: File };
   const fill = async (input: Input) => {
+    started();
     setLinkPhoto(null);
     setAi({ state: 'busy', msg: input.kind === 'link' ? 'Reading the page. Looking for dates, place and price.' : input.kind === 'text' ? 'Reading the text.' : 'Reading your screenshot. This takes a few seconds.' });
     try {
@@ -166,8 +171,10 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
       if (input.kind === 'link' && f.image_url) setLinkPhoto({ image: f.image_url, page: input.value });
       setFlags(next);
       const checks = Object.values(next).filter(v => v === 'check').length;
+      track('autofill', { detail: input.kind, x: n > 0 ? 1 : 0 });
       setAi({ state: 'done', msg: `Filled ${n} field${n === 1 ? '' : 's'}. Blue fields came from AI${checks ? `, and ${checks} need a closer look` : ''}. Check them before you submit.` });
     } catch (e) {
+      track('autofill', { detail: input.kind, x: 0 });
       setAi({ state: 'error', msg: e instanceof Error ? e.message : 'Autofill did not work. Fill in the form yourself.' });
     } finally { setShot(null); }
   };
@@ -220,6 +227,8 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
     }
     if (longRun && !hasSource) e.src = 'Add a link to a page that shows this pop-up, so an admin can check it. Paste it in the box at the top.';
     setErrors(e);
+    const stuck = Object.keys(e)[0];
+    if (stuck) track('submit_error', { detail: stuck.toLowerCase() }); // the first field that stopped them, a fixed name like `title` or `where`
     return !Object.keys(e).length;
   };
 
@@ -271,7 +280,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
   };
 
   if (meLoading) return <div className="sk" style={{ height: 400 }} />;
-  if (!me) return <SignInPrompt title="Add a pop-up" text="Sign in first, so the community knows who spotted it. You earn 10 karma when it gets verified." to="/add" />;
+  if (!me) return <SignInPrompt title="Add a pop-up" text="Sign in first, so the community knows who spotted it. You earn 10 karma when it gets verified." to="/add" reason="add" />;
 
   const lbl = (k: FieldKey, text: string, extra?: string, id?: string) => (
     <span className="lbl" id={id}>{text}{extra ? <span className="muted small">{extra}</span> : null}
@@ -286,7 +295,7 @@ function SubmitForm({ onDone }: { onDone: (p: Popup) => void }) {
       <div className="eyebrow">Contribute</div><h1>Add a pop-up</h1>
       <p className="intro">Seen something worth sharing? You earn 10 karma when it gets verified.</p>
       <div className="form">
-        <form className={`fields panel ${ai.state === 'busy' ? 'filling' : ''}`} noValidate onSubmit={e => { e.preventDefault(); submit(); }}>
+        <form className={`fields panel ${ai.state === 'busy' ? 'filling' : ''}`} noValidate onInput={started} onSubmit={e => { e.preventDefault(); submit(); }}>
           <section className={`aibox ${drag ? 'drag' : ''}`} aria-labelledby="aih"
             onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDrag(true); } }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false); }}

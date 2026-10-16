@@ -5,7 +5,8 @@ import { Icon } from './Icon';
 import { GateCtx } from '../lib/hooks';
 import type { GateAsk } from '../../../src/shared/gate';
 import { forgetGate, rememberGate } from '../lib/gate';
-import { markSigningIn } from '../lib/track';
+import { markSigningIn, track } from '../lib/track';
+import { reasonWord } from '../../../src/shared/tracking';
 import { appUrl } from '../lib/base';
 
 /**
@@ -14,7 +15,7 @@ import { appUrl } from '../lib/base';
  */
 export function GateProvider({ children }: { children: ReactNode }) {
   const [ask, setAsk] = useState<GateAsk | null>(null);
-  const open = useCallback((a: GateAsk) => { rememberGate(a); setAsk(a); }, []);
+  const open = useCallback((a: GateAsk) => { rememberGate(a); setAsk(a); track('gate_open', { via: reasonWord(a.why) }); }, []);
   const close = useCallback(() => { forgetGate(); setAsk(null); }, []);
   const leave = useCallback(() => setAsk(null), []); // off to sign in by email: the page stays in the tab, so keep what to finish
   return (
@@ -60,7 +61,7 @@ function SignInSheet({ ask, onClose, onLeave }: { ask: GateAsk; onClose: () => v
         <span className="handle" aria-hidden="true" />
         <h2 id="gate-t">{ask.why}</h2>
         <p className="muted">{ask.intent ? 'Sign in takes one tap, then we finish what you started.' : 'Sign in takes one tap, then you land back here.'}</p>
-        {p?.google ? <a className="btn primary block" href={appUrl(`/api/v1/auth/google?return_to=${back}`)} onClick={() => markSigningIn('sheet')}>Continue with Google</a> : null}
+        {p?.google ? <a className="btn primary block" href={appUrl(`/api/v1/auth/google?return_to=${back}`)} onClick={() => markSigningIn('sheet', reasonWord(ask.why))}>Continue with Google</a> : null}
         {p?.email ? <Link className={`btn block ${p.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`} onClick={onLeave}><Icon name="i-mail" />{p.google ? 'Use email instead' : 'Sign in with email'}</Link> : null}
         {p && !p.google && !p.email ? <div className="notice watch"><Icon name="i-clock" /><span>Sign in is not switched on yet. You can still browse every pop-up.</span></div> : null}
         {!p ? <div className="sk" style={{ height: 44, borderRadius: 999 }} /> : null}

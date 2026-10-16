@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, type InsightDays, type Insights } from '../lib/api';
+import type { Contributions } from '../../../src/shared/insights';
 import { useMe } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import { CATS } from '../lib/format';
@@ -19,6 +20,13 @@ const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric',
 const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const fmt = (n: number) => Math.round(n).toLocaleString('en-GB');
 const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : '0%');
+
+const REASONS: Record<string, string> = { vote: 'Vote', save: 'Save', add: 'Add a pop-up', checkin: 'Check in', report: 'Report a problem', me: 'Open Me', other: 'Something else' };
+const VIAS: Record<string, string> = { list: 'A card in the list', map: 'A pin on the map (computers only)', search: 'A search result', ask: 'An Ask answer', saved: 'The Saved page', own: 'Their own new post', link: 'A shared link or reload', other: 'Other' };
+const AUTOFILL: Record<string, string> = { link: 'a link', text: 'pasted text', image: 'a screenshot' };
+const FIELDS: Record<string, string> = { title: 'Name', where: 'Address', start: 'Start date', end: 'End date', more: 'Extra dates', src: 'Source link' };
+/** `instagram:social` is shown as `instagram / social`. */
+const channelLabel = (k: string) => (k ? k.replace(':', ' / ') : 'Direct, or before channels were counted');
 
 const filterLabel = (k: string) => FILTERS[k] ?? (k.startsWith('cat:') ? `Category: ${CATS[k.slice(4) as keyof typeof CATS] ?? k.slice(4)}` : k);
 
@@ -47,6 +55,7 @@ export default function InsightsPage() {
         <>
           {d.events.status === 'ok' ? <Visitors e={d.events} days={d.days} /> : <Setup events={d.events} retry={() => q.refetch()} />}
           <Accounts a={d.accounts} days={d.days} />
+          {d.contributions ? <ContributionsPanel c={d.contributions} accounts={d.accounts.total} days={d.days} /> : null}
           {d.events.status === 'ok' ? <Behaviour e={d.events} /> : null}
         </>
       )}
@@ -118,6 +127,65 @@ function Accounts({ a, days }: { a: Insights['accounts']; days: number }) {
   );
 }
 
+const wait = (h: number | null) => (h === null ? 'No first action yet' : h < 1 ? 'under an hour' : h < 48 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`);
+const per = (n: number, of: number) => (of > 0 ? (n / of).toFixed(1) : '0');
+
+/** What people give back: who contributes, how much, whether it sticks, and whether the list is being vouched for. */
+function ContributionsPanel({ c, accounts, days }: { c: Contributions; accounts: number; days: number }) {
+  const { activation: act, repeat, coverage, origin, posts, spread, by_kind: kinds } = c;
+  const noOpens = origin.people.opens === null;
+  const supply = (rows: Contributions['by_category'], name: (k: string) => string) =>
+    rows.map(r => ({ key: r.key, label: name(r.key), n: r.saves, extra: `${fmt(r.live)} on the list${r.opens === null ? '' : `, ${fmt(r.opens)} opens`}, ${fmt(r.saves)} saved` }));
+  return (
+    <section className="panel ins-panel" aria-labelledby="in-con">
+      <h2 id="in-con">Contributions</h2>
+      <p className="muted" style={{ marginTop: 6 }}>What signed-in people did in the last {days} days: saved, voted, checked in, reported or added a pop-up. Counts only, never who. Agents and system accounts are left out.</p>
+      <div className="kpis ins-kpis">
+        <Kpi label="Contributors" value={fmt(c.contributors)} sub={`of ${fmt(accounts)} accounts`} />
+        <Kpi label="Came back" value={repeat.rate === null ? 'Not yet' : pct(repeat.came_back, repeat.last_period)} sub={repeat.rate === null ? 'needs 5 people in the period before' : `of ${fmt(repeat.last_period)} active the period before`} />
+        <Kpi label="New accounts that acted" value={act.new_accounts ? pct(act.acted, act.new_accounts) : 'None new'} sub={act.new_accounts ? `${fmt(act.acted)} of ${fmt(act.new_accounts)}. First action after ${wait(act.median_hours)}` : `no sign-ups in ${days} days`} />
+        <Kpi label="Vouched for" value={coverage.live ? pct(coverage.checked, coverage.live) : 'None live'} sub={`${fmt(coverage.checked)} of ${fmt(coverage.live)} live pop-ups have a vote or a check-in`} />
+      </div>
+
+      <h3 style={{ marginTop: 16 }}>What people did</h3>
+      <p className="small muted">Different people who did each thing at least once.</p>
+      <Rows label="People per kind of action" rows={[
+        { key: 'saves', label: 'Saved a pop-up', n: kinds.saves }, { key: 'votes', label: 'Voted', n: kinds.votes }, { key: 'checkins', label: 'Checked in', n: kinds.checkins },
+        { key: 'reports', label: 'Reported a problem', n: kinds.reports }, { key: 'posts', label: 'Added a pop-up', n: kinds.posts },
+      ]} />
+
+      <h3 style={{ marginTop: 16 }}>How much each person does</h3>
+      <Rows label="Contributors by number of actions" rows={[
+        { key: 'once', label: 'Once', n: spread.once, extra: pct(spread.once, c.contributors) }, { key: 'few', label: '2 to 5 times', n: spread.few, extra: pct(spread.few, c.contributors) },
+        { key: 'many', label: '6 times or more', n: spread.many, extra: pct(spread.many, c.contributors) },
+      ]} />
+      <p className="small muted" style={{ marginTop: 8 }}>{c.top_share === null ? 'The busiest 10% share needs at least 10 contributors.' : `The busiest 10% of contributors did ${pct(c.top_share, 1)} of all actions.`}</p>
+
+      <h3 style={{ marginTop: 16 }}>Pop-ups people added</h3>
+      <ul className="ins-facts">
+        <li><b className="num">{fmt(posts.total)}</b> added in the last {days} days</li>
+        <li><b className="num">{fmt(posts.live)}</b> on the list now, <b className="num">{fmt(posts.verified)}</b> of them verified</li>
+        <li><b className="num">{fmt(posts.waiting)}</b> waiting for a check, <b className="num">{fmt(posts.turned_down)}</b> hidden or removed, <b className="num">{fmt(posts.ended)}</b> already over</li>
+        <li>{coverage.live ? <><b className="num">{fmt(coverage.by_status.community)}</b> on the list are community posts, <b className="num">{fmt(coverage.by_status.verified_community)}</b> verified by the community, <b className="num">{fmt(coverage.by_status.verified_admin)}</b> by an admin</> : 'No pop-ups on the list right now'}</li>
+      </ul>
+
+      <h3 style={{ marginTop: 16 }}>Added by people or by agents</h3>
+      <p className="small muted">Pop-ups on the list now. Saves{noOpens ? '' : ' and opens'} are from the last {days} days.</p>
+      <ul className="ins-facts">
+        {([['People', origin.people], ['Agents', origin.agents]] as const).map(([name, o]) => (
+          <li key={name}><b>{name}</b>: <b className="num">{fmt(o.live)}</b> on the list, <b className="num">{per(o.saves, o.live)}</b> saves each{o.opens === null ? '' : <>, <b className="num">{per(o.opens, o.live)}</b> opens each</>}</li>
+        ))}
+      </ul>
+
+      <h3 style={{ marginTop: 16 }}>What is listed and what people save</h3>
+      <p className="small muted">Bars show saves in the last {days} days. If a category has many pop-ups and few saves, or the other way round, that is where Scouts should look.</p>
+      <Rows label="Saves by category" rows={supply(c.by_category, k => CATS[k as keyof typeof CATS] ?? k)} />
+      <h3 style={{ marginTop: 16 }}>By area</h3>
+      <Rows label="Saves by area" rows={supply(c.by_area, k => k)} />
+    </section>
+  );
+}
+
 function Behaviour({ e }: { e: Stats }) {
   const f = (name: string) => e.funnel[name] ?? { n: 0, people: 0 };
   const opened = f('popup_open').people;
@@ -149,6 +217,36 @@ function Behaviour({ e }: { e: Stats }) {
         <Rows label="Opens per category" rows={e.categories.map(c => ({ key: c.key, label: CATS[c.key as keyof typeof CATS] ?? c.key, n: c.opens, extra: c.saves ? `${fmt(c.saves)} saved` : undefined }))} />
         <h3 style={{ marginTop: 16 }}>Filters used</h3>
         <Rows label="Filters used" rows={e.filters.map(x => ({ key: x.key, label: filterLabel(x.key), n: x.n }))} />
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-chan">
+        <h2 id="in-chan">Which channels bring people who act</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Where each visit started: your campaign tags (<code>utm_source</code>, <code>utm_medium</code>), a Google Ads click, or the site that linked here. Bars are visitors; the line says how many of them opened a pop-up, saved one, signed in and posted. Tag the links you share, for example <code>?utm_source=instagram&amp;utm_medium=social&amp;utm_campaign=autumn</code>. Counting started with this version, so older visits show as direct.</p>
+        <Rows label="Visitors per channel" rows={e.channels.map(c => ({ key: c.key || 'direct', label: channelLabel(c.key), n: c.visitors, extra: `${fmt(c.opened)} opened · ${fmt(c.saved)} saved · ${fmt(c.signed_in)} signed in · ${fmt(c.posted)} posted` }))} />
+        {e.campaigns.length ? <><h3 style={{ marginTop: 16 }}>Campaigns</h3><Rows label="Visits per campaign" rows={e.campaigns.map(c => ({ key: c.key, label: c.key, n: c.visits }))} /></> : null}
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-gate">
+        <h2 id="in-gate">Why people sign in, and where they stop</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Visitors who tried something that needs an account. Bars are people who saw the sign-in sheet; the line shows how many tapped Continue and how many came back signed in.</p>
+        <Rows label="Sign-in sheet by reason" rows={e.gate.map(g => ({ key: g.key, label: REASONS[g.key] ?? g.key, n: g.seen, extra: `${fmt(g.started)} tapped Continue (${pct(g.started, g.seen)}) · ${fmt(g.done)} signed in (${pct(g.done, g.seen)})` }))} />
+        <h3 style={{ marginTop: 16 }}>How pop-ups get opened</h3>
+        <Rows label="Pop-up opens by source" rows={e.open_via.map(v => ({ key: v.key, label: VIAS[v.key] ?? v.key, n: v.n }))} />
+        <p className="small muted" style={{ marginTop: 8 }}>On a phone a pin brings its card forward and the card opens the pop-up, so those opens count as the list.</p>
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-add">
+        <h2 id="in-add">Adding a pop-up</h2>
+        <ul className="ins-facts">
+          <li><b className="num">{fmt(views.add ?? 0)}</b> page views of Add a pop-up, <b className="num">{fmt(e.add.started)}</b> people started filling it in, <b className="num">{fmt(f('submit_done').people)}</b> posted</li>
+          {e.add.autofill.map(a => <li key={a.kind}>AI autofill from {AUTOFILL[a.kind] ?? a.kind}: <b className="num">{fmt(a.ok)}</b> filled something, <b className="num">{fmt(a.empty)}</b> gave nothing or failed</li>)}
+        </ul>
+        <h3 style={{ marginTop: 16 }}>The field that stopped people</h3>
+        <p className="small muted">The first field with a problem when someone tapped Post.</p>
+        <Rows label="First problem field" rows={e.add.stuck.map(s => ({ key: s.key, label: FIELDS[s.key] ?? s.key, n: s.n }))} />
+        <h3 style={{ marginTop: 16 }}>Searches and filters that found nothing</h3>
+        <p className="small muted">What people look for that is not on the list. The words typed are never kept, only that a search found nothing.</p>
+        <Rows label="Searches and filters with no results" rows={e.empty.map(x => ({ key: x.key, label: x.key === 'search' ? 'A search' : filterLabel(x.key), n: x.n }))} />
       </section>
 
       <section className="panel ins-panel" aria-labelledby="in-from">

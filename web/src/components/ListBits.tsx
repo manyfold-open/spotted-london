@@ -9,8 +9,13 @@ import { CAT_LIST, CATS, catIcon } from '../lib/format';
 import { mergeMe } from '../lib/cache';
 import { useDebounced, useFilters, useMe, useMyState } from '../lib/hooks';
 import { Icon } from './Icon';
+import { track } from '../lib/track';
+import { emptyEvent } from '../../../src/shared/tracking';
 
 const WHENS = [['today', 'Today'], ['weekend', 'This weekend'], ['week', 'Next 7 days'], ['all', 'All upcoming']] as const;
+
+/** The last empty result counted, so the same empty list is not counted again as the page re-renders. */
+let lastEmpty = '';
 
 /**
  * The public list is fetched once, whole, and filtered here, so changing a filter or typing in the search
@@ -48,6 +53,18 @@ export function usePopups(near?: [number, number] | null) {
     return { ...page, items: mergeMe(saved ? items.filter(p => saved.has(p.id)) : items, mine) };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is rebuilt on every render; lat and lng stand in for it
   }, [snap.data, f.when, f.category, f.verified, f.saved, q, lat, lng, mine, minute, picked, taste]);
+  // A search or filter that finds nothing says what people look for and cannot find. Fixed words only (never the search text),
+  // once for each combination, and only when the list itself has pop-ups, so a list that has not loaded is not blamed on a filter.
+  useEffect(() => {
+    if (data?.items.length) lastEmpty = ''; // results again: the next empty list counts
+    if (!data || !snap.data?.items.length || data.items.length) return;
+    const seen = emptyEvent({ q, cat: f.category, verified: f.verified, saved: f.saved, when: f.when });
+    if (!seen) return;
+    const key = `${seen.name}:${seen.detail}`;
+    if (key === lastEmpty) return;
+    lastEmpty = key;
+    track(seen.name, { detail: seen.detail || undefined });
+  }, [data, snap.data, q, f.category, f.verified, f.saved, f.when]);
   return { ...snap, data, all: snap.data?.items, forYou: picked, hidden: picked && !f.category && !f.saved ? hiddenCategories(taste) : [] };
 }
 

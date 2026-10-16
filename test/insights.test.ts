@@ -39,6 +39,41 @@ describe('GET /admin/insights', () => {
     expect(JSON.stringify(r.json)).not.toContain('agents.spotted.invalid');
   });
 
+  it('works out what people contributed from the database, leaving agents out', async () => {
+    const boss = await user('ct_boss', 'admin');
+    const a = await user('ct_a'), b = await user('ct_b');
+    await env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES ('ct_bot', 'ct_bot@agents.spotted.invalid', 'bot', 'user', 0, 0, ?)").bind(NOW - 2 * DAY).run();
+    const popup = async (id: string, by: string, status: string, extra: { voters?: number; borough?: string; at?: number } = {}) => {
+      await env.DB.prepare(
+        `INSERT INTO popups (id, slug, title, category, address, borough, lat, lng, geohash, start_at, end_at, status, created_by, voter_count, created_at, updated_at)
+         VALUES (?, ?, ?, 'food', 'x', ?, 51.5, -0.1, 'gcpvj0', ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(id, `${id}-slug`, id, extra.borough ?? 'Soho', NOW - DAY, NOW + 5 * DAY, status, by, extra.voters ?? 0, extra.at ?? NOW - DAY, NOW).run();
+    };
+    await popup('ct_p1', a, 'community', { voters: 2 });
+    await popup('ct_p2', 'ct_bot', 'community');
+    await popup('ct_p3', b, 'pending');
+    const save = (u: string, p: string, at: number) => env.DB.prepare('INSERT INTO saves (user_id, popup_id, remind, created_at) VALUES (?, ?, 1, ?)').bind(u, p, at).run();
+    await save(a, 'ct_p2', NOW - DAY); await save(b, 'ct_p1', NOW - DAY); await save('ct_bot', 'ct_p1', NOW - DAY);
+    await env.DB.prepare("INSERT INTO votes (user_id, popup_id, kind, value, weight, created_at) VALUES (?, 'ct_p1', 'existence', 1, 1, ?)").bind(b, NOW - DAY).run();
+    // a new account made inside the window, whose first action came 6 hours later
+    await env.DB.prepare("INSERT INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES ('ct_new', 'ct_new@test.dev', 'new', 'user', 0, 1, ?)").bind(NOW - DAY).run();
+    await save('ct_new', 'ct_p1', NOW - DAY + 6 * 3_600_000);
+
+    const c = (await get('/admin/insights?days=7&fresh=1', boss)).json.contributions;
+    expect(c.by_kind.saves).toBe(3);   // a, b, ct_new; the agent's save is not a person
+    expect(c.by_kind.posts).toBe(2);   // a and b; the agent's post is not a person's
+    expect(c.by_kind.votes).toBe(1);
+    expect(c.activation.acted).toBeGreaterThanOrEqual(1);
+    expect(c.posts).toMatchObject({ waiting: 1 });
+    expect(c.posts.live).toBeGreaterThanOrEqual(1);
+    expect(c.coverage.checked).toBeGreaterThanOrEqual(1);
+    expect(c.origin.agents.live).toBeGreaterThanOrEqual(1);
+    expect(c.by_category.find((r: any) => r.key === 'food')).toBeTruthy();
+    expect(c.by_area.find((r: any) => r.key === 'Soho')).toBeTruthy();
+    // no one is named
+    expect(JSON.stringify(c)).not.toMatch(/ct_a|ct_b|ct_new|ct_bot|@/);
+  });
+
   it('only accepts 7 or 30 days', async () => {
     const boss = await user('in_boss3', 'admin');
     expect((await get('/admin/insights?days=999', boss)).json.days).toBe(7);
@@ -77,6 +112,38 @@ describe('GET /admin/insights', () => {
     expect(e.retention).toEqual({ last_week: 10, came_back: 4, rate: 0.4 });
     // every query reads the one dataset and only fixed text, never a value from the request
     expect(seen.every(q => q.includes('FROM spotted_events'))).toBe(true);
+  });
+
+  it('reads channels, sign-in reasons, how pop-ups were opened, the add funnel and empty results back', async () => {
+    const boss = await user('in_boss6', 'admin');
+    setEnv('CF_ACCOUNT_ID', 'acct123'); setEnv('CF_ANALYTICS_TOKEN', 'token123');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const q = String(init!.body);
+      let data: Record<string, unknown>[] = [];
+      if (q.includes('blob9 AS ch')) data = [
+        { ch: 'instagram:social', name: 'view', people: '20' }, { ch: 'instagram:social', name: 'popup_open', people: '12' }, { ch: 'instagram:social', name: 'save', people: '5' }, { ch: 'instagram:social', name: 'signin_done', people: '2' },
+        { ch: 'google:cpc', name: 'view', people: '30' }, { ch: '', name: 'view', people: '50' }, { ch: '', name: 'submit_done', people: '1' },
+      ];
+      else if (q.includes('blob10 AS k')) data = [{ k: 'autumn', n: '9' }];
+      else if (q.includes('blob8 AS why')) data = [{ why: 'vote', name: 'gate_open', people: '10' }, { why: 'vote', name: 'signin_start', people: '6' }, { why: 'vote', name: 'signin_done', people: '3' }, { why: 'save', name: 'gate_open', people: '4' }];
+      else if (q.includes("blob1 = 'popup_open' AND blob8")) data = [{ k: 'list', n: '40' }, { k: 'ask', n: '5' }];
+      else if (q.includes("blob1 = 'autofill'")) data = [{ kind: 'link', ok: '1', n: '8' }, { kind: 'link', ok: '0', n: '2' }, { kind: 'image', ok: '1', n: '1' }];
+      else if (q.includes("blob1 = 'submit_error'")) data = [{ k: 'where', n: '7' }, { k: 'title', n: '2' }];
+      else if (q.includes('search_empty')) data = [{ event: 'search_empty', k: '', n: '6' }, { event: 'filter_empty', k: 'cat:food', n: '3' }];
+      else if (q.includes('GROUP BY name')) data = [{ name: 'submit_start', n: '14', people: '9' }];
+      return new Response(JSON.stringify({ data }), { headers: { 'content-type': 'application/json' } });
+    });
+    const e = (await get('/admin/insights?days=7&fresh=1', boss)).json.events;
+    expect(e.status).toBe('ok');
+    expect(e.channels[0]).toEqual({ key: '', visitors: 50, opened: 0, saved: 0, signed_in: 0, posted: 1 });
+    expect(e.channels.find((c: any) => c.key === 'instagram:social')).toEqual({ key: 'instagram:social', visitors: 20, opened: 12, saved: 5, signed_in: 2, posted: 0 });
+    expect(e.campaigns).toEqual([{ key: 'autumn', visits: 9 }]);
+    expect(e.gate).toEqual([{ key: 'vote', seen: 10, started: 6, done: 3 }, { key: 'save', seen: 4, started: 0, done: 0 }]);
+    expect(e.open_via).toEqual([{ key: 'list', n: 40 }, { key: 'ask', n: 5 }]);
+    expect(e.add.started).toBe(9);
+    expect(e.add.autofill).toEqual([{ kind: 'link', ok: 8, empty: 2 }, { kind: 'image', ok: 1, empty: 0 }]);
+    expect(e.add.stuck[0]).toEqual({ key: 'where', n: 7 });
+    expect(e.empty).toEqual([{ key: 'search', n: 6 }, { key: 'cat:food', n: 3 }]);
   });
 
   it('reports a failed read instead of breaking the page, and tries again next time', async () => {

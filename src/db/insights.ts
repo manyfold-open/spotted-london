@@ -7,6 +7,7 @@ import type { Bindings } from '../types';
 import { londonDateString } from '../lib/time';
 import { DAY, PUBLIC_STATUSES } from '../lib/scoring';
 import { snapshotItems } from './snapshot';
+import { loadContributions } from './contributions';
 import type { Accounts, EventsResult, Insights, InsightDays } from '../shared/insights';
 
 export { INSIGHT_DAYS } from '../shared/insights';
@@ -84,7 +85,7 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
   const q = (select: string, where: string, tail = '') => sql(env, `SELECT ${select} ${from(where, tail)} FORMAT JSON`);
   const W = 'sum(_sample_interval)';
   try {
-    const [daily, byEvent, visitors, signedIn, visits, openSlug, saveSlug, openCat, saveCat, filters, refs, pages, countries, devices, u7, p7, u14] = await Promise.all([
+    const [daily, byEvent, visitors, signedIn, visits, openSlug, saveSlug, openCat, saveCat, filters, refs, pages, countries, devices, u7, p7, u14, chan, camps, gates, vias, autos, stuck, empties] = await Promise.all([
       q(`toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day, uniq(index1) AS visitors, ${W} AS views`, "blob1 = 'view'", 'GROUP BY day ORDER BY day'),
       q(`blob1 AS name, ${W} AS n, uniq(index1) AS people`, '', 'GROUP BY name'),
       q('uniq(index1) AS n', ''),
@@ -102,6 +103,14 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
       sql(env, `SELECT uniq(index1) AS n FROM ${DATASET} WHERE ${win(7)} FORMAT JSON`),
       sql(env, `SELECT uniq(index1) AS n FROM ${DATASET} WHERE timestamp <= NOW() - INTERVAL '7' DAY AND timestamp > NOW() - INTERVAL '14' DAY FORMAT JSON`),
       sql(env, `SELECT uniq(index1) AS n FROM ${DATASET} WHERE ${win(14)} FORMAT JSON`),
+      // New in 2026-10: blob8 via, blob9 channel, blob10 campaign. Data from before then has them empty.
+      q('blob9 AS ch, blob1 AS name, uniq(index1) AS people', "blob1 IN ('view', 'popup_open', 'save', 'signin_done', 'submit_done')", 'GROUP BY ch, name'),
+      q(`blob10 AS k, ${W} AS n`, "blob1 = 'view' AND double2 = 1 AND blob10 != ''", 'GROUP BY k ORDER BY n DESC LIMIT 10'),
+      q('blob8 AS why, blob1 AS name, uniq(index1) AS people', "blob1 IN ('gate_open', 'signin_start', 'signin_done') AND blob8 != ''", 'GROUP BY why, name'),
+      q(`blob8 AS k, ${W} AS n`, "blob1 = 'popup_open' AND blob8 != ''", 'GROUP BY k ORDER BY n DESC'),
+      q(`blob4 AS kind, double2 AS ok, ${W} AS n`, "blob1 = 'autofill'", 'GROUP BY kind, ok'),
+      q(`blob4 AS k, ${W} AS n`, "blob1 = 'submit_error' AND blob4 != ''", 'GROUP BY k ORDER BY n DESC LIMIT 8'),
+      q(`blob1 AS event, blob4 AS k, ${W} AS n`, "blob1 IN ('search_empty', 'filter_empty')", 'GROUP BY event, k ORDER BY n DESC LIMIT 12'),
     ]);
 
     const byDay = new Map(daily.map(r => [String(r.day).slice(0, 10), r]));
@@ -115,6 +124,33 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
     const keys = new Set([...openCat.map(r => String(r.k)), ...catSaves.keys()]);
     const opens = new Map(openCat.map(r => [String(r.k), num(r.n)]));
     const categories = [...keys].map(key => ({ key, opens: opens.get(key) ?? 0, saves: catSaves.get(key) ?? 0 })).sort((a, b) => b.opens + b.saves - (a.opens + a.saves));
+
+    // channels: one row per channel with the people who did each thing
+    const byChannel = new Map<string, Record<string, number>>();
+    for (const r of chan) {
+      const row = byChannel.get(String(r.ch)) ?? {};
+      row[String(r.name)] = num(r.people);
+      byChannel.set(String(r.ch), row);
+    }
+    const channels = [...byChannel].map(([key, v]) => ({ key, visitors: v.view ?? 0, opened: v.popup_open ?? 0, saved: v.save ?? 0, signed_in: v.signin_done ?? 0, posted: v.submit_done ?? 0 }))
+      .sort((a, b) => b.visitors - a.visitors).slice(0, 12);
+
+    const byWhy = new Map<string, Record<string, number>>();
+    for (const r of gates) {
+      const row = byWhy.get(String(r.why)) ?? {};
+      row[String(r.name)] = num(r.people);
+      byWhy.set(String(r.why), row);
+    }
+    const gate = [...byWhy].map(([key, v]) => ({ key, seen: v.gate_open ?? 0, started: v.signin_start ?? 0, done: v.signin_done ?? 0 }))
+      .sort((a, b) => b.seen - a.seen || b.started - a.started);
+
+    const kinds = new Map<string, { kind: string; ok: number; empty: number }>();
+    for (const r of autos) {
+      const k = String(r.kind);
+      const row = kinds.get(k) ?? { kind: k, ok: 0, empty: 0 };
+      if (num(r.ok) === 1) row.ok += num(r.n); else row.empty += num(r.n);
+      kinds.set(k, row);
+    }
 
     const last = num(p7[0]?.n);
     const came = Math.max(0, Math.min(last, num(u7[0]?.n), num(u7[0]?.n) + last - num(u14[0]?.n)));
@@ -136,6 +172,12 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
       pages: pages.map(r => ({ route: String(r.k), n: num(r.n) })),
       countries: countries.map(r => ({ code: String(r.k), n: num(r.n) })),
       devices: { mobile: dev.get('m') ?? 0, desktop: dev.get('d') ?? 0 },
+      channels,
+      campaigns: camps.map(r => ({ key: String(r.k), visits: num(r.n) })),
+      gate,
+      open_via: vias.map(r => ({ key: String(r.k), n: num(r.n) })),
+      add: { started: num(byEvent.find(r => r.name === 'submit_start')?.people), autofill: [...kinds.values()], stuck: stuck.map(r => ({ key: String(r.k), n: num(r.n) })) },
+      empty: empties.map(r => ({ key: r.event === 'search_empty' ? 'search' : String(r.k), n: num(r.n) })),
     };
   } catch (e) {
     console.error('insights events failed', e);
@@ -148,11 +190,28 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
 const cache = new Map<number, { at: number; value: Insights }>();
 export const clearInsights = () => cache.clear();
 
+/** Opens per pop-up slug over the period, to put next to what people save. Null when visitor numbers are not set up or could not be read. */
+async function loadOpens(env: Bindings, days: InsightDays): Promise<Map<string, number> | null> {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_TOKEN) return null;
+  try {
+    const rows = await sql(env, `SELECT blob3 AS k, sum(_sample_interval) AS n FROM ${DATASET} WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob1 = 'popup_open' AND blob3 != '' GROUP BY k ORDER BY n DESC LIMIT 2000 FORMAT JSON`);
+    return new Map(rows.map(r => [String(r.k), num(r.n)]));
+  } catch (e) {
+    console.error('insights opens failed', e);
+    return null;
+  }
+}
+
 export async function insights(env: Bindings, days: InsightDays, now: number, fresh = false): Promise<Insights> {
   const hit = cache.get(days);
   if (!fresh && hit && now >= hit.at && now - hit.at < INSIGHTS_TTL) return hit.value;
-  const [accounts, events] = await Promise.all([loadAccounts(env.DB, days, now), loadEvents(env, days, now)]);
-  const value: Insights = { days, updated_at: now, accounts, events };
+  const [accounts, events, contributions] = await Promise.all([
+    loadAccounts(env.DB, days, now),
+    loadEvents(env, days, now),
+    // A failure here must not take the rest of the page down
+    loadOpens(env, days).then(opens => loadContributions(env.DB, days, now, opens)).catch((e): null => { console.error('insights contributions failed', e); return null; }),
+  ]);
+  const value: Insights = { days, updated_at: now, accounts, events, contributions };
   // A failed read is not kept, so the next visit tries again at once
   if (events.status !== 'error') cache.set(days, { at: now, value });
   return value;
