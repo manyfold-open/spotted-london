@@ -39,6 +39,41 @@ describe('GET /admin/insights', () => {
     expect(JSON.stringify(r.json)).not.toContain('agents.spotted.invalid');
   });
 
+  it('works out what people contributed from the database, leaving agents out', async () => {
+    const boss = await user('ct_boss', 'admin');
+    const a = await user('ct_a'), b = await user('ct_b');
+    await env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES ('ct_bot', 'ct_bot@agents.spotted.invalid', 'bot', 'user', 0, 0, ?)").bind(NOW - 2 * DAY).run();
+    const popup = async (id: string, by: string, status: string, extra: { voters?: number; borough?: string; at?: number } = {}) => {
+      await env.DB.prepare(
+        `INSERT INTO popups (id, slug, title, category, address, borough, lat, lng, geohash, start_at, end_at, status, created_by, voter_count, created_at, updated_at)
+         VALUES (?, ?, ?, 'food', 'x', ?, 51.5, -0.1, 'gcpvj0', ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(id, `${id}-slug`, id, extra.borough ?? 'Soho', NOW - DAY, NOW + 5 * DAY, status, by, extra.voters ?? 0, extra.at ?? NOW - DAY, NOW).run();
+    };
+    await popup('ct_p1', a, 'community', { voters: 2 });
+    await popup('ct_p2', 'ct_bot', 'community');
+    await popup('ct_p3', b, 'pending');
+    const save = (u: string, p: string, at: number) => env.DB.prepare('INSERT INTO saves (user_id, popup_id, remind, created_at) VALUES (?, ?, 1, ?)').bind(u, p, at).run();
+    await save(a, 'ct_p2', NOW - DAY); await save(b, 'ct_p1', NOW - DAY); await save('ct_bot', 'ct_p1', NOW - DAY);
+    await env.DB.prepare("INSERT INTO votes (user_id, popup_id, kind, value, weight, created_at) VALUES (?, 'ct_p1', 'existence', 1, 1, ?)").bind(b, NOW - DAY).run();
+    // a new account made inside the window, whose first action came 6 hours later
+    await env.DB.prepare("INSERT INTO users (id, email, display_name, role, karma, email_verified, created_at) VALUES ('ct_new', 'ct_new@test.dev', 'new', 'user', 0, 1, ?)").bind(NOW - DAY).run();
+    await save('ct_new', 'ct_p1', NOW - DAY + 6 * 3_600_000);
+
+    const c = (await get('/admin/insights?days=7&fresh=1', boss)).json.contributions;
+    expect(c.by_kind.saves).toBe(3);   // a, b, ct_new; the agent's save is not a person
+    expect(c.by_kind.posts).toBe(2);   // a and b; the agent's post is not a person's
+    expect(c.by_kind.votes).toBe(1);
+    expect(c.activation.acted).toBeGreaterThanOrEqual(1);
+    expect(c.posts).toMatchObject({ waiting: 1 });
+    expect(c.posts.live).toBeGreaterThanOrEqual(1);
+    expect(c.coverage.checked).toBeGreaterThanOrEqual(1);
+    expect(c.origin.agents.live).toBeGreaterThanOrEqual(1);
+    expect(c.by_category.find((r: any) => r.key === 'food')).toBeTruthy();
+    expect(c.by_area.find((r: any) => r.key === 'Soho')).toBeTruthy();
+    // no one is named
+    expect(JSON.stringify(c)).not.toMatch(/ct_a|ct_b|ct_new|ct_bot|@/);
+  });
+
   it('only accepts 7 or 30 days', async () => {
     const boss = await user('in_boss3', 'admin');
     expect((await get('/admin/insights?days=999', boss)).json.days).toBe(7);

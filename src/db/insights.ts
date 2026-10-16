@@ -7,6 +7,7 @@ import type { Bindings } from '../types';
 import { londonDateString } from '../lib/time';
 import { DAY, PUBLIC_STATUSES } from '../lib/scoring';
 import { snapshotItems } from './snapshot';
+import { loadContributions } from './contributions';
 import type { Accounts, EventsResult, Insights, InsightDays } from '../shared/insights';
 
 export { INSIGHT_DAYS } from '../shared/insights';
@@ -148,11 +149,28 @@ async function loadEvents(env: Bindings, days: InsightDays, now: number): Promis
 const cache = new Map<number, { at: number; value: Insights }>();
 export const clearInsights = () => cache.clear();
 
+/** Opens per pop-up slug over the period, to put next to what people save. Null when visitor numbers are not set up or could not be read. */
+async function loadOpens(env: Bindings, days: InsightDays): Promise<Map<string, number> | null> {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_TOKEN) return null;
+  try {
+    const rows = await sql(env, `SELECT blob3 AS k, sum(_sample_interval) AS n FROM ${DATASET} WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob1 = 'popup_open' AND blob3 != '' GROUP BY k ORDER BY n DESC LIMIT 2000 FORMAT JSON`);
+    return new Map(rows.map(r => [String(r.k), num(r.n)]));
+  } catch (e) {
+    console.error('insights opens failed', e);
+    return null;
+  }
+}
+
 export async function insights(env: Bindings, days: InsightDays, now: number, fresh = false): Promise<Insights> {
   const hit = cache.get(days);
   if (!fresh && hit && now >= hit.at && now - hit.at < INSIGHTS_TTL) return hit.value;
-  const [accounts, events] = await Promise.all([loadAccounts(env.DB, days, now), loadEvents(env, days, now)]);
-  const value: Insights = { days, updated_at: now, accounts, events };
+  const [accounts, events, contributions] = await Promise.all([
+    loadAccounts(env.DB, days, now),
+    loadEvents(env, days, now),
+    // A failure here must not take the rest of the page down
+    loadOpens(env, days).then(opens => loadContributions(env.DB, days, now, opens)).catch((e): null => { console.error('insights contributions failed', e); return null; }),
+  ]);
+  const value: Insights = { days, updated_at: now, accounts, events, contributions };
   // A failed read is not kept, so the next visit tries again at once
   if (events.status !== 'error') cache.set(days, { at: now, value });
   return value;
