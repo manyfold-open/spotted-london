@@ -142,7 +142,8 @@ export function usePopupActions(p: Popup) {
 export function useShare(p: Popup) {
   const toast = useToast();
   return async () => {
-    const url = shareUrl(`/p/${p.slug}`);
+    // The tags let the stats count visits that come from a shared link (channel share:link). The page itself ignores them.
+    const url = `${shareUrl(`/p/${p.slug}`)}?utm_source=share&utm_medium=link`;
     const copy = async () => {
       try { await navigator.clipboard.writeText(url); toast('Link copied', 'i-link'); track('share', { slug: p.slug }); }
       catch { toast('Could not copy the link. Open the pop-up and copy the address from the browser.', 'i-info', true); }

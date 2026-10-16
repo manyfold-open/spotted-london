@@ -7,8 +7,8 @@ import { useLocalSaves } from './local-saves';
 import type { GateAsk, GateIntent } from '../../../src/shared/gate';
 import { reducedMotion } from './motion';
 import { Icon, type IconName } from '../components/Icon';
-import { track } from './track';
-import { filterEvent } from '../../../src/shared/tracking';
+import { noteOpenVia, track } from './track';
+import { filterEvent, type OpenVia } from '../../../src/shared/tracking';
 
 /* ---------- current user ---------- */
 export function useMe() {
@@ -113,11 +113,13 @@ export function useSheet() {
   const qc = useQueryClient();
   /**
    * Opens a pop-up. Pass the cover it was opened from and, where the browser supports view
-   * transitions, that cover grows into the sheet's header.
+   * transitions, that cover grows into the sheet's header. `via` says where the tap was (map, ask, saved, own) for the stats.
    */
-  const open = useCallback((slug: string, from?: Element | null) => {
+  const open = useCallback((slug: string, from?: Element | null, via?: OpenVia) => {
     seedPopup(qc, slug);
     const sp = new URLSearchParams(loc.search);
+    // How it was reached: a list tap while a search is typed counts as search; a bare open from a list is `list`
+    noteOpenVia(via ?? (sp.get('q')?.trim() ? 'search' : 'list'));
     sp.set('p', slug);
     const to = { pathname: loc.pathname.startsWith('/p/') ? '/' : loc.pathname, search: sp.toString() };
     const cover = from instanceof HTMLElement ? from : null;

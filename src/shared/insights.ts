@@ -27,6 +27,17 @@ export interface EventStats {
   pages: { route: string; n: number }[];
   countries: { code: string; n: number }[];
   devices: { mobile: number; desktop: number };
+  /** Where visits came from (utm tags, Google Ads click mark, or the linking site), with what each channel's visitors went on to do. '' is direct, or a visit before channels were counted. */
+  channels: { key: string; visitors: number; opened: number; saved: number; signed_in: number; posted: number }[];
+  campaigns: { key: string; visits: number }[];
+  /** For each reason the sign-in sheet opened: people who saw it, tapped Continue, and came back signed in. */
+  gate: { key: string; seen: number; started: number; done: number }[];
+  /** How pop-ups were opened (map, list, search, ask, saved, own, link). */
+  open_via: { key: string; n: number }[];
+  /** Adding a pop-up: people who started, the autofill kinds used and whether they filled anything, the field that stopped people. */
+  add: { started: number; autofill: { kind: string; ok: number; empty: number }[]; stuck: { key: string; n: number }[] };
+  /** Searches (`search`) and filters (`cat:food` ...) that found nothing. */
+  empty: { key: string; n: number }[];
 }
 export type EventsResult = EventStats | { status: 'not_configured' | 'error'; message: string };
 

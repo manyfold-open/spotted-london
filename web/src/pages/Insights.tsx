@@ -21,6 +21,13 @@ const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour
 const fmt = (n: number) => Math.round(n).toLocaleString('en-GB');
 const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : '0%');
 
+const REASONS: Record<string, string> = { vote: 'Vote', save: 'Save', add: 'Add a pop-up', checkin: 'Check in', report: 'Report a problem', me: 'Open Me', other: 'Something else' };
+const VIAS: Record<string, string> = { list: 'A card in the list', map: 'A pin on the map (computers only)', search: 'A search result', ask: 'An Ask answer', saved: 'The Saved page', own: 'Their own new post', link: 'A shared link or reload', other: 'Other' };
+const AUTOFILL: Record<string, string> = { link: 'a link', text: 'pasted text', image: 'a screenshot' };
+const FIELDS: Record<string, string> = { title: 'Name', where: 'Address', start: 'Start date', end: 'End date', more: 'Extra dates', src: 'Source link' };
+/** `instagram:social` is shown as `instagram / social`. */
+const channelLabel = (k: string) => (k ? k.replace(':', ' / ') : 'Direct, or before channels were counted');
+
 const filterLabel = (k: string) => FILTERS[k] ?? (k.startsWith('cat:') ? `Category: ${CATS[k.slice(4) as keyof typeof CATS] ?? k.slice(4)}` : k);
 
 export default function InsightsPage() {
@@ -210,6 +217,36 @@ function Behaviour({ e }: { e: Stats }) {
         <Rows label="Opens per category" rows={e.categories.map(c => ({ key: c.key, label: CATS[c.key as keyof typeof CATS] ?? c.key, n: c.opens, extra: c.saves ? `${fmt(c.saves)} saved` : undefined }))} />
         <h3 style={{ marginTop: 16 }}>Filters used</h3>
         <Rows label="Filters used" rows={e.filters.map(x => ({ key: x.key, label: filterLabel(x.key), n: x.n }))} />
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-chan">
+        <h2 id="in-chan">Which channels bring people who act</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Where each visit started: your campaign tags (<code>utm_source</code>, <code>utm_medium</code>), a Google Ads click, or the site that linked here. Bars are visitors; the line says how many of them opened a pop-up, saved one, signed in and posted. Tag the links you share, for example <code>?utm_source=instagram&amp;utm_medium=social&amp;utm_campaign=autumn</code>. Counting started with this version, so older visits show as direct.</p>
+        <Rows label="Visitors per channel" rows={e.channels.map(c => ({ key: c.key || 'direct', label: channelLabel(c.key), n: c.visitors, extra: `${fmt(c.opened)} opened · ${fmt(c.saved)} saved · ${fmt(c.signed_in)} signed in · ${fmt(c.posted)} posted` }))} />
+        {e.campaigns.length ? <><h3 style={{ marginTop: 16 }}>Campaigns</h3><Rows label="Visits per campaign" rows={e.campaigns.map(c => ({ key: c.key, label: c.key, n: c.visits }))} /></> : null}
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-gate">
+        <h2 id="in-gate">Why people sign in, and where they stop</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Visitors who tried something that needs an account. Bars are people who saw the sign-in sheet; the line shows how many tapped Continue and how many came back signed in.</p>
+        <Rows label="Sign-in sheet by reason" rows={e.gate.map(g => ({ key: g.key, label: REASONS[g.key] ?? g.key, n: g.seen, extra: `${fmt(g.started)} tapped Continue (${pct(g.started, g.seen)}) · ${fmt(g.done)} signed in (${pct(g.done, g.seen)})` }))} />
+        <h3 style={{ marginTop: 16 }}>How pop-ups get opened</h3>
+        <Rows label="Pop-up opens by source" rows={e.open_via.map(v => ({ key: v.key, label: VIAS[v.key] ?? v.key, n: v.n }))} />
+        <p className="small muted" style={{ marginTop: 8 }}>On a phone a pin brings its card forward and the card opens the pop-up, so those opens count as the list.</p>
+      </section>
+
+      <section className="panel ins-panel" aria-labelledby="in-add">
+        <h2 id="in-add">Adding a pop-up</h2>
+        <ul className="ins-facts">
+          <li><b className="num">{fmt(views.add ?? 0)}</b> page views of Add a pop-up, <b className="num">{fmt(e.add.started)}</b> people started filling it in, <b className="num">{fmt(f('submit_done').people)}</b> posted</li>
+          {e.add.autofill.map(a => <li key={a.kind}>AI autofill from {AUTOFILL[a.kind] ?? a.kind}: <b className="num">{fmt(a.ok)}</b> filled something, <b className="num">{fmt(a.empty)}</b> gave nothing or failed</li>)}
+        </ul>
+        <h3 style={{ marginTop: 16 }}>The field that stopped people</h3>
+        <p className="small muted">The first field with a problem when someone tapped Post.</p>
+        <Rows label="First problem field" rows={e.add.stuck.map(s => ({ key: s.key, label: FIELDS[s.key] ?? s.key, n: s.n }))} />
+        <h3 style={{ marginTop: 16 }}>Searches and filters that found nothing</h3>
+        <p className="small muted">What people look for that is not on the list. The words typed are never kept, only that a search found nothing.</p>
+        <Rows label="Searches and filters with no results" rows={e.empty.map(x => ({ key: x.key, label: x.key === 'search' ? 'A search' : filterLabel(x.key), n: x.n }))} />
       </section>
 
       <section className="panel ins-panel" aria-labelledby="in-from">

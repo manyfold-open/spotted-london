@@ -14,6 +14,8 @@ import { EditPanel } from '../components/EditPanel';
 import { MergePanel } from '../components/MergePanel';
 import { flushTaste, forgetTaste } from '../lib/taste';
 import { markSigningIn, setTrackingOptOut, trackingOptedOut } from '../lib/track';
+import { peekGate } from '../lib/gate';
+import { reasonWord, type SigninReason } from '../../../src/shared/tracking';
 import { syncAnalytics } from '../lib/ga';
 import { appUrl } from '../lib/base';
 
@@ -52,7 +54,7 @@ export function Saved() {
 }
 
 /** A whole page that needs an account (Add a pop-up, Me): the Google button is right here, one tap. */
-export function SignInPrompt({ title, text, to }: { title: string; text: string; to: string }) {
+export function SignInPrompt({ title, text, to, reason }: { title: string; text: string; to: string; reason: SigninReason }) {
   const providers = useProviders();
   const p = providers.data;
   const back = encodeURIComponent(to);
@@ -61,7 +63,7 @@ export function SignInPrompt({ title, text, to }: { title: string; text: string;
       <h1 style={{ fontSize: 28 }}>{title}</h1>
       <p className="muted" style={{ margin: '8px 0 18px' }}>{text}</p>
       <div className="stack">
-        {p?.google ? <a className="btn primary block" href={appUrl(`/api/v1/auth/google?return_to=${back}`)} onClick={() => markSigningIn('page')}>Continue with Google</a> : null}
+        {p?.google ? <a className="btn primary block" href={appUrl(`/api/v1/auth/google?return_to=${back}`)} onClick={() => markSigningIn('page', reason)}>Continue with Google</a> : null}
         {!p || p.email || !p.google ? <Link className={`btn block ${p?.google ? '' : 'primary'}`} to={`/signin?return_to=${back}`}>{p?.google ? 'Use email instead' : 'Sign in'}</Link> : null}
         <Link className="btn subtle block" to="/">Keep browsing</Link>
       </div>
@@ -70,6 +72,9 @@ export function SignInPrompt({ title, text, to }: { title: string; text: string;
 }
 
 /* ---------------- Sign in ---------------- */
+/** Why they are here, if the sign-in sheet sent them (it keeps what they were doing); else just `other`. */
+const signInReason = () => { const g = peekGate(); return g ? reasonWord(g.why) : 'other'; };
+
 export function SignIn() {
   const [sp] = useSearchParams();
   const returnTo = sp.get('return_to') ?? '/';
@@ -83,7 +88,7 @@ export function SignIn() {
   const [botReset, setBotReset] = useState(0);
   const send = useMutation({
     mutationFn: () => api<{ message: string; dev_link?: string }>('/auth/magic-link', { method: 'POST', json: { email, return_to: returnTo, turnstile_token: botToken } }),
-    onSuccess: () => markSigningIn('email'),
+    onSuccess: () => markSigningIn('email', signInReason()),
     onError: e => { onError(e); setBotReset(n => n + 1); },
   });
   if (me) {
@@ -115,7 +120,7 @@ export function SignIn() {
       {providers.data?.google ? (
         <>
           {providers.data.email ? <div className="row" style={{ margin: '16px 0' }}><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /><span className="small muted">or</span><span className="spacer" style={{ borderTop: '1.5px dashed var(--hair)' }} /></div> : null}
-          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={appUrl(`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`)} onClick={() => markSigningIn('page')}>Continue with Google</a>
+          <a className={`btn block ${providers.data.email ? '' : 'primary'}`} href={appUrl(`/api/v1/auth/google?return_to=${encodeURIComponent(returnTo)}`)} onClick={() => markSigningIn('page', signInReason())}>Continue with Google</a>
         </>
       ) : null}
       <p className="small muted" style={{ marginTop: 16 }}>We never show your email to other people.</p>
@@ -162,7 +167,7 @@ export function MePage() {
   });
 
   if (isPending) return <MeSkeleton />;
-  if (!me) return <SignInPrompt title="Your profile" text="Sign in to add pop-ups, vote, and build karma." to="/me" />;
+  if (!me) return <SignInPrompt title="Your profile" text="Sign in to add pop-ups, vote, and build karma." to="/me" reason="me" />;
   const factor = me.karma < 0 ? 0.2 : Math.min(4, 1 + Math.log10(Math.max(me.karma, 1)));
 
   return (
@@ -215,7 +220,7 @@ export function MePage() {
       <div className="lh"><h2>Your pop-ups</h2></div>
       {mine.data?.items.length ? (
         <div className="stack">{mine.data.items.map(p => (
-          <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw')); }}>
+          <Link key={p.id} to={`/p/${p.slug}`} className="mini" onClick={e => { e.preventDefault(); open(p.slug, e.currentTarget.querySelector('.sw'), 'saved'); }}>
             <Cover p={p} className="sw" fit={MAX_CROP_SMALL} />
             <span style={{ minWidth: 0, flex: 1 }}><b>{p.title}</b><span>{dateShort(p)}</span></span><StatusTag status={p.status} />
           </Link>

@@ -8,7 +8,8 @@ describe('cleanBatch', () => {
   it('accepts a batch and keeps only fixed fields', () => {
     const b = cleanBatch(good)!;
     expect(b).toMatchObject({ vid: 'abcDEF123456', signedIn: 1, device: 'm' });
-    expect(b.events).toEqual([{ name: 'view', route: 'home', slug: '', detail: '', ref: 'google.com', x: 1 }]);
+    expect(b).toMatchObject({ channel: '', campaign: '' });
+    expect(b.events).toEqual([{ name: 'view', route: 'home', slug: '', detail: '', ref: 'google.com', via: '', x: 1 }]);
   });
 
   it('drops unknown events, bad ids and anything that is not a fixed word', () => {
@@ -34,10 +35,27 @@ describe('cleanBatch', () => {
     const b = cleanBatch({ ...good, events: [{ e: 'popup_open', p: 'denim-night', d: 'fashion' }] })!;
     expect(toDataPoint(b, b.events[0]!, 'GB')).toEqual({
       indexes: ['abcDEF123456'],
-      blobs: ['popup_open', '', 'denim-night', 'fashion', '', 'm', 'GB'],
+      blobs: ['popup_open', '', 'denim-night', 'fashion', '', 'm', 'GB', '', '', ''],
       doubles: [1, 0],
     });
     expect(toDataPoint(b, b.events[0]!, 'not a country').blobs![6]).toBe('');
+  });
+
+  it('keeps how a pop-up was opened, the channel and the campaign, as fixed words only', () => {
+    const b = cleanBatch({ ...good, c: 'instagram:social', k: 'autumn-2026', events: [{ e: 'popup_open', p: 'denim-night', d: 'fashion', h: 'map' }, { e: 'gate_open', h: 'vote' }] })!;
+    expect(b).toMatchObject({ channel: 'instagram:social', campaign: 'autumn-2026' });
+    expect(b.events.map(e => e.via)).toEqual(['map', 'vote']);
+    expect(toDataPoint(b, b.events[0]!, 'GB').blobs!.slice(7)).toEqual(['map', 'instagram:social', 'autumn-2026']);
+    // free text, a link or a long string never gets through
+    const bad = cleanBatch({ ...good, c: 'https://evil.example/?x=1', k: 'Has Spaces', events: [{ e: 'popup_open', h: 'a sentence with spaces' }, { e: 'view', h: 'x'.repeat(40) }] })!;
+    expect(bad).toMatchObject({ channel: '', campaign: '' });
+    expect(bad.events.map(e => e.via)).toEqual(['', '']);
+  });
+
+  it('knows the new events and drops ones it does not', () => {
+    const names = ['gate_open', 'submit_start', 'autofill', 'submit_error', 'search_empty', 'filter_empty'];
+    const b = cleanBatch({ ...good, events: [...names.map(e => ({ e })), { e: 'typed_text' }] })!;
+    expect(b.events.map(e => e.name)).toEqual(names);
   });
 });
 

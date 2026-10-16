@@ -146,7 +146,7 @@ export default function HomePage() {
   // On phones a pin tap brings its card into view; on desktop it opens the pop-up.
   const onPin = (p: Popup) => {
     setHl(p.id);
-    if (!phone) return open(p.slug);
+    if (!phone) return open(p.slug, null, 'map');
     haptic(6);
     if (snap !== 'peek') goSnap('peek');
     const row = strip.current, card = row?.querySelector<HTMLElement>(`[data-id="${p.id}"]`);
@@ -319,7 +319,7 @@ export default function HomePage() {
       {askMounted ? (
         <Suspense fallback={null}>
           {/* Your position is used here only to put the nearest first. It is never sent. */}
-          <AskChat items={q.all ?? []} nearPos={near.pos} onOpen={open} />
+          <AskChat items={q.all ?? []} nearPos={near.pos} onOpen={slug => open(slug, null, 'ask')} />
         </Suspense>
       ) : null}
 

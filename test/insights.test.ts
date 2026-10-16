@@ -114,6 +114,38 @@ describe('GET /admin/insights', () => {
     expect(seen.every(q => q.includes('FROM spotted_events'))).toBe(true);
   });
 
+  it('reads channels, sign-in reasons, how pop-ups were opened, the add funnel and empty results back', async () => {
+    const boss = await user('in_boss6', 'admin');
+    setEnv('CF_ACCOUNT_ID', 'acct123'); setEnv('CF_ANALYTICS_TOKEN', 'token123');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const q = String(init!.body);
+      let data: Record<string, unknown>[] = [];
+      if (q.includes('blob9 AS ch')) data = [
+        { ch: 'instagram:social', name: 'view', people: '20' }, { ch: 'instagram:social', name: 'popup_open', people: '12' }, { ch: 'instagram:social', name: 'save', people: '5' }, { ch: 'instagram:social', name: 'signin_done', people: '2' },
+        { ch: 'google:cpc', name: 'view', people: '30' }, { ch: '', name: 'view', people: '50' }, { ch: '', name: 'submit_done', people: '1' },
+      ];
+      else if (q.includes('blob10 AS k')) data = [{ k: 'autumn', n: '9' }];
+      else if (q.includes('blob8 AS why')) data = [{ why: 'vote', name: 'gate_open', people: '10' }, { why: 'vote', name: 'signin_start', people: '6' }, { why: 'vote', name: 'signin_done', people: '3' }, { why: 'save', name: 'gate_open', people: '4' }];
+      else if (q.includes("blob1 = 'popup_open' AND blob8")) data = [{ k: 'list', n: '40' }, { k: 'ask', n: '5' }];
+      else if (q.includes("blob1 = 'autofill'")) data = [{ kind: 'link', ok: '1', n: '8' }, { kind: 'link', ok: '0', n: '2' }, { kind: 'image', ok: '1', n: '1' }];
+      else if (q.includes("blob1 = 'submit_error'")) data = [{ k: 'where', n: '7' }, { k: 'title', n: '2' }];
+      else if (q.includes('search_empty')) data = [{ event: 'search_empty', k: '', n: '6' }, { event: 'filter_empty', k: 'cat:food', n: '3' }];
+      else if (q.includes('GROUP BY name')) data = [{ name: 'submit_start', n: '14', people: '9' }];
+      return new Response(JSON.stringify({ data }), { headers: { 'content-type': 'application/json' } });
+    });
+    const e = (await get('/admin/insights?days=7&fresh=1', boss)).json.events;
+    expect(e.status).toBe('ok');
+    expect(e.channels[0]).toEqual({ key: '', visitors: 50, opened: 0, saved: 0, signed_in: 0, posted: 1 });
+    expect(e.channels.find((c: any) => c.key === 'instagram:social')).toEqual({ key: 'instagram:social', visitors: 20, opened: 12, saved: 5, signed_in: 2, posted: 0 });
+    expect(e.campaigns).toEqual([{ key: 'autumn', visits: 9 }]);
+    expect(e.gate).toEqual([{ key: 'vote', seen: 10, started: 6, done: 3 }, { key: 'save', seen: 4, started: 0, done: 0 }]);
+    expect(e.open_via).toEqual([{ key: 'list', n: 40 }, { key: 'ask', n: 5 }]);
+    expect(e.add.started).toBe(9);
+    expect(e.add.autofill).toEqual([{ kind: 'link', ok: 8, empty: 2 }, { kind: 'image', ok: 1, empty: 0 }]);
+    expect(e.add.stuck[0]).toEqual({ key: 'where', n: 7 });
+    expect(e.empty).toEqual([{ key: 'search', n: 6 }, { key: 'cat:food', n: 3 }]);
+  });
+
   it('reports a failed read instead of breaking the page, and tries again next time', async () => {
     const boss = await user('in_boss5', 'admin');
     setEnv('CF_ACCOUNT_ID', 'acct123'); setEnv('CF_ANALYTICS_TOKEN', 'bad');

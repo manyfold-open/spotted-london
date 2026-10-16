@@ -41,4 +41,13 @@ describe('/privacy and Google Analytics', () => {
     expect(text).toContain('<code>spotted_ga</code> and <code>spotted_ga_&lt;id&gt;</code>');
     expect(text).toContain('Google Analytics switch in the menu');
   });
+
+  it('says which behaviour the usage stats count: how pop-ups are opened, sign-in reasons, adding, campaign tags', async () => {
+    const text = await (await exports.default.fetch(new Request('http://spotted.test/privacy'))).text();
+    expect(text).toContain('how you opened a pop-up');
+    expect(text).toContain('what you were trying to do when asked to sign in');
+    expect(text).toContain('never what you typed');
+    expect(text).toContain('utm_source, utm_medium, utm_campaign');
+    expect(text).toContain("never the ad's click code");
+  });
 });
