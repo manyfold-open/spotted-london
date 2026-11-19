@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 import {
+  createWorkersAiTriageModel,
   heuristicDomainScore,
   isNarraGatewayEnabled,
   kickNarraGateway,
@@ -709,5 +710,131 @@ describe('spotted-london Narra Gateway', () => {
       emptyMem,
     );
     expect(emptyItemsReply).toBe('[NO_REPLY]');
+  });
+
+  it('disambiguates general Soho hunger from implicit London weekend outing queries', async () => {
+    await seedPopup('ng_weekend_outing', {
+      title: 'Berwick Street Vinyl Pop-up',
+      category: 'market',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: Date.now() + 7 * DAY,
+    });
+
+    const grpContext = { roomId: '!grp:matrix.netmind.chat', chatType: 'group' as const, members: [], recentHistory: [] };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const aiRunSpy = vi.spyOn(env.AI, 'run');
+    const triageModel = createWorkersAiTriageModel(env.AI);
+
+    // 1. General Soho hunger query must score < 0.55 and return [NO_REPLY] in unmentioned group fastRespondSpotted
+    const hungerText = '好餓喔，等下在 Soho 附近有沒有推薦吃的？';
+    expect(heuristicDomainScore(makeEvent({ text: hungerText }), SPOTTED_AGENT_SPEC, grpContext)).toBeLessThan(0.55);
+
+    const hungerTriage = await triageModel.score({
+      event: makeEvent({ text: hungerText }),
+      context: grpContext,
+      spec: SPOTTED_AGENT_SPEC,
+      detectedLang: 'zh-Hant',
+    });
+    expect(hungerTriage.score).toBeLessThan(0.55);
+
+    const hungerRoute = await routeEvent(
+      makeEvent({ text: hungerText }),
+      grpContext,
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW, triageModel },
+    );
+    expect(hungerRoute.shouldReply).toBe(false);
+
+    const hungerReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: hungerText }),
+      {
+        shouldReply: true,
+        tier: 1,
+        reason: 'domain_match',
+        confidence: 0.6,
+        detectedLang: 'zh-Hant',
+        shouldQuote: false,
+      },
+      emptyMem,
+    );
+    expect(hungerReply).toBe('[NO_REPLY]');
+    expect(aiRunSpy).not.toHaveBeenCalled();
+
+    // 2. Unmentioned bare-area mention without antiKeywords falls through to tryAiExtractFilter and returns [NO_REPLY] on null
+    const bareAreaFilter = extractPopupQueryFilter('等下在 Soho 附近走走');
+    expect(bareAreaFilter).toMatchObject({ q: 'Soho', isClearSearch: true });
+
+    aiRunSpy.mockResolvedValueOnce({ response: JSON.stringify({ isPopupQuery: false }) } as never);
+    const bareAreaReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '等下在 Soho 附近走走' }),
+      {
+        shouldReply: true,
+        tier: 1,
+        reason: 'domain_match',
+        confidence: 0.6,
+        detectedLang: 'zh-Hant',
+        shouldQuote: false,
+      },
+      emptyMem,
+    );
+    expect(aiRunSpy).toHaveBeenCalledTimes(1);
+    expect(bareAreaReply).toBe('[NO_REPLY]');
+
+    // Explicit mention with bare area still queries Soho pop-ups
+    const mentionedAreaReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London Soho' }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'explicit_mention',
+        confidence: 1,
+        detectedLang: 'en',
+        shouldQuote: false,
+      },
+      emptyMem,
+    );
+    expect(mentionedAreaReply).toContain('Berwick Street Vinyl Pop-up');
+
+    // 3. Implicit London weekend outing query scores >= 0.55 (and >= 0.85 on triageModel) and matches pop-ups
+    const outingText = '這週末不知道帶朋友去倫敦哪裡逛逛比較特別';
+    expect(heuristicDomainScore(makeEvent({ text: outingText }), SPOTTED_AGENT_SPEC, grpContext)).toBeGreaterThanOrEqual(0.55);
+
+    const outingTriage = await triageModel.score({
+      event: makeEvent({ text: outingText }),
+      context: grpContext,
+      spec: SPOTTED_AGENT_SPEC,
+      detectedLang: 'zh-Hant',
+    });
+    expect(outingTriage.score).toBeGreaterThanOrEqual(0.85);
+
+    const outingRoute = await routeEvent(
+      makeEvent({ text: outingText }),
+      grpContext,
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW, triageModel },
+    );
+    expect(outingRoute.shouldReply).toBe(true);
+    expect(outingRoute.confidence).toBeGreaterThanOrEqual(0.85);
+
+    const outingReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: outingText }),
+      outingRoute,
+      emptyMem,
+    );
+    expect(outingReply).toContain('Berwick Street Vinyl Pop-up');
+    expect(outingReply).toContain('https://app.manyfold.ai/spotted-london/p/ng_weekend_outing');
+    // Outing triage + outing fastRespondSpotted both resolved deterministically without needing AI fallback
+    expect(aiRunSpy).toHaveBeenCalledTimes(1);
   });
 });

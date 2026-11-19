@@ -50,13 +50,16 @@ export const ALL_KNOWN_MENTION_NAMES = [
   'Quidpaw',
 ] as const;
 
+const LONDON_OUTING_RE =
+  /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
+
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
   id: 'spotted-guide',
   matrixId: SPOTTED_MATRIX_ID,
   name: 'Spotted London',
   aliases: ['Spotted London', 'Spotted', '快闪', '快閃', 'spotted-guide'],
   domainDescription:
-    'London pop-ups guide (Spotted London): food & dining pop-ups, markets, art exhibitions, events, fashion & sample sales across London with dates, hours, prices, areas, and verification status.',
+    'London pop-ups guide (Spotted London): ONLY limited-time pop-ups, sample sales, art exhibitions, weekend markets, and unique weekend events/outings across London — explicitly NOT everyday restaurants, hunger, or general "where to eat" queries.',
   domainKeywords: [
     'spotted london',
     'spotted',
@@ -97,6 +100,14 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '周末好去处',
     '有什麼好玩的',
     '有什么好玩的',
+    '倫敦哪裡逛',
+    '伦敦哪里逛',
+    '倫敦逛逛',
+    '伦敦逛逛',
+    '去倫敦逛',
+    '這週末去哪',
+    '这周末去哪',
+    LONDON_OUTING_RE,
     /\blondon\b.{0,20}(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|things\s+to\s+do|this\s+weekend)/i,
     /(?:this\s+weekend|today|tonight|what'?s\s+on).{0,20}\blondon\b/i,
     /\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill)\b.{0,24}(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动)/i,
@@ -119,6 +130,26 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '中國城',
     '中国城',
     '唐人街',
+    '好餓',
+    '好饿',
+    '餓了',
+    '饿了',
+    '推薦吃的',
+    '推荐吃的',
+    '吃什麼',
+    '吃什么',
+    '吃飯',
+    '吃饭',
+    '餐廳',
+    '餐厅',
+    '麵館',
+    '面馆',
+    '拉麵',
+    '拉面',
+    'hungry',
+    'where to eat',
+    'good restaurant',
+    'chinese restaurant',
     'ai in 5',
     'ai5',
     'ai news',
@@ -531,8 +562,6 @@ const TIME_WEEKEND_RE =
 const TIME_WEEK_RE = /\b(?:this\s+week|upcoming)\b|這週|这周|本週|本周|最近|近期/i;
 const POPUP_ACTIVITY_RE =
   /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的/i;
-const LONDON_OUTING_RE =
-  /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
@@ -714,6 +743,18 @@ export async function fastRespondSpotted(
   }
 
   let filter = extractPopupQueryFilter(cleanText);
+  if (
+    isUnmentionedGroup &&
+    filter.isClearSearch &&
+    !POPUP_ACTIVITY_RE.test(cleanText) &&
+    !LONDON_OUTING_RE.test(cleanText) &&
+    !filter.category &&
+    !filter.tag &&
+    !filter.free &&
+    !filter.verified
+  ) {
+    filter = { ...filter, isClearSearch: false };
+  }
   if (!filter.isClearSearch) {
     if (isUnmentionedGroup && decision.reason === 'active_session') {
       return '[NO_REPLY]';
