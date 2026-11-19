@@ -509,4 +509,115 @@ describe('spotted-london Narra Gateway', () => {
     );
     expect(mentionedReply).toBe(reply);
   });
+
+  it('guards unmentioned active_session chatter and MFD antiKeywords with [NO_REPLY] while preserving genuine pop-up queries', async () => {
+    await seedPopup('ng_weekend_exhibit', {
+      title: 'Tate Pop-up Print Lab',
+      category: 'exhibition',
+      borough: 'Southwark',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: Date.now() + 7 * DAY,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+
+    const chatterFilter = extractPopupQueryFilter('今天天氣真不錯，晚上想早點休息');
+    expect(chatterFilter.when).toBe('today');
+    expect(chatterFilter.isClearSearch).toBe(false);
+
+    const hackathonFilter = extractPopupQueryFilter('最近有哪些 AI 黑客松可以報名？');
+    expect(hackathonFilter.when).toBe('week');
+    expect(hackathonFilter.isClearSearch).toBe(false);
+
+    const genuineFilter = extractPopupQueryFilter('這週末倫敦有什麼免費快閃活動或展覽？');
+    expect(genuineFilter).toMatchObject({
+      when: 'weekend',
+      free: '1',
+      isClearSearch: true,
+    });
+
+    const activeSessionDecision = {
+      shouldReply: true,
+      tier: 0 as const,
+      reason: 'active_session',
+      confidence: 0.95,
+      detectedLang: 'zh-Hant' as const,
+      shouldQuote: false,
+    };
+
+    const aiRunSpy = vi.spyOn(env.AI, 'run');
+
+    const chatterReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '今天天氣真不錯，晚上想早點休息' }),
+      activeSessionDecision,
+      emptyMem,
+    );
+    expect(chatterReply).toBe('[NO_REPLY]');
+
+    const hackathonReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '最近有哪些 AI 黑客松可以報名？' }),
+      activeSessionDecision,
+      emptyMem,
+    );
+    expect(hackathonReply).toBe('[NO_REPLY]');
+
+    const greetingReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '你好' }),
+      activeSessionDecision,
+      emptyMem,
+    );
+    expect(greetingReply).toBe('[NO_REPLY]');
+
+    const fundraisingReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: 'Any updates on AI fundraising or marathon schedules?' }),
+      { ...activeSessionDecision, detectedLang: 'en' },
+      emptyMem,
+    );
+    expect(fundraisingReply).toBe('[NO_REPLY]');
+
+    // Unmentioned chatter/off-topic must never invoke tryAiExtractFilter
+    expect(aiRunSpy).not.toHaveBeenCalled();
+
+    // tryAiExtractFilter rejects non-popup or bare-when outputs even when explicitly mentioned
+    aiRunSpy.mockResolvedValueOnce({
+      response: JSON.stringify({ isPopupQuery: false, when: 'today' }),
+    } as never);
+    const nonPopupMention = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London 今天天氣真不錯' }),
+      { ...activeSessionDecision, reason: 'explicit_mention' },
+      emptyMem,
+    );
+    expect(nonPopupMention).toBeNull();
+
+    aiRunSpy.mockResolvedValueOnce({
+      response: JSON.stringify({ when: 'week' }),
+    } as never);
+    const bareWhenMention = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London 最近好忙' }),
+      { ...activeSessionDecision, reason: 'explicit_mention' },
+      emptyMem,
+    );
+    expect(bareWhenMention).toBeNull();
+
+    // Genuine popup query still matches and returns D1 results in active_session
+    const genuineReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '這週末倫敦有什麼免費快閃活動或展覽？' }),
+      activeSessionDecision,
+      emptyMem,
+    );
+    expect(genuineReply).toContain('Tate Pop-up Print Lab');
+  });
 });

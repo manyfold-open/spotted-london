@@ -153,6 +153,21 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '签证',
     'recall',
     '召回',
+    'hackathon',
+    'hackathons',
+    '黑客松',
+    '駭客松',
+    '融資',
+    '融资',
+    'fundraising',
+    '獎學金',
+    '奖学金',
+    'scholarship',
+    '馬拉松',
+    '马拉松',
+    'marathon',
+    'robotaxi',
+    'data center',
   ],
   silenceThreshold: 0.55,
   sessionWindowMs: 180_000,
@@ -432,6 +447,29 @@ const BARE_GREETING_RE =
 const COMPLEX_FOLLOWUP_RE =
   /remember|forget|記得|记得|忘掉|忘記|忘记|how\s+(?:do|to)\s+get|tube|bus|station|walk|from\s+|which\s+one|better\s+for|date\s+night|compare|為什麼|为什么|怎麼去|怎么去|坐地鐵|坐地铁|哪一個更好|哪一个更好/i;
 
+const CJK_CHAR_RE = /[\u3400-\u9FFF\uF900-\uFAFF]/;
+const escapeKeywordRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function hasSpecKeywordHit(text: string, keywords?: Array<string | RegExp>): boolean {
+  const normalized = (text ?? '').normalize('NFKC').trim();
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  for (const kw of keywords ?? []) {
+    if (kw instanceof RegExp) {
+      if (kw.test(normalized)) return true;
+      continue;
+    }
+    const needle = kw.normalize('NFKC').trim().toLowerCase();
+    if (!needle) continue;
+    if (CJK_CHAR_RE.test(needle)) {
+      if (lower.includes(needle)) return true;
+    } else if (new RegExp(`(?<![a-z0-9])${escapeKeywordRegex(needle)}(?![a-z0-9])`, 'i').test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const CATEGORY_HINTS: Array<{ category: Category; pattern: RegExp }> = [
   { category: 'food', pattern: /\b(?:food|street\s*food|coffee|bakery|matcha|pastry|dessert|drink)\b|美食|小吃|甜點|甜点|咖啡|烘焙/i },
   { category: 'dining', pattern: /\b(?:dining|supper\s*club|residency|tasting\s*menu)\b|私房菜|快閃餐廳|快闪餐厅|晚餐聚會|晚餐聚会/i },
@@ -494,20 +532,28 @@ export interface PopupQueryFilter {
   isClearSearch: boolean;
 }
 
+const TIME_TODAY_RE = /\b(?:today|tonight)\b|今天|今晚|今日/i;
+const TIME_WEEKEND_RE =
+  /\b(?:weekend|sat(?:urday)?|sun(?:day)?)\b|這?週末|这?周末|週六|周六|週日|周日|禮拜六|礼拜六/i;
+const TIME_WEEK_RE = /\b(?:this\s+week|upcoming)\b|這週|这周|本週|本周|最近|近期/i;
+const POPUP_ACTIVITY_RE =
+  /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的/i;
+
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
 
   let when: PopupQueryFilter['when'] = 'week';
   let hasSignal = false;
 
-  if (/\b(?:today|tonight)\b|今天|今晚|今日/i.test(text)) {
+  if (TIME_TODAY_RE.test(text)) {
     when = 'today';
-    hasSignal = true;
-  } else if (/\b(?:weekend|sat(?:urday)?|sun(?:day)?)\b|週末|周末|週六|周六|週日|周日|禮拜六|礼拜六/i.test(text)) {
+  } else if (TIME_WEEKEND_RE.test(text)) {
     when = 'weekend';
-    hasSignal = true;
-  } else if (/\b(?:this\s+week|upcoming|what'?s\s+on|anything\s+(?:fun|on))\b|這週|这周|本週|本周|最近|近期|有什麼好玩的|有什么好玩的|快閃|快闪/i.test(text)) {
+  } else if (TIME_WEEK_RE.test(text)) {
     when = 'week';
+  }
+
+  if (POPUP_ACTIVITY_RE.test(text)) {
     hasSignal = true;
   }
 
@@ -555,9 +601,9 @@ async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<
         {
           role: 'system',
           content:
-            'Extract JSON filter from a London pop-up query: {"when":"today|weekend|week|all","category":"optional one of ' +
+            'Extract JSON filter from a London pop-up query: {"isPopupQuery":boolean,"when":"today|weekend|week|all","category":"optional one of ' +
             CATEGORIES.join(',') +
-            '","free":boolean,"q":"optional neighborhood/keyword"}. Reply JSON only.',
+            '","free":boolean,"q":"optional neighborhood/keyword"}. Set isPopupQuery=false for casual chatter or unrelated topics. Reply JSON only.',
         },
         { role: 'user', content: text.slice(0, 300) },
       ],
@@ -569,6 +615,7 @@ async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<
     const end = raw.lastIndexOf('}');
     if (start < 0 || end <= start) return null;
     const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+    if (parsed.isPopupQuery === false) return null;
     const when =
       parsed.when === 'today' || parsed.when === 'weekend' || parsed.when === 'week' || parsed.when === 'all'
         ? parsed.when
@@ -578,6 +625,7 @@ async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<
         ? parsed.category
         : undefined;
     const q = typeof parsed.q === 'string' && parsed.q.trim() ? parsed.q.trim().slice(0, 60) : undefined;
+    if (!cat && parsed.free !== true && !q && parsed.isPopupQuery !== true) return null;
     return {
       when,
       ...(cat ? { category: cat } : {}),
@@ -630,6 +678,19 @@ export async function fastRespondSpotted(
   const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
   if (COMPLEX_FOLLOWUP_RE.test(cleanText)) return null;
 
+  const isUnmentionedGroup =
+    event.chatType === 'group' &&
+    decision.reason !== 'dm' &&
+    decision.reason !== 'explicit_mention' &&
+    decision.reason !== 'reply_to_self';
+
+  if (isUnmentionedGroup) {
+    const hasAntiHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.antiKeywords);
+    const hasDomainHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.domainKeywords);
+    if (hasAntiHit && !hasDomainHit) return '[NO_REPLY]';
+    if (BARE_GREETING_RE.test(cleanText)) return '[NO_REPLY]';
+  }
+
   const lang = decision.detectedLang;
   const nowMs = Date.now();
   const baseUrl = appBase(env);
@@ -658,6 +719,9 @@ export async function fastRespondSpotted(
   }
 
   let filter = extractPopupQueryFilter(cleanText);
+  if (isUnmentionedGroup && !filter.isClearSearch) {
+    return '[NO_REPLY]';
+  }
   if (!filter.isClearSearch) {
     const aiExtracted = await tryAiExtractFilter(env, cleanText);
     if (!aiExtracted) return null;
