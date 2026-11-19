@@ -1,9 +1,14 @@
+import type { NarraGatewayEnv } from '@manyfold/narra-agent-kit/worker';
 import type { Status } from './lib/scoring';
 
 /** Bindings from wrangler.jsonc plus optional secrets and bindings added later. */
-export type Bindings = Cloudflare.Env & {
+export type Bindings = Cloudflare.Env & NarraGatewayEnv & {
   AI?: Ai;
   IMAGES?: R2Bucket;
+  /** Manyfold agent ID for Narra Gateway diagnostics. */
+  NARRA_AGENT_ID?: string;
+  /** Matrix user ID for Narra Gateway diagnostics. */
+  NARRA_MATRIX_ID?: string;
   /** Calls per minute for anonymous POST /mcp (wrangler.jsonc `ratelimits`). Missing in some setups: then nothing is limited. */
   MCP_LIMIT?: RateLimit;
   /** Anonymous usage events (wrangler.jsonc `analytics_engine_datasets`). Missing: events are dropped and nothing breaks. */

@@ -12,9 +12,14 @@ import { purgeAsks } from './db/ask';
 import { rollupAsks } from './db/health';
 import { backfillPhotos } from './db/photo-backfill';
 import { guardOn, refreshGuard } from './db/usage';
+import { kickNarraGateway } from '@manyfold/narra-agent-kit/worker';
+import { spottedGatewayConfig } from './narra/gateway';
 
 export async function runCron(cron: string, env: Bindings, now = Date.now()) {
   switch (cron) {
+    case '*/5 * * * *':
+      await kickNarraGateway(env, spottedGatewayConfig);
+      break;
     case '*/10 * * * *':
       await endExpired(env.DB, now);
       await buildPopupSnapshot(env.DB, now).catch(e => console.error('snapshot cron failed', e));

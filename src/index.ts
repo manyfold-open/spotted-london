@@ -1,7 +1,14 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import {
+  BaseNarraMatrixSync,
+  BaseNarraRoomCoordinator,
+  getNarraGatewayStatus,
+  kickNarraGateway,
+} from '@manyfold/narra-agent-kit/worker';
 import type { AppEnv, Bindings } from './types';
-import { sameOrigin, session } from './middleware';
+import { requireAdmin, sameOrigin, session } from './middleware';
+import { spottedGatewayConfig } from './narra/gateway';
 import { ApiError } from './lib/util';
 import { popups } from './routes/popups';
 import { extract } from './routes/extract';
@@ -49,6 +56,13 @@ api.route('/geocode', geocode);
 api.route('/ask', ask);
 api.route('/e', events);
 
+const gatewayStatusHandler = async (c: Context<AppEnv>) => {
+  requireAdmin(c);
+  return c.json(await getNarraGatewayStatus(c.env, spottedGatewayConfig));
+};
+api.get('/admin/gateway/status', gatewayStatusHandler);
+app.get('/api/admin/gateway/status', gatewayStatusHandler);
+
 app.route('/api/v1', api);
 app.route('/mcp', mcp);
 app.route('/', pages);
@@ -68,11 +82,27 @@ app.onError((err, c) => {
 
 const mounted = withMount<Bindings>((request, env, ctx) => app.fetch(request, env, ctx));
 
+export class NarraMatrixSync extends BaseNarraMatrixSync<Bindings> {
+  constructor(ctx: DurableObjectState, env: Bindings) {
+    super(ctx, env, spottedGatewayConfig);
+  }
+}
+
+export class NarraRoomCoordinator extends BaseNarraRoomCoordinator<Bindings> {
+  constructor(ctx: DurableObjectState, env: Bindings) {
+    super(ctx, env, spottedGatewayConfig);
+  }
+}
+
 export default {
   // Pages on the public site name the Google Analytics property (src/analytics.ts). It reads the request as it arrived,
   // with its own host and Cloudflare's country.
   fetch: async (request, env, ctx) => withAnalytics(await mounted(request, env, ctx), request, env),
   async scheduled(controller, env, ctx) {
+    if (controller.cron === '*/5 * * * *') {
+      ctx.waitUntil(kickNarraGateway(env, spottedGatewayConfig));
+      return;
+    }
     ctx.waitUntil(runCron(controller.cron, env));
   },
 } satisfies ExportedHandler<Bindings>;
