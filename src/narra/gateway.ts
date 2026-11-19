@@ -73,15 +73,6 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     'art exhibition',
     'market',
     'markets',
-    'shoreditch',
-    'soho',
-    'hackney',
-    'camden',
-    'covent garden',
-    'brick lane',
-    'marylebone',
-    'brixton',
-    'notting hill',
     'immersive',
     'freebies',
     '快閃',
@@ -108,6 +99,8 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '有什么好玩的',
     /\blondon\b.{0,20}(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|things\s+to\s+do|this\s+weekend)/i,
     /(?:this\s+weekend|today|tonight|what'?s\s+on).{0,20}\blondon\b/i,
+    /\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill)\b.{0,24}(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动)/i,
+    /(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动).{0,24}\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill)\b/i,
   ],
   antiKeywords: [
     'dim sum',
@@ -538,6 +531,8 @@ const TIME_WEEKEND_RE =
 const TIME_WEEK_RE = /\b(?:this\s+week|upcoming)\b|這週|这周|本週|本周|最近|近期/i;
 const POPUP_ACTIVITY_RE =
   /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的/i;
+const LONDON_OUTING_RE =
+  /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
@@ -553,7 +548,7 @@ export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
     when = 'week';
   }
 
-  if (POPUP_ACTIVITY_RE.test(text)) {
+  if (POPUP_ACTIVITY_RE.test(text) || LONDON_OUTING_RE.test(text)) {
     hasSignal = true;
   }
 
@@ -719,12 +714,14 @@ export async function fastRespondSpotted(
   }
 
   let filter = extractPopupQueryFilter(cleanText);
-  if (isUnmentionedGroup && !filter.isClearSearch) {
-    return '[NO_REPLY]';
-  }
   if (!filter.isClearSearch) {
+    if (isUnmentionedGroup && decision.reason === 'active_session') {
+      return '[NO_REPLY]';
+    }
     const aiExtracted = await tryAiExtractFilter(env, cleanText);
-    if (!aiExtracted) return null;
+    if (!aiExtracted) {
+      return isUnmentionedGroup ? '[NO_REPLY]' : null;
+    }
     filter = {
       when: aiExtracted.when ?? 'week',
       category: aiExtracted.category,
@@ -763,6 +760,8 @@ export async function fastRespondSpotted(
   // If A2A is configured, fall back so Concierge can widen search with geo/fuzzy tools.
   const hasA2A = await resolveSpottedA2ACredential(env);
   if (hasA2A) return null;
+
+  if (isUnmentionedGroup) return '[NO_REPLY]';
 
   if (event.isVoice) {
     if (lang === 'zh-Hant') return '目前資料庫裡暫時沒有完全符合這個條件的倫敦快閃活動，要試試換個區域或看這週末的精選嗎？';

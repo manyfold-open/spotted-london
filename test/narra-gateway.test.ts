@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, exports } from 'cloudflare:workers';
 import {
+  heuristicDomainScore,
   isNarraGatewayEnabled,
   kickNarraGateway,
   routeEvent,
@@ -619,5 +620,94 @@ describe('spotted-london Narra Gateway', () => {
       emptyMem,
     );
     expect(genuineReply).toContain('Tate Pop-up Print Lab');
+  });
+
+  it('requires activity context for London neighborhoods, matches implicit outing queries, and guards unmentioned AI/empty results with [NO_REPLY]', async () => {
+    await seedPopup('ng_soho_outing', {
+      title: 'Berwick Street Vinyl Pop-up',
+      category: 'market',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: Date.now() + 7 * DAY,
+    });
+
+    const grpContext = { roomId: '!grp:matrix.netmind.chat', chatType: 'group' as const, members: [], recentHistory: [] };
+
+    // (a) Soho food/meeting mentions without event/pop-up words must stay below 0.55
+    expect(heuristicDomainScore(makeEvent({ text: 'Let us grab dinner in Soho tonight' }), SPOTTED_AGENT_SPEC, grpContext)).toBeLessThan(0.55);
+    expect(heuristicDomainScore(makeEvent({ text: '這週末去 Soho 吃拉麵吧' }), SPOTTED_AGENT_SPEC, grpContext)).toBeLessThan(0.55);
+    expect(heuristicDomainScore(makeEvent({ text: 'I have a meeting in Shoreditch tomorrow' }), SPOTTED_AGENT_SPEC, grpContext)).toBeLessThan(0.55);
+
+    const casualSohoRoute = await routeEvent(
+      makeEvent({ text: 'Anyone want to grab dinner in Soho after work?' }),
+      grpContext,
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW },
+    );
+    expect(casualSohoRoute.shouldReply).toBe(false);
+
+    // Activity-paired neighborhood queries still score >= 0.55
+    expect(heuristicDomainScore(makeEvent({ text: "What's on in Soho this weekend?" }), SPOTTED_AGENT_SPEC, grpContext)).toBeGreaterThanOrEqual(0.55);
+    expect(heuristicDomainScore(makeEvent({ text: 'Soho pop-up market this weekend' }), SPOTTED_AGENT_SPEC, grpContext)).toBeGreaterThanOrEqual(0.55);
+
+    // (b) Implicit weekend London outing query matches extractPopupQueryFilter with isClearSearch: true
+    const implicitFilter = extractPopupQueryFilter('這週末不知道帶朋友去倫敦哪裡逛逛比較特別');
+    expect(implicitFilter).toMatchObject({
+      when: 'weekend',
+      isClearSearch: true,
+    });
+
+    // (c) Unmentioned group Tier 1 turn with !filter.isClearSearch falls through to tryAiExtractFilter
+    // and returns [NO_REPLY] on null or empty items (when no A2A is configured)
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const tier1Decision = {
+      shouldReply: true,
+      tier: 1 as const,
+      reason: 'domain_match',
+      confidence: 0.85,
+      detectedLang: 'zh-Hant' as const,
+      shouldQuote: false,
+    };
+
+    const aiRunSpy = vi.spyOn(env.AI, 'run');
+
+    aiRunSpy.mockResolvedValueOnce({
+      response: JSON.stringify({ isPopupQuery: true, when: 'week', category: 'market', q: 'Soho' }),
+    } as never);
+    const aiMatched = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: 'Somewhere fun around Berwick Street?' }),
+      tier1Decision,
+      emptyMem,
+    );
+    expect(aiRunSpy).toHaveBeenCalledTimes(1);
+    expect(aiMatched).toContain('Berwick Street Vinyl Pop-up');
+
+    aiRunSpy.mockResolvedValueOnce({
+      response: JSON.stringify({ isPopupQuery: false }),
+    } as never);
+    const aiRejected = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: 'Somewhere fun around Berwick Street?' }),
+      tier1Decision,
+      emptyMem,
+    );
+    expect(aiRunSpy).toHaveBeenCalledTimes(2);
+    expect(aiRejected).toBe('[NO_REPLY]');
+
+    // Empty D1 items in an unmentioned group without A2A returns [NO_REPLY] instead of fallback URL
+    const emptyItemsReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '這週末 Notting Hill 有什麼快閃活動？' }),
+      tier1Decision,
+      emptyMem,
+    );
+    expect(emptyItemsReply).toBe('[NO_REPLY]');
   });
 });
