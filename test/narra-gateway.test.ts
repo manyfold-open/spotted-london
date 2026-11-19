@@ -106,6 +106,18 @@ describe('spotted-london Narra Gateway', () => {
     expect(SPOTTED_AGENT_SPEC.aliases).toEqual(
       expect.arrayContaining(['Spotted London', 'Spotted', '快闪', '快閃', 'spotted-guide']),
     );
+    expect(SPOTTED_AGENT_SPEC.domainKeywords).toEqual(
+      expect.arrayContaining(['popup', 'popups', '快閃']),
+    );
+
+    const enPopups = await routeEvent(
+      makeEvent({ text: 'Any popups in London?' }),
+      { roomId: '!grp:matrix.netmind.chat', chatType: 'group', members: [], recentHistory: [] },
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW },
+    );
+    expect(enPopups.shouldReply).toBe(true);
+    expect(enPopups.detectedLang).toBe('en');
 
     const zhHant = await routeEvent(
       makeEvent({ text: '這週末倫敦有什麼快閃活動？' }),
@@ -455,6 +467,16 @@ describe('spotted-london Narra Gateway', () => {
     expect(filter).toMatchObject({
       when: 'weekend',
       category: 'market',
+      free: '1',
+      q: 'Soho',
+      isClearSearch: true,
+    });
+
+    const englishSiblingFilter = extractPopupQueryFilter(
+      '@AI Tarot @AI Fortune Stick @Spotted London Any free popups in Soho this weekend?',
+    );
+    expect(englishSiblingFilter).toMatchObject({
+      when: 'weekend',
       free: '1',
       q: 'Soho',
       isClearSearch: true,
