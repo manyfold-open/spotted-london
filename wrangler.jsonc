@@ -46,11 +46,11 @@
     // Visitors in the UK, the EEA and Switzerland are asked first. Left out of `previews` on purpose: previews are
     // not measured. Remove it and no page loads anything from Google.
     "GA_MEASUREMENT_ID": "G-P9WVSTMG87",
-    // Narra Messenger gateway runtime (kept off by default until NARRA_AGENT_TOKEN is provisioned).
-    "NARRA_GATEWAY_ENABLED": "off",
-    "NARRA_SYNC": "off",
+    // Narra Messenger gateway runtime (enabled with bound Direct Matrix identity).
+    "NARRA_GATEWAY_ENABLED": "on",
+    "NARRA_SYNC": "on",
     "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
-    "NARRA_MATRIX_ID": "@agent-b9908957:matrix.netmind.chat"
+    "NARRA_MATRIX_ID": "@agent-f9388b28:matrix.netmind.chat"
   },
 
   "d1_databases": [
@@ -98,7 +98,7 @@
       "NARRA_GATEWAY_ENABLED": "off",
       "NARRA_SYNC": "off",
       "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
-      "NARRA_MATRIX_ID": "@agent-b9908957:matrix.netmind.chat"
+      "NARRA_MATRIX_ID": "@agent-f9388b28:matrix.netmind.chat"
     },
     "d1_databases": [{ "binding": "DB", "database_name": "manyfold-spotted-london-db", "database_id": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a" }],
     "durable_objects": {

@@ -20,7 +20,7 @@ import { parseRangesColumn } from '../shared/ranges';
 import type { Bindings, PopupRow } from '../types';
 
 export const SPOTTED_AGENT_ID = 'agt_agq66frxtn7pnajpsidj2qhike';
-export const SPOTTED_MATRIX_ID = '@agent-b9908957:matrix.netmind.chat';
+export const SPOTTED_MATRIX_ID = '@agent-f9388b28:matrix.netmind.chat';
 
 const DEFAULT_APP_URL = 'https://app.manyfold.ai/spotted-london';
 const DEFAULT_NARRA_ENDPOINT = 'https://api.netmind.chat';
