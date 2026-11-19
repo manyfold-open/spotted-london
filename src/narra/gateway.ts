@@ -1,5 +1,6 @@
 import {
   sanitizeMobileLinks,
+  stripAgentMentions,
   type AgentSpec,
   type AgentUpdateItem,
   type InboundEvent,
@@ -25,6 +26,27 @@ export const SPOTTED_MATRIX_ID = '@agent-f9388b28:matrix.netmind.chat';
 const DEFAULT_APP_URL = 'https://app.manyfold.ai/spotted-london';
 const DEFAULT_NARRA_ENDPOINT = 'https://api.netmind.chat';
 const UPDATE_LOOKBACK_MS = 48 * 3_600_000;
+
+export const ALL_KNOWN_MENTION_NAMES = [
+  'Spotted London',
+  'Spotted',
+  '快闪',
+  '快閃',
+  'spotted-guide',
+  'AI in 5',
+  'AI5',
+  'ai5-chat',
+  'AI新聞',
+  'AI新闻',
+  '問一籤',
+  '问一签',
+  '塔羅大師',
+  '塔罗大师',
+  'London Chinese Food',
+  'Manyfold Data',
+  'Penny',
+  'Quidpaw',
+] as const;
 
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
   id: 'spotted-guide',
@@ -471,10 +493,7 @@ export interface PopupQueryFilter {
 }
 
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
-  const text = (rawText ?? '')
-    .replace(/@[A-Za-z0-9._=\-/+]+:[A-Za-z0-9.-]+(?::\d{1,5})?/g, ' ')
-    .replace(/@(?:Spotted London|spotted-guide|Spotted|快閃|快闪)/gi, ' ')
-    .trim();
+  const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
 
   let when: PopupQueryFilter['when'] = 'week';
   let hasSignal = false;
@@ -606,14 +625,14 @@ export async function fastRespondSpotted(
   _memories: RecallTurnResult,
 ): Promise<string | null> {
   if (!env.DB) return null;
-  const cleanText = (event.text ?? '').trim();
+  const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
   if (COMPLEX_FOLLOWUP_RE.test(cleanText)) return null;
 
   const lang = decision.detectedLang;
   const nowMs = Date.now();
   const baseUrl = appBase(env);
 
-  if (event.chatType === 'dm' && BARE_GREETING_RE.test(cleanText)) {
+  if ((event.chatType === 'dm' || decision.reason === 'dm') && BARE_GREETING_RE.test(cleanText)) {
     const list = await listPopups(env.DB, { when: 'weekend', limit: '5' }, nowMs).catch(() => null);
     const real = (list?.items ?? []).filter((i) => !i.example);
     const fallbackList =

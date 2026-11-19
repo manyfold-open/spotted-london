@@ -12,6 +12,7 @@ import {
   SPOTTED_AGENT_ID,
   SPOTTED_AGENT_SPEC,
   SPOTTED_MATRIX_ID,
+  extractPopupQueryFilter,
   fastRespondSpotted,
   fetchSpottedUpdates,
   resolveSpottedA2ACredential,
@@ -430,5 +431,60 @@ describe('spotted-london Narra Gateway', () => {
       token: 'spotted_a2a_secret_token_999',
       label: 'Spotted Guide',
     });
+  });
+
+  it('handles DM bare 你好 cleanly when decision.reason === "dm" and strips sibling agent mentions', async () => {
+    await seedPopup('ng_dm_popup', {
+      title: 'Brick Lane Vintage Market',
+      category: 'market',
+      borough: 'Shoreditch',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: Date.now() + 7 * DAY,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+
+    // Sibling + self mention stripping in extractPopupQueryFilter
+    const filter = extractPopupQueryFilter('@問一籤 @Spotted London 這週末 Soho 有什麼免費市集？');
+    expect(filter).toMatchObject({
+      when: 'weekend',
+      category: 'market',
+      free: '1',
+      q: 'Soho',
+      isClearSearch: true,
+    });
+
+    // Wire event may still say chatType: 'group' when router inferred decision.reason === 'dm'
+    const dmEvent = makeEvent({ chatType: 'group', text: '你好' });
+    const dmDecision = await routeEvent(
+      makeEvent({ chatType: 'dm', text: '你好' }),
+      { roomId: '!spotted_dm:matrix.netmind.chat', chatType: 'dm', members: [], recentHistory: [] },
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW },
+    );
+    expect(dmDecision.shouldReply).toBe(true);
+    expect(dmDecision.reason).toBe('dm');
+    expect(dmDecision.detectedLang).toBe('zh-Hant');
+
+    const reply = await fastRespondSpotted(typedEnv, dmEvent, dmDecision, emptyMem);
+    expect(reply).not.toBeNull();
+    expect(reply).toContain('你好！這幾天倫敦有幾個不錯的快閃活動');
+    expect(reply).toContain('Brick Lane Vintage Market');
+    expect(reply).toContain('https://app.manyfold.ai/spotted-london/p/ng_dm_popup');
+
+    // Also handles @Spotted London 你好 in DM
+    const mentionedReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London 你好' }),
+      dmDecision,
+      emptyMem,
+    );
+    expect(mentionedReply).toBe(reply);
   });
 });
