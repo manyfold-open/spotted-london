@@ -155,6 +155,14 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     'ai news',
     'ai新闻',
     'ai新聞',
+    'openai',
+    'anthropic',
+    'claude',
+    'gemini',
+    'deepseek',
+    'llm',
+    '大模型',
+    '新模型',
     'tarot',
     '塔羅',
     '塔罗',
@@ -322,13 +330,13 @@ export function formatPopupsReply(
     lines.push('Here is what is on in London:');
   }
 
-  top.forEach((item, idx) => {
+  top.forEach((item) => {
     const area = item.location.borough || item.location.address || 'London';
     const dates = formatPopupDates(item, lang);
     const price = priceLabel(item.price?.type, item.price?.text, lang);
     const ver = verificationLabel(item.status, Boolean(item.source_checked), lang);
     const meta = [area, dates, item.hours_text || '', price, ver].filter(Boolean).join(' | ');
-    lines.push(`${idx + 1}. ${item.title} (${meta})`);
+    lines.push(`• ${item.title} (${meta})`);
     lines.push(`${baseUrl}/p/${item.slug}`);
   });
 

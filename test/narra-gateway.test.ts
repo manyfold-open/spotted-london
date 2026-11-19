@@ -17,6 +17,7 @@ import {
   extractPopupQueryFilter,
   fastRespondSpotted,
   fetchSpottedUpdates,
+  formatPopupsReply,
   resolveSpottedA2ACredential,
   spottedGatewayConfig,
 } from '../src/narra/gateway';
@@ -836,5 +837,80 @@ describe('spotted-london Narra Gateway', () => {
     expect(outingReply).toContain('https://app.manyfold.ai/spotted-london/p/ng_weekend_outing');
     // Outing triage + outing fastRespondSpotted both resolved deterministically without needing AI fallback
     expect(aiRunSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('formats multi-popup lists with bullet points and suppresses past-tense Camden backdrop when peer AI model question is asked', async () => {
+    const formatted = formatPopupsReply(
+      [
+        {
+          id: 'p1',
+          slug: 'first-pop',
+          title: 'First Pop-up',
+          category: 'exhibition',
+          tags: [],
+          description: '',
+          start_at: NOW,
+          end_at: NOW + DAY,
+          date_kind: 'fixed',
+          ranges: null,
+          hours_text: null,
+          timezone: 'Europe/London',
+          location: { borough: 'Shoreditch', address: null, lat: null, lng: null, postcode: null },
+          price: { type: 'free', text: 'Free' },
+          images: [],
+          source: null,
+          source_url: 'https://example.com/1',
+          source_checked: 1,
+          status: 'verified_admin',
+          example: false,
+          votes: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        } as unknown as Parameters<typeof formatPopupsReply>[0][number],
+        {
+          id: 'p2',
+          slug: 'second-pop',
+          title: 'Second Pop-up',
+          category: 'market',
+          tags: [],
+          description: '',
+          start_at: NOW,
+          end_at: NOW + DAY,
+          date_kind: 'fixed',
+          ranges: null,
+          hours_text: null,
+          timezone: 'Europe/London',
+          location: { borough: 'Soho', address: null, lat: null, lng: null, postcode: null },
+          price: { type: 'free', text: 'Free' },
+          images: [],
+          source: null,
+          source_url: 'https://example.com/2',
+          source_checked: 1,
+          status: 'verified_admin',
+          example: false,
+          votes: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        } as unknown as Parameters<typeof formatPopupsReply>[0][number],
+      ],
+      'zh-Hant',
+      'https://app.manyfold.ai/spotted-london',
+    );
+    expect(formatted).toContain('• First Pop-up');
+    expect(formatted).toContain('• Second Pop-up');
+    expect(formatted).not.toMatch(/^1\.\s/m);
+
+    const camdenAiText = '剛跟朋友逛完 Camden 市集超累，順便問一下大家今天 Anthropic 或 OpenAI 有發新模型嗎？';
+    const grpContext = { roomId: '!grp:matrix.netmind.chat', chatType: 'group' as const, members: [], recentHistory: [] };
+    expect(heuristicDomainScore(makeEvent({ text: camdenAiText }), SPOTTED_AGENT_SPEC, grpContext)).toBeLessThan(0.55);
+
+    const triageModel = createWorkersAiTriageModel(env.AI);
+    const decision = await routeEvent(
+      makeEvent({ text: camdenAiText }),
+      grpContext,
+      SPOTTED_AGENT_SPEC,
+      { nowMs: NOW, triageModel },
+    );
+    expect(decision.shouldReply).toBe(false);
   });
 });
