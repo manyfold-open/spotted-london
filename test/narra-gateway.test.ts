@@ -176,8 +176,9 @@ describe('spotted-london Narra Gateway', () => {
     expect(json.agentId).toBe('spotted-guide');
     expect(json.matrixId).toBe(SPOTTED_MATRIX_ID);
     expect(json.config).toMatchObject({
-      NARRA_GATEWAY_ENABLED: 'off',
-      NARRA_SYNC: 'off',
+      NARRA_GATEWAY_ENABLED: 'on',
+      NARRA_SYNC: 'on',
+      hasNarraAgentToken: false,
       hasSyncDoBinding: true,
       hasRoomDoBinding: true,
       hasDatabaseBinding: true,
