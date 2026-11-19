@@ -22,13 +22,14 @@
     "pretest": "npm run build:web"
   },
   "dependencies": {
+    "@manyfold/narra-agent-kit": "github:manyfold-open/narra-agent-kit#86d92bf03b377dee888ad3c508fc6b3556ab846d",
     "hono": "^4.13.12"
   },
   "devDependencies": {
-    "wrangler": "^4.145.0",
-    "vitest": "^4.1.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.145.0"
   },
   "engines": {
     "node": ">=22"

@@ -45,11 +45,28 @@
     // Google Analytics 4 (stream "Spotted London"), on production pages at APP_URL's host only (src/analytics.ts).
     // Visitors in the UK, the EEA and Switzerland are asked first. Left out of `previews` on purpose: previews are
     // not measured. Remove it and no page loads anything from Google.
-    "GA_MEASUREMENT_ID": "G-P9WVSTMG87"
+    "GA_MEASUREMENT_ID": "G-P9WVSTMG87",
+    // Narra Messenger gateway runtime (kept off by default until NARRA_AGENT_TOKEN is provisioned).
+    "NARRA_GATEWAY_ENABLED": "off",
+    "NARRA_SYNC": "off",
+    "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
+    "NARRA_MATRIX_ID": "@agent-b9908957:matrix.netmind.chat"
   },
 
   "d1_databases": [
     { "binding": "DB", "database_name": "manyfold-spotted-london-db", "database_id": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a", "migrations_dir": "./migrations" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "NARRA_SYNC_DO", "class_name": "NarraMatrixSync" },
+      { "name": "NARRA_ROOM_DO", "class_name": "NarraRoomCoordinator" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-narra-gateway",
+      "new_sqlite_classes": ["NarraMatrixSync", "NarraRoomCoordinator"]
+    }
   ],
   "kv_namespaces": [{ "binding": "CACHE", "id": "bba61c97b91a4980af0cdfc40ca3d8cf" }],
   // Anyone's AI assistant can call POST /mcp without a key (search_popups, get_popup). This caps those calls per
@@ -77,9 +94,19 @@
       "USAGE_D1_ID": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a",
       "USAGE_R2_BUCKET": "manyfold-spotted-london-images",
       "AI_TEXT_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct"
+      "AI_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct",
+      "NARRA_GATEWAY_ENABLED": "off",
+      "NARRA_SYNC": "off",
+      "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
+      "NARRA_MATRIX_ID": "@agent-b9908957:matrix.netmind.chat"
     },
     "d1_databases": [{ "binding": "DB", "database_name": "manyfold-spotted-london-db", "database_id": "8116bcdf-bf87-4e8c-9dcf-93fa80000b2a" }],
+    "durable_objects": {
+      "bindings": [
+        { "name": "NARRA_SYNC_DO", "class_name": "NarraMatrixSync" },
+        { "name": "NARRA_ROOM_DO", "class_name": "NarraRoomCoordinator" }
+      ]
+    },
     "kv_namespaces": [{ "binding": "CACHE", "id": "bba61c97b91a4980af0cdfc40ca3d8cf" }],
     "ratelimits": [{ "name": "MCP_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
     "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "spotted_events" }],
@@ -89,6 +116,7 @@
 
   "triggers": {
     "crons": [
+      "*/5 * * * *",  // Narra Matrix gateway watchdog & staggered broadcasts (no-op while NARRA_GATEWAY_ENABLED=off)
       "*/10 * * * *", // end expired pop-ups, start and check agent runs, fetch Instagram/Threads posts
       "0 * * * *",    // recompute hot (only rows that moved), reminders
       "0 4 * * *"     // settle karma, abuse scan, purge old check-in coordinates

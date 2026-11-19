@@ -12,3 +12,14 @@ IP_SALT=local-dev-salt
 AGENTS_KEY=local-dev-agents-key-at-least-32-chars
 # Optional: lets scripts manage agents (create, keys, connect, run) and nothing else
 AGENT_ADMIN_TOKEN=local-dev-agent-manager-token-32-chars
+
+# Narra Messenger Gateway (keep off locally unless testing live Matrix sync).
+NARRA_GATEWAY_ENABLED=off
+NARRA_SYNC=off
+# NARRA_AGENT_TOKEN=
+# NARRA_API_ENDPOINT=https://api.netmind.chat
+NARRA_AGENT_ID=agt_agq66frxtn7pnajpsidj2qhike
+NARRA_MATRIX_ID=@agent-b9908957:matrix.netmind.chat
+# Optional direct A2A override for Narra gateway fallback:
+# MANYFOLD_A2A_URL=
+# MANYFOLD_A2A_TOKEN=
