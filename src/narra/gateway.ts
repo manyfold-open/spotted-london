@@ -1238,13 +1238,7 @@ export async function buildSpottedExtraEnvelopeFields(
   const replySlugs = context?.replyToTarget?.text
     ? extractPopupSlugs(context.replyToTarget.text)
     : [];
-  const lastSelfTurn =
-    replySlugs.length === 0
-      ? [...(context?.recentHistory ?? [])]
-          .reverse()
-          .find((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID)
-      : undefined;
-  const slugs = replySlugs.length > 0 ? replySlugs : extractPopupSlugs(lastSelfTurn?.text ?? '');
+  const slugs = replySlugs.length > 0 ? replySlugs : extractPriorSelfPopupSlugs(context);
 
   let items: PublicPopup[] = [];
   if (slugs.length > 0) {
