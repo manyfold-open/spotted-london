@@ -2079,4 +2079,82 @@ describe('spotted-london Narra Gateway', () => {
     expect(replyFields?.d1_prefetched_records).toContain('Older Topic Sample Sale');
     expect(replyFields?.d1_prefetched_records).not.toContain('Latest Topic Ceramics Market');
   });
+
+  it('routes Chinese art exhibition prompts ("伦敦最近有没有免费的艺术展？") via domainKeywords and extracts exhibition + free filters', async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_art_exh_free', {
+      slug: 'free-contemporary-art-exhibition',
+      title: 'Free Contemporary Art Exhibition',
+      category: 'exhibition',
+      borough: 'Southwark',
+      address: 'Bankside, SE1 9TG',
+      hoursText: '10:00-18:00',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_art_exh_paid', {
+      slug: 'paid-sculpture-exhibition',
+      title: 'Paid Sculpture Exhibition',
+      category: 'exhibition',
+      borough: 'Mayfair',
+      priceType: 'paid',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    const queryText = '伦敦最近有没有免费的艺术展？';
+    const groupCtx: RoomContext = {
+      roomId: '!spotted_art_exh:matrix.netmind.chat',
+      chatType: 'group',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+    const ev = makeEvent({
+      roomId: '!spotted_art_exh:matrix.netmind.chat',
+      chatType: 'group',
+      eventId: '$sp_art_exh_1',
+      text: queryText,
+    });
+
+    expect(heuristicDomainScore(ev, SPOTTED_AGENT_SPEC, groupCtx)).toBeGreaterThanOrEqual(0.55);
+    const decision = await routeEvent(ev, groupCtx, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(decision.shouldReply).toBe(true);
+    expect(decision.detectedLang).toBe('zh-Hans');
+
+    const filter = extractPopupQueryFilter(queryText);
+    expect(filter.isClearSearch).toBe(true);
+    expect(filter.free).toBe('1');
+    expect(filter.category?.split(',')).toContain('exhibition');
+
+    // Pure exhibition variants (e.g. 画展 / 摄影展 / 免费展) extract category: 'exhibition'
+    expect(extractPopupQueryFilter('伦敦最近有没有免费的画展？')).toMatchObject({
+      category: 'exhibition',
+      free: '1',
+      isClearSearch: true,
+    });
+    expect(extractPopupQueryFilter('這週末有什麼免費攝影展或特展？')).toMatchObject({
+      category: 'exhibition',
+      free: '1',
+      isClearSearch: true,
+    });
+
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const reply = await fastRespondSpotted(typedEnv, ev, decision, emptyMem, groupCtx);
+    expect(reply).toBeTruthy();
+    expect(reply).not.toBe('[NO_REPLY]');
+    expect(reply).toContain('Free Contemporary Art Exhibition');
+    expect(reply).toContain('https://app.manyfold.ai/spotted-london/p/free-contemporary-art-exhibition');
+    expect(reply).not.toContain('Paid Sculpture Exhibition');
+  });
 });

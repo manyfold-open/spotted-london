@@ -87,6 +87,16 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '展覽',
     '展览',
     '看展',
+    '藝術展',
+    '艺术展',
+    '畫展',
+    '画展',
+    '攝影展',
+    '摄影展',
+    '美展',
+    '特展',
+    '免費展',
+    '免费展',
     '樣品特賣',
     '样品特卖',
     '特賣會',
@@ -706,7 +716,7 @@ const CATEGORY_HINTS: Array<{ category: Category; pattern: RegExp }> = [
   { category: 'food', pattern: /\b(?:food|street\s*food|coffee|bakery|matcha|pastry|dessert|drink)\b|美食|小吃|甜點|甜点|咖啡|烘焙/i },
   { category: 'dining', pattern: /\b(?:dining|supper\s*club|residency|tasting\s*menu)\b|私房菜|快閃餐廳|快闪餐厅|晚餐聚會|晚餐聚会/i },
   { category: 'market', pattern: /\b(?:market|markets|fair|fairs)\b|市集|集市/i },
-  { category: 'exhibition', pattern: /\b(?:exhibition|exhibitions|gallery|museum)\b|展覽|展览|看展/i },
+  { category: 'exhibition', pattern: /\b(?:exhibition|exhibitions|gallery|museum)\b|展覽|展览|看展|藝術展|艺术展|畫展|画展|攝影展|摄影展|美展|特展|免費展|免费展/i },
   { category: 'art', pattern: /\b(?:art|installation)\b|藝術|艺术|畫廊|画廊/i },
   { category: 'fashion', pattern: /\b(?:fashion|clothing|archive)\b|時尚|时尚|服飾|服饰|潮牌/i },
   { category: 'sample', pattern: /\b(?:sample\s*sale|sample)\b|特賣|特卖|樣品|样品|折扣/i },
@@ -783,7 +793,7 @@ const TIME_WEEKEND_RE =
   /\b(?:weekend|sat(?:urday)?|sun(?:day)?)\b|這?週末|这?周末|週六|周六|週日|周日|禮拜六|礼拜六/i;
 const TIME_WEEK_RE = /\b(?:this\s+week|upcoming)\b|這週|这周|本週|本周|最近|近期/i;
 const POPUP_ACTIVITY_RE =
-  /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的|逛逛|逛一逛|好去處|好去处|去哪逛|哪裡逛|哪里逛/i;
+  /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|藝術展|艺术展|畫展|画展|攝影展|摄影展|美展|特展|免費展|免费展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的|逛逛|逛一逛|好去處|好去处|去哪逛|哪裡逛|哪里逛/i;
 
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
