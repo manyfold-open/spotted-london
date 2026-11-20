@@ -1869,4 +1869,78 @@ describe('spotted-london Narra Gateway', () => {
     expect(prefetched?.d1_prefetched_records).toContain('Soho Makers Market');
     expect(prefetched?.d1_prefetched_records).not.toContain('Unrelated Weekend Exhibition');
   });
+
+  it("handles dual-@ King's Cross co-mention without dropping on peer anti-keywords and returns 1 pick", async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_dual_kx_1', {
+      slug: 'kings-cross-canopy-market',
+      title: "King's Cross Canopy Design Market",
+      category: 'market',
+      borough: "King's Cross",
+      address: 'West Handyside Canopy, N1C 4BH',
+      hoursText: '11:00-18:00',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_dual_kx_2', {
+      slug: 'kings-cross-vinyl-popup',
+      title: "King's Cross Vinyl & Print Pop-up",
+      category: 'exhibition',
+      borough: "King's Cross",
+      address: 'Coal Drops Yard, N1C 4DQ',
+      hoursText: '10:00-19:00',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    const dualText = "@London Chinese Food @Spotted London 週末想去 King's Cross 吃飯加逛逛，各推 1 個";
+    const filter = extractPopupQueryFilter(dualText);
+    expect(filter.isClearSearch).toBe(true);
+    expect(filter.when).toBe('weekend');
+    expect(filter.q).toBe("King's Cross");
+
+    const aiRunSpy = vi.fn(async () => ({ response: '{"score":0.1,"reason":"unexpected_ai_call"}' }));
+    const triageModel = createWorkersAiTriageModel({ run: aiRunSpy } as unknown as Ai);
+    const groupCtx: RoomContext = {
+      roomId: '!spotted_dual_kx:matrix.netmind.chat',
+      chatType: 'group',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+        { matrixId: '@agent-b2b526f3:matrix.netmind.chat', displayName: 'London Chinese Food', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+    const dualEvent = makeEvent({
+      roomId: '!spotted_dual_kx:matrix.netmind.chat',
+      chatType: 'group',
+      eventId: '$sp_dual_kx',
+      text: dualText,
+      mentions: ['@agent-b2b526f3:matrix.netmind.chat', SPOTTED_MATRIX_ID],
+    });
+
+    const decision = await routeEvent(dualEvent, groupCtx, SPOTTED_AGENT_SPEC, { nowMs: NOW, triageModel });
+    expect(decision.shouldReply).toBe(true);
+    expect(decision.reason).toBe('multi_mention_domain_match');
+    expect(decision.detectedLang).toBe('zh-Hant');
+    expect(aiRunSpy).not.toHaveBeenCalled();
+
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const reply = await fastRespondSpotted(typedEnv, dualEvent, decision, emptyMem, groupCtx);
+    expect(reply).toBeTruthy();
+    expect(reply).not.toBe('[NO_REPLY]');
+    expect(reply).toContain("King's Cross");
+    expect(reply!.match(/https:\/\/app\.manyfold\.ai\/spotted-london\/p\/[^\s]+/g)).toHaveLength(1);
+    expect(reply!.match(/^• /gm)).toHaveLength(1);
+    expect(reply).not.toMatch(/\]\(https?:\/\//);
+  });
 });
