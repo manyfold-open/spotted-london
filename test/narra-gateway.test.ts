@@ -1857,6 +1857,21 @@ describe('spotted-london Narra Gateway', () => {
     expect(turn2Reply).toBeNull();
     expect(aiRunSpy).not.toHaveBeenCalled();
 
+    // Simplified Chinese "哪一个" comparative follow-ups also delegate to A2A instead of fast-pathing
+    for (const zhHansComp of ['里面哪一个值得去？', '哪一个最值得去？', '哪一个最好？']) {
+      const zhHansEv = makeEvent({
+        roomId: dmRoomId,
+        chatType: 'dm',
+        eventId: `$dm_comp_zh_hans_${zhHansComp.length}`,
+        text: zhHansComp,
+        timestampMs: NOW,
+      });
+      const zhHansDec = await routeEvent(zhHansEv, dmCtxTurn2, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+      expect(zhHansDec.shouldReply, zhHansComp).toBe(true);
+      const zhHansReply = await fastRespondSpotted(typedEnv, zhHansEv, zhHansDec, emptyMem, dmCtxTurn2);
+      expect(zhHansReply, zhHansComp).toBeNull();
+    }
+
     // And A2A envelope prefetch includes those exact Turn 1 markets
     const prefetched = await buildSpottedExtraEnvelopeFields(
       typedEnv,

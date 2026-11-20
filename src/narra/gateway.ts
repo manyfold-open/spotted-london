@@ -635,7 +635,7 @@ const COMPLEX_FOLLOWUP_RE =
   /remember|forget|記得|记得|忘掉|忘記|忘记|how\s+(?:do|to)\s+get|tube|bus|station|walk|from\s+|which\s+one|better\s+for|date\s+night|compare|為什麼|为什么|怎麼去|怎么去|坐地鐵|坐地铁|哪一個更好|哪一个更好/i;
 
 const COMPARATIVE_FOLLOWUP_RE =
-  /(?:這幾個|这几个|這幾間|这几间|裡面哪[個一]|里面哪[个一]|哪[個一]最(?:適合|适合|推薦|推荐|好|值得)|比較適合|比较适合|適不適合|适不适合|帶朋友去拍照|带朋友去拍照|怎麼搭地鐵|怎么搭地铁|坐什麼地鐵|坐什么地铁|\b(?:which\s+(?:one\s+)?is\s+(?:best|better|most\s+suitable)|compare\s+(?:them|these)|how\s+(?:do\s+(?:i|we)|to)\s+get\s+there)\b)/i;
+  /(?:這幾個|这几个|這幾間|这几间|裡面哪一?[個个]|里面哪一?[个]|哪一?[個个]最(?:適合|适合|推薦|推荐|好|值得)|比較適合|比较适合|適不適合|适不适合|帶朋友去拍照|带朋友去拍照|怎麼搭地鐵|怎么搭地铁|坐什麼地鐵|坐什么地铁|\b(?:which\s+(?:one\s+)?is\s+(?:best|better|most\s+suitable)|compare\s+(?:them|these)|how\s+(?:do\s+(?:i|we)|to)\s+get\s+there)\b)/i;
 
 const DETAIL_FOLLOWUP_RE =
   /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|要預約|要预约|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|booking|where\s+is\s+it|tell\s+me\s+more)\b/i;
