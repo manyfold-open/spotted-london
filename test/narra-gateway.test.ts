@@ -21,6 +21,7 @@ import {
   fastRespondSpotted,
   fetchSpottedUpdates,
   formatPopupsReply,
+  parseRequestedLimit,
   resolveSpottedA2ACredential,
   spottedGatewayConfig,
   spottedOffTopicRedirect,
@@ -1626,5 +1627,114 @@ describe('spotted-london Narra Gateway', () => {
     expect(weekendFields!.d1_prefetched_records.length).toBeLessThanOrEqual(1_400);
     expect(weekendFields!.d1_prefetched_records).toContain('Soho Ceramics Studio Pop-up');
     expect(weekendFields!.d1_prefetched_records).not.toContain('Example Ignored Popup');
+  });
+
+  it('caps formatted popups via parseRequestedLimit so "各推 1 個" returns exactly 1 popup', async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_lim_1', {
+      slug: 'soho-print-exhibition-1',
+      title: 'Soho Print Exhibition One',
+      category: 'exhibition',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_lim_2', {
+      slug: 'soho-photo-exhibition-2',
+      title: 'Soho Photo Exhibition Two',
+      category: 'exhibition',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_lim_3', {
+      slug: 'soho-design-exhibition-3',
+      title: 'Soho Design Exhibition Three',
+      category: 'exhibition',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    expect(parseRequestedLimit('週末先在 Soho 吃點心再逛展覽，各推 1 個')).toBe(1);
+    expect(parseRequestedLimit('推 2 個 Soho 展覽')).toBe(2);
+    expect(parseRequestedLimit('just 1 Soho exhibition')).toBe(1);
+    expect(parseRequestedLimit('pick two pop-ups')).toBe(2);
+    expect(parseRequestedLimit('這週末 Soho 有什麼展覽？')).toBeNull();
+
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+
+    const onePopupReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({
+        eventId: '$sp_lim_1',
+        text: '@Spotted London 週末先在 Soho 吃點心再逛展覽，各推 1 個',
+      }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'explicit_mention',
+        confidence: 1,
+        detectedLang: 'zh-Hant',
+        shouldQuote: true,
+      },
+      emptyMem,
+    );
+    expect(onePopupReply).toBeTruthy();
+    const oneUrls = onePopupReply!.match(/https:\/\/app\.manyfold\.ai\/spotted-london\/p\/[^\s]+/g) ?? [];
+    expect(oneUrls).toHaveLength(1);
+    const oneBullets = onePopupReply!.match(/^• /gm) ?? [];
+    expect(oneBullets).toHaveLength(1);
+
+    // "推 2 個" returns exactly 2 popups
+    const twoPopupsReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({
+        eventId: '$sp_lim_2',
+        text: '@Spotted London 週末 Soho 展覽推 2 個',
+      }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'explicit_mention',
+        confidence: 1,
+        detectedLang: 'zh-Hant',
+        shouldQuote: true,
+      },
+      emptyMem,
+    );
+    expect(twoPopupsReply).toBeTruthy();
+    expect(twoPopupsReply!.match(/https:\/\/app\.manyfold\.ai\/spotted-london\/p\/[^\s]+/g)).toHaveLength(2);
+
+    // Without explicit count, default max (3) returns all 3 Soho exhibitions
+    const defaultReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({
+        eventId: '$sp_lim_default',
+        text: '@Spotted London 週末 Soho 有什麼展覽？',
+      }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'explicit_mention',
+        confidence: 1,
+        detectedLang: 'zh-Hant',
+        shouldQuote: true,
+      },
+      emptyMem,
+    );
+    expect(defaultReply).toBeTruthy();
+    expect(defaultReply!.match(/https:\/\/app\.manyfold\.ai\/spotted-london\/p\/[^\s]+/g)).toHaveLength(3);
   });
 });

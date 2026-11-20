@@ -292,9 +292,14 @@ export function formatPopupsReply(
   items: PublicPopup[],
   lang: LangCode,
   baseUrl: string,
-  options: { voice?: boolean; intro?: string; isUpdateDigest?: boolean } = {},
+  options: { voice?: boolean; intro?: string; isUpdateDigest?: boolean; maxItems?: number } = {},
 ): string {
-  const top = items.slice(0, options.voice ? 2 : 3);
+  const defaultMax = options.voice ? 2 : 3;
+  const maxItems =
+    typeof options.maxItems === 'number' && Number.isFinite(options.maxItems)
+      ? Math.max(1, Math.min(5, Math.floor(options.maxItems)))
+      : defaultMax;
+  const top = items.slice(0, options.voice ? Math.min(maxItems, 2) : maxItems);
   if (options.voice) {
     const spoken = top.map((item) => {
       const area = item.location.borough || item.location.address || 'London';
@@ -616,6 +621,45 @@ const COMPLEX_FOLLOWUP_RE =
 
 const DETAIL_FOLLOWUP_RE =
   /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|要預約|要预约|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|booking|where\s+is\s+it|tell\s+me\s+more)\b/i;
+
+const REQUESTED_LIMIT_ZH_RE = /(?:各)?(?:推|推薦|推荐|給|给|挑|找|來|来)\s*([1-5一二兩两三四五])\s*[間家個个]/;
+const REQUESTED_LIMIT_EN_RE = /\b(?:just|only|pick|top)\s+([1-5]|one|two|three|four|five)\b/i;
+
+const REQUESTED_LIMIT_MAP: Record<string, number> = {
+  '1': 1,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  一: 1,
+  二: 2,
+  兩: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+};
+
+export function parseRequestedLimit(text: string): number | null {
+  const input = (text ?? '').trim();
+  if (!input) return null;
+  const zhMatch = input.match(REQUESTED_LIMIT_ZH_RE);
+  if (zhMatch?.[1]) {
+    const val = REQUESTED_LIMIT_MAP[zhMatch[1]];
+    if (val) return Math.max(1, Math.min(5, val));
+  }
+  const enMatch = input.match(REQUESTED_LIMIT_EN_RE);
+  if (enMatch?.[1]) {
+    const val = REQUESTED_LIMIT_MAP[enMatch[1].toLowerCase()];
+    if (val) return Math.max(1, Math.min(5, val));
+  }
+  return null;
+}
 
 const CJK_CHAR_RE = /[\u3400-\u9FFF\uF900-\uFAFF]/;
 const escapeKeywordRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1091,8 +1135,11 @@ export async function fastRespondSpotted(
   }
 
   if (items.length > 0) {
-    return formatPopupsReply(items, lang, baseUrl, {
+    const requestedLimit = parseRequestedLimit(cleanText);
+    const displayItems = requestedLimit !== null ? items.slice(0, requestedLimit) : items;
+    return formatPopupsReply(displayItems, lang, baseUrl, {
       voice: Boolean(event.isVoice),
+      ...(requestedLimit !== null ? { maxItems: requestedLimit } : {}),
       ...(relaxedIntro ? { intro: relaxedIntro } : {}),
     });
   }
