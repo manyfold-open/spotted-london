@@ -8,6 +8,7 @@ import {
   routeEvent,
   staggerWindowMinute,
   type InboundEvent,
+  type RoomContext,
 } from '@manyfold/narra-agent-kit';
 import { seal } from '../src/lib/seal';
 import {
@@ -70,7 +71,12 @@ describe('spotted-london Narra Gateway', () => {
   });
 
   async function seedPopup(id: string, overrides: {
+    slug?: string;
     title?: string;
+    description?: string;
+    address?: string;
+    hoursText?: string;
+    sourceUrl?: string | null;
     category?: string;
     borough?: string;
     priceType?: 'free' | 'paid' | 'unknown';
@@ -83,18 +89,22 @@ describe('spotted-london Narra Gateway', () => {
     await env.DB.prepare(
       `INSERT INTO popups
        (id, slug, title, host, description, category, price_type, price_text, address, borough, lat, lng, geohash, start_at, end_at, hours_text, source_url, status, created_by, created_at, updated_at, hot, is_example)
-       VALUES (?, ?, ?, 'Host', 'Pop-up description', ?, ?, ?, '10 Berwick St, W1F', ?, 51.5135, -0.134, 'gcpvj', ?, ?, '10:00-18:00', 'https://example.com', ?, 'ng_admin', ?, ?, 2.5, ?)`,
+       VALUES (?, ?, ?, 'Host', ?, ?, ?, ?, ?, ?, 51.5135, -0.134, 'gcpvj', ?, ?, ?, ?, ?, 'ng_admin', ?, ?, 2.5, ?)`,
     )
       .bind(
         id,
-        id,
+        overrides.slug ?? id,
         overrides.title ?? `Popup ${id}`,
+        overrides.description ?? 'Pop-up description',
         overrides.category ?? 'exhibition',
         overrides.priceType ?? 'free',
         overrides.priceType === 'paid' ? '£15' : null,
+        overrides.address ?? '10 Berwick St, W1F',
         overrides.borough ?? 'Soho',
         overrides.startAt ?? NOW - HOUR,
         overrides.endAt ?? NOW + 5 * DAY,
+        overrides.hoursText ?? '10:00-18:00',
+        overrides.sourceUrl === undefined ? 'https://example.com' : overrides.sourceUrl,
         overrides.status ?? 'verified_admin',
         NOW - DAY,
         overrides.updatedAt ?? NOW,
@@ -912,5 +922,237 @@ describe('spotted-london Narra Gateway', () => {
       { nowMs: NOW, triageModel },
     );
     expect(decision.shouldReply).toBe(false);
+  });
+
+  it('I3: answers detail follow-ups locally via replyToTarget or recentHistory /p/<slug> without hitting A2A', async () => {
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_detail_1', {
+      slug: 'berwick-vinyl-residency',
+      title: 'Berwick Vinyl Residency',
+      borough: 'Soho',
+      address: '10 Berwick St, W1F 0PP',
+      hoursText: '11:00-19:00',
+      priceType: 'free',
+      description:
+        'Limited-run Japanese pressing listening room and weekend market. First 50 visitors receive a canvas tote bag. Third extra sentence should stay trimmed.',
+      sourceUrl: 'https://berwickvinyl.example/event',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_detail_ex', {
+      slug: 'example-hidden-popup',
+      title: 'Hidden Example Popup',
+      isExample: 1,
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      MANYFOLD_A2A_URL: 'https://a2a.spotted.test/rpc',
+      MANYFOLD_A2A_TOKEN: 'a2a_spotted_test_tok',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    // 1. UI Reply to Spotted London's /p/<slug> message with @Spotted London 有更多細節嗎？
+    const replyContext: RoomContext = {
+      roomId: '!spotted_grp:matrix.netmind.chat',
+      chatType: 'group',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+      replyToTarget: {
+        eventId: '$spotted_list_1',
+        senderId: SPOTTED_MATRIX_ID,
+        senderName: 'Spotted London',
+        isSelf: true,
+        isAgent: true,
+        text: '• Berwick Vinyl Residency (Soho | Fri 9 Oct to Fri 16 Oct | 11:00-19:00 | free | verified)\nhttps://app.manyfold.ai/spotted-london/p/berwick-vinyl-residency',
+      },
+    };
+    const replyEvent = makeEvent({
+      chatType: 'group',
+      text: '@Spotted London 有更多細節嗎？',
+      mentions: [SPOTTED_MATRIX_ID],
+      replyToEventId: '$spotted_list_1',
+    });
+    const replyDecision = await routeEvent(replyEvent, replyContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(replyDecision.shouldReply).toBe(true);
+    expect(replyDecision.reason).toBe('reply_to_self');
+    expect(replyDecision.detectedLang).toBe('zh-Hant');
+
+    const detailReply = await fastRespondSpotted(typedEnv, replyEvent, replyDecision, emptyMem, replyContext);
+    expect(detailReply).not.toBeNull();
+    expect(detailReply).toContain('• Berwick Vinyl Residency');
+    expect(detailReply).toContain('Soho · 10 Berwick St, W1F 0PP');
+    expect(detailReply).toContain('11:00-19:00');
+    expect(detailReply).toContain('免費');
+    expect(detailReply).toContain('Limited-run Japanese pressing listening room and weekend market.');
+    expect(detailReply).toContain('First 50 visitors receive a canvas tote bag.');
+    expect(detailReply).not.toContain('Third extra sentence');
+    expect(detailReply).toContain('https://app.manyfold.ai/spotted-london/p/berwick-vinyl-residency');
+    expect(detailReply).toContain('https://berwickvinyl.example/event');
+    expect(detailReply).not.toMatch(/\]\(https?:\/\//);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // 2. Fallback to most recent h.isSelf turn in recentHistory (explicit_mention & active_session)
+    const historyContext: RoomContext = {
+      ...replyContext,
+      replyToTarget: undefined,
+      recentHistory: [
+        {
+          eventId: '$spotted_hist_1',
+          senderId: SPOTTED_MATRIX_ID,
+          senderName: 'Spotted London',
+          isAgent: true,
+          isSelf: true,
+          text: 'Here is what is on in London:\n• Berwick Vinyl Residency\nhttps://app.manyfold.ai/spotted-london/p/berwick-vinyl-residency',
+          timestampMs: NOW - 10_000,
+        },
+      ],
+    };
+
+    const enActive = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: 'Where is it? Tell me more about hours and tickets' }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'active_session',
+        confidence: 0.95,
+        detectedLang: 'en',
+        shouldQuote: false,
+      },
+      emptyMem,
+      historyContext,
+    );
+    expect(enActive).toContain('• Berwick Vinyl Residency');
+    expect(enActive).toContain('Where: Soho · 10 Berwick St, W1F 0PP');
+    expect(enActive).toContain('11:00-19:00');
+    expect(enActive).toContain('https://app.manyfold.ai/spotted-london/p/berwick-vinyl-residency');
+    expect(enActive).toContain('https://berwickvinyl.example/event');
+
+    const hansMention = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London 地址和营业时间是什么？' }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'explicit_mention',
+        confidence: 1,
+        detectedLang: 'zh-Hans',
+        shouldQuote: false,
+      },
+      emptyMem,
+      historyContext,
+    );
+    expect(hansMention).toContain('地点：Soho · 10 Berwick St, W1F 0PP');
+    expect(hansMention).toContain('11:00-19:00');
+    expect(hansMention).toContain('免费');
+
+    // Example pop-ups remain excluded
+    const exampleReply = await fastRespondSpotted(
+      typedEnv,
+      replyEvent,
+      replyDecision,
+      emptyMem,
+      {
+        ...replyContext,
+        replyToTarget: {
+          ...replyContext.replyToTarget!,
+          text: 'https://app.manyfold.ai/spotted-london/p/example-hidden-popup',
+        },
+      },
+    );
+    expect(exampleReply).toBeNull();
+
+    // Complex follow-ups still fall back to A2A even when replying to /p/<slug>
+    const complexReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '@Spotted London How do I get there by tube from Euston?' }),
+      replyDecision,
+      emptyMem,
+      replyContext,
+    );
+    expect(complexReply).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('responds locally to bare @Spotted London in groups both when popups exist and when none are listed', async () => {
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const grpContext: RoomContext = {
+      roomId: '!spotted_bare:matrix.netmind.chat',
+      chatType: 'group',
+      userLanguageHint: 'zh-Hant',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+
+    const bareEv = makeEvent({
+      chatType: 'group',
+      text: '@Spotted London',
+      mentions: [SPOTTED_MATRIX_ID],
+    });
+    const bareDec = await routeEvent(bareEv, grpContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(bareDec.shouldReply).toBe(true);
+    expect(bareDec.reason).toBe('explicit_mention');
+
+    // 1. When no non-example popups exist -> brief localized greeting (never null)
+    const emptyDbReplyHant = await fastRespondSpotted(typedEnv, bareEv, bareDec, emptyMem, grpContext);
+    expect(emptyDbReplyHant).not.toBeNull();
+    expect(emptyDbReplyHant).not.toBe('[NO_REPLY]');
+    expect(emptyDbReplyHant).toContain('Spotted London');
+    expect(emptyDbReplyHant).toContain('https://app.manyfold.ai/spotted-london');
+
+    const emptyDbReplyHans = await fastRespondSpotted(
+      typedEnv,
+      bareEv,
+      { ...bareDec, detectedLang: 'zh-Hans' },
+      emptyMem,
+      grpContext,
+    );
+    expect(emptyDbReplyHans).toContain('伦敦');
+    expect(emptyDbReplyHans).toContain('https://app.manyfold.ai/spotted-london');
+
+    const emptyDbReplyEn = await fastRespondSpotted(
+      typedEnv,
+      bareEv,
+      { ...bareDec, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(emptyDbReplyEn).toContain('Hi! I am Spotted London.');
+    expect(emptyDbReplyEn).toContain('https://app.manyfold.ai/spotted-london');
+
+    // 2. When upcoming popups exist -> responds locally with greeting + upcoming pop-ups
+    await seedPopup('ng_bare_1', {
+      slug: 'shoreditch-print-fair',
+      title: 'Shoreditch Print Fair',
+      borough: 'Shoreditch',
+      startAt: Date.now() - HOUR,
+      endAt: Date.now() + 7 * DAY,
+    });
+    const withPopupsReply = await fastRespondSpotted(
+      typedEnv,
+      bareEv,
+      { ...bareDec, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(withPopupsReply).toContain('Hi! Here are a few London pop-ups worth checking out right now:');
+    expect(withPopupsReply).toContain('Shoreditch Print Fair');
+    expect(withPopupsReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-print-fair');
   });
 });
