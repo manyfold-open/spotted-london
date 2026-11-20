@@ -1737,4 +1737,136 @@ describe('spotted-london Narra Gateway', () => {
     expect(defaultReply).toBeTruthy();
     expect(defaultReply!.match(/https:\/\/app\.manyfold\.ai\/spotted-london\/p\/[^\s]+/g)).toHaveLength(3);
   });
+
+  it('delegates comparative and tube follow-ups to A2A after a DM popup list instead of matching "週六" into unrelated exhibitions', async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_comp_mkt_1', {
+      slug: 'hackney-vintage-market',
+      title: 'Hackney Vintage Market',
+      category: 'market',
+      borough: 'Hackney',
+      address: '10 Mare St, E8 4RP',
+      hoursText: '10:00-17:00',
+      priceType: 'free',
+      description: 'Open-air weekend craft and vintage market with colourful murals and photo spots.',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_comp_mkt_2', {
+      slug: 'soho-makers-market',
+      title: 'Soho Makers Market',
+      category: 'market',
+      borough: 'Soho',
+      address: '18 Berwick St, W1F 0PP',
+      hoursText: '11:00-18:00',
+      priceType: 'free',
+      description: 'Independent ceramicists and street-food stalls in central Soho.',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_comp_exh_1', {
+      slug: 'unrelated-weekend-exhibition',
+      title: 'Unrelated Weekend Exhibition',
+      category: 'exhibition',
+      borough: 'Chelsea',
+      priceType: 'paid',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    const aiRunSpy = vi.fn(async () => ({
+      response: JSON.stringify({ isPopupQuery: true, when: 'weekend', category: 'exhibition' }),
+    }));
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      AI: { run: aiRunSpy } as unknown as Ai,
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const dmRoomId = '!spotted_dm_comp:matrix.netmind.chat';
+
+    // Turn 1: DM asks for free weekend markets -> fastRespondSpotted returns free markets from D1
+    const turn1Event = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_comp_t1',
+      text: '這週末倫敦有免費市集嗎？',
+      timestampMs: NOW - 30_000,
+    });
+    const dmCtxTurn1: RoomContext = {
+      roomId: dmRoomId,
+      chatType: 'dm',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+    const turn1Decision = await routeEvent(turn1Event, dmCtxTurn1, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(turn1Decision.shouldReply).toBe(true);
+    expect(turn1Decision.reason).toBe('dm');
+    expect(turn1Decision.detectedLang).toBe('zh-Hant');
+
+    const turn1Reply = await fastRespondSpotted(typedEnv, turn1Event, turn1Decision, emptyMem, dmCtxTurn1);
+    expect(turn1Reply).toBeTruthy();
+    expect(turn1Reply).toContain('Hackney Vintage Market');
+    expect(turn1Reply).toContain('Soho Makers Market');
+    expect(turn1Reply).toContain('https://app.manyfold.ai/spotted-london/p/hackney-vintage-market');
+    expect(turn1Reply).toContain('https://app.manyfold.ai/spotted-london/p/soho-makers-market');
+    expect(turn1Reply).not.toContain('Unrelated Weekend Exhibition');
+
+    // Turn 2: DM asks comparative photo + Tube follow-up referencing Turn 1's list -> returns null for A2A
+    const turn2Event = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_comp_t2',
+      text: '這幾個裡面哪個最適合週六下午帶朋友去拍照？怎麼搭地鐵去？',
+      timestampMs: NOW,
+    });
+    const dmCtxTurn2: RoomContext = {
+      ...dmCtxTurn1,
+      recentHistory: [
+        {
+          eventId: '$dm_comp_t1',
+          senderId: '@alice:matrix.netmind.chat',
+          senderName: 'Alice',
+          isAgent: false,
+          text: turn1Event.text,
+          timestampMs: NOW - 30_000,
+        },
+        {
+          eventId: '$dm_comp_r1',
+          senderId: SPOTTED_MATRIX_ID,
+          senderName: 'Spotted London',
+          isAgent: true,
+          isSelf: true,
+          text: turn1Reply!,
+          timestampMs: NOW - 20_000,
+        },
+      ],
+    };
+    const turn2Decision = await routeEvent(turn2Event, dmCtxTurn2, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(turn2Decision.shouldReply).toBe(true);
+    expect(turn2Decision.reason).toBe('dm');
+
+    const turn2Reply = await fastRespondSpotted(typedEnv, turn2Event, turn2Decision, emptyMem, dmCtxTurn2);
+    expect(turn2Reply).toBeNull();
+    expect(aiRunSpy).not.toHaveBeenCalled();
+
+    // And A2A envelope prefetch includes those exact Turn 1 markets
+    const prefetched = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      turn2Event,
+      turn2Decision,
+      emptyMem,
+      dmCtxTurn2,
+    );
+    expect(prefetched?.d1_prefetched_records).toContain('Hackney Vintage Market');
+    expect(prefetched?.d1_prefetched_records).toContain('Soho Makers Market');
+    expect(prefetched?.d1_prefetched_records).not.toContain('Unrelated Weekend Exhibition');
+  });
 });

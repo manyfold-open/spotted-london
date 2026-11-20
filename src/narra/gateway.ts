@@ -362,6 +362,21 @@ function extractPopupSlugs(text: string): string[] {
   return slugs;
 }
 
+function extractPriorSelfPopupSlugs(context?: RoomContext): string[] {
+  if (context?.replyToTarget?.isSelf || context?.replyToTarget?.senderId === SPOTTED_MATRIX_ID) {
+    const replySlugs = extractPopupSlugs(context.replyToTarget.text);
+    if (replySlugs.length > 0) return replySlugs;
+  }
+  const selfTurns = [...(context?.recentHistory ?? [])]
+    .reverse()
+    .filter((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID);
+  for (const turn of selfTurns.slice(0, 4)) {
+    const slugs = extractPopupSlugs(turn.text ?? '');
+    if (slugs.length > 0) return slugs;
+  }
+  return [];
+}
+
 function validHttpsUrl(raw: string | null | undefined): string | null {
   const trimmed = (raw ?? '').trim();
   if (!trimmed || /\s/.test(trimmed)) return null;
@@ -618,6 +633,9 @@ const DM_OFF_TOPIC_RE =
 
 const COMPLEX_FOLLOWUP_RE =
   /remember|forget|記得|记得|忘掉|忘記|忘记|how\s+(?:do|to)\s+get|tube|bus|station|walk|from\s+|which\s+one|better\s+for|date\s+night|compare|為什麼|为什么|怎麼去|怎么去|坐地鐵|坐地铁|哪一個更好|哪一个更好/i;
+
+const COMPARATIVE_FOLLOWUP_RE =
+  /(?:這幾個|这几个|這幾間|这几间|裡面哪[個一]|里面哪[个一]|哪[個一]最(?:適合|适合|推薦|推荐|好|值得)|比較適合|比较适合|適不適合|适不适合|帶朋友去拍照|带朋友去拍照|怎麼搭地鐵|怎么搭地铁|坐什麼地鐵|坐什么地铁|\b(?:which\s+(?:one\s+)?is\s+(?:best|better|most\s+suitable)|compare\s+(?:them|these)|how\s+(?:do\s+(?:i|we)|to)\s+get\s+there)\b)/i;
 
 const DETAIL_FOLLOWUP_RE =
   /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|要預約|要预约|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|booking|where\s+is\s+it|tell\s+me\s+more)\b/i;
@@ -998,22 +1016,23 @@ export async function fastRespondSpotted(
     });
   }
 
+  const priorSelfSlugs = extractPriorSelfPopupSlugs(context);
+  if (
+    !isUnmentionedGroup &&
+    (COMPLEX_FOLLOWUP_RE.test(cleanText) || COMPARATIVE_FOLLOWUP_RE.test(cleanText)) &&
+    priorSelfSlugs.length > 0
+  ) {
+    return null;
+  }
+
   if (
     (['dm', 'reply_to_self', 'explicit_mention', 'active_session'].includes(decision.reason) ||
       event.chatType === 'dm') &&
     DETAIL_FOLLOWUP_RE.test(cleanText) &&
-    !COMPLEX_FOLLOWUP_RE.test(cleanText)
+    !COMPLEX_FOLLOWUP_RE.test(cleanText) &&
+    !COMPARATIVE_FOLLOWUP_RE.test(cleanText)
   ) {
-    const replySlugs = context?.replyToTarget?.isSelf
-      ? extractPopupSlugs(context.replyToTarget.text)
-      : [];
-    const lastSelfTurn =
-      replySlugs.length === 0
-        ? [...(context?.recentHistory ?? [])]
-            .reverse()
-            .find((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID)
-        : undefined;
-    const slugs = replySlugs.length > 0 ? replySlugs : extractPopupSlugs(lastSelfTurn?.text ?? '');
+    const slugs = priorSelfSlugs;
     if (slugs.length > 0) {
       try {
         const placeholders = slugs.map(() => '?').join(', ');
