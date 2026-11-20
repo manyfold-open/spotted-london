@@ -15,6 +15,8 @@ import {
   SPOTTED_AGENT_ID,
   SPOTTED_AGENT_SPEC,
   SPOTTED_MATRIX_ID,
+  buildSpottedExtraEnvelopeFields,
+  createSpottedGatewayConfig,
   extractPopupQueryFilter,
   fastRespondSpotted,
   fetchSpottedUpdates,
@@ -23,6 +25,7 @@ import {
   spottedGatewayConfig,
   spottedOffTopicRedirect,
   spottedThanksReply,
+  spottedThinkingMessage,
 } from '../src/narra/gateway';
 import worker, { NarraMatrixSync, NarraRoomCoordinator } from '../src/index';
 import type { Bindings } from '../src/types';
@@ -1475,5 +1478,153 @@ describe('spotted-london Narra Gateway', () => {
       dmContext,
     );
     expect(kidFriendlyDm).toBeNull();
+  });
+
+  it('wires Phase 1-4 gateway config (thinkingMessage, enableA2AFailureReply, buildExtraEnvelopeFields) with slug & weekend D1 prefetch', async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_pref_1', {
+      slug: 'soho-ceramics-popup',
+      title: 'Soho Ceramics Studio Pop-up',
+      borough: 'Soho',
+      address: '14 Marshall St, W1F 7EN',
+      hoursText: '10:30-18:30',
+      priceType: 'free',
+      description: 'Handmade London ceramics workshop and weekend showcase. Family and kid-friendly ground floor space.',
+      sourceUrl: 'https://sohoceramics.example/popup',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_pref_2', {
+      slug: 'hackney-print-market',
+      title: 'Hackney Print Market',
+      borough: 'Hackney',
+      address: '55 Mare St, E8 4RG',
+      hoursText: '11:00-17:00',
+      priceType: 'paid',
+      description: 'Independent printmakers and zine stalls all weekend.',
+      sourceUrl: 'https://hackneyprint.example/weekend',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_pref_ex', {
+      slug: 'example-ignored-popup',
+      title: 'Example Ignored Popup',
+      isExample: 1,
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const dummyEvent = makeEvent({ text: 'how do I get there by tube?' });
+    const dummyDecision = {
+      shouldReply: true,
+      tier: 0 as const,
+      reason: 'dm',
+      confidence: 1,
+      detectedLang: 'en' as const,
+      shouldQuote: false,
+    };
+
+    // 1. Config & thinkingMessage checks
+    const cfg = createSpottedGatewayConfig();
+    expect(cfg.enableA2AFailureReply).toBe(true);
+    expect(spottedGatewayConfig.enableA2AFailureReply).toBe(true);
+    expect(cfg.thinkingMessage).toBe(spottedThinkingMessage);
+    expect(cfg.buildExtraEnvelopeFields).toBe(buildSpottedExtraEnvelopeFields);
+
+    expect(cfg.thinkingMessage!('zh-Hant', dummyEvent, dummyDecision)).toBe(
+      '📍 正在幫你查詢倫敦最新快閃活動與細節，稍等一下…',
+    );
+    expect(cfg.thinkingMessage!('zh-Hans', dummyEvent, dummyDecision)).toBe(
+      '📍 正在帮你查询伦敦最新快闪活动与细节，稍等一下…',
+    );
+    expect(cfg.thinkingMessage!('en', dummyEvent, dummyDecision)).toBe(
+      '📍 Looking up London pop-up details for you, one moment…',
+    );
+
+    // 2. Extracts slug from replyToTarget and returns rich concise D1 facts (<= 1400 chars)
+    const replyCtx: RoomContext = {
+      roomId: '!spotted_pref:matrix.netmind.chat',
+      chatType: 'dm',
+      members: [],
+      recentHistory: [],
+      replyToTarget: {
+        eventId: '$sp_reply_1',
+        senderId: SPOTTED_MATRIX_ID,
+        senderName: 'Spotted London',
+        isSelf: true,
+        isAgent: true,
+        text: '• Soho Ceramics Studio Pop-up\nhttps://app.manyfold.ai/spotted-london/p/soho-ceramics-popup',
+      },
+    };
+    const replyFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      dummyEvent,
+      dummyDecision,
+      emptyMem,
+      replyCtx,
+    );
+    expect(replyFields).not.toBeNull();
+    expect(replyFields!.d1_prefetched_records.length).toBeLessThanOrEqual(1_400);
+    expect(replyFields!.d1_prefetched_records).toContain('Soho Ceramics Studio Pop-up');
+    expect(replyFields!.d1_prefetched_records).toContain('14 Marshall St, W1F 7EN');
+    expect(replyFields!.d1_prefetched_records).toContain('10:30-18:30');
+    expect(replyFields!.d1_prefetched_records).toContain('https://sohoceramics.example/popup');
+    expect(replyFields!.d1_prefetched_records).toContain('kid-friendly');
+
+    // 3. Falls back to latest self turn in recentHistory
+    const historyCtx: RoomContext = {
+      roomId: '!spotted_pref:matrix.netmind.chat',
+      chatType: 'dm',
+      members: [],
+      recentHistory: [
+        {
+          eventId: '$sp_hist_1',
+          senderId: SPOTTED_MATRIX_ID,
+          senderName: 'Spotted London',
+          isAgent: true,
+          isSelf: true,
+          text: '• Hackney Print Market\nhttps://app.manyfold.ai/spotted-london/p/hackney-print-market',
+          timestampMs: NOW - 5_000,
+        },
+      ],
+    };
+    const histFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      makeEvent({ text: 'is it kid-friendly?' }),
+      dummyDecision,
+      emptyMem,
+      historyCtx,
+    );
+    expect(histFields?.d1_prefetched_records).toContain('Hackney Print Market');
+    expect(histFields?.d1_prefetched_records).toContain('55 Mare St, E8 4RG');
+    expect(histFields?.d1_prefetched_records).toContain('£15');
+    expect(histFields?.d1_prefetched_records).toContain('https://hackneyprint.example/weekend');
+
+    // 4. Falls back to top 3 weekend non-example popups when history has no slugs
+    const fallbackCtx: RoomContext = {
+      roomId: '!spotted_pref:matrix.netmind.chat',
+      chatType: 'dm',
+      members: [],
+      recentHistory: [],
+    };
+    const weekendFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      makeEvent({ text: 'Which one is best for a rainy Saturday?' }),
+      dummyDecision,
+      emptyMem,
+      fallbackCtx,
+    );
+    expect(weekendFields).not.toBeNull();
+    expect(weekendFields!.d1_prefetched_records.length).toBeLessThanOrEqual(1_400);
+    expect(weekendFields!.d1_prefetched_records).toContain('Soho Ceramics Studio Pop-up');
+    expect(weekendFields!.d1_prefetched_records).not.toContain('Example Ignored Popup');
   });
 });
