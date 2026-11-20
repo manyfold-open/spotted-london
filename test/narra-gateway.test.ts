@@ -21,6 +21,8 @@ import {
   formatPopupsReply,
   resolveSpottedA2ACredential,
   spottedGatewayConfig,
+  spottedOffTopicRedirect,
+  spottedThanksReply,
 } from '../src/narra/gateway';
 import worker, { NarraMatrixSync, NarraRoomCoordinator } from '../src/index';
 import type { Bindings } from '../src/types';
@@ -1324,5 +1326,154 @@ describe('spotted-london Narra Gateway', () => {
       grpContext,
     );
     expect(missAllReply).toBeNull();
+  });
+
+  it('handles 1v1 DM detail follow-up, off-topic redirect, polite thanks, capability queries, and preserves A2A follow-ups', async () => {
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_dm_detail_1', {
+      slug: 'shoreditch-matcha-popup',
+      title: 'Shoreditch Matcha Pop-up',
+      borough: 'Shoreditch',
+      address: '24 Redchurch St, E2 7DP',
+      hoursText: '10:00-17:00',
+      priceType: 'free',
+      description: 'Ceremonial matcha tastings and limited-run ceramic cups all weekend.',
+      sourceUrl: 'https://matcha.example/shoreditch',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      MANYFOLD_A2A_URL: 'https://a2a.spotted.test/rpc',
+      MANYFOLD_A2A_TOKEN: 'a2a_spotted_test_tok',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const dmRoomId = '!spotted_dm_1v1:matrix.netmind.chat';
+    const dmContext: RoomContext = {
+      roomId: dmRoomId,
+      chatType: 'dm',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [
+        {
+          eventId: '$dm_list_1',
+          senderId: SPOTTED_MATRIX_ID,
+          senderName: 'Spotted London',
+          isAgent: true,
+          isSelf: true,
+          text: '以下是符合條件的倫敦快閃活動：\n• Shoreditch Matcha Pop-up (Shoreditch | free | verified)\nhttps://app.manyfold.ai/spotted-london/p/shoreditch-matcha-popup',
+          timestampMs: NOW - 10_000,
+        },
+      ],
+    };
+
+    // 1. DM "有更多細節嗎？" right after a Spotted list reply returns D1 details locally
+    const detailEv = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_detail_q',
+      text: '有更多細節嗎？',
+    });
+    const detailDec = await routeEvent(detailEv, dmContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(detailDec.shouldReply).toBe(true);
+    expect(detailDec.reason).toBe('dm');
+    expect(detailDec.detectedLang).toBe('zh-Hant');
+
+    const detailReply = await fastRespondSpotted(typedEnv, detailEv, detailDec, emptyMem, dmContext);
+    expect(detailReply).not.toBeNull();
+    expect(detailReply).toContain('Shoreditch Matcha Pop-up');
+    expect(detailReply).toContain('Shoreditch · 24 Redchurch St, E2 7DP');
+    expect(detailReply).toContain('10:00-17:00');
+    expect(detailReply).toContain('Ceremonial matcha tastings and limited-run ceramic cups all weekend.');
+    expect(detailReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-matcha-popup');
+    expect(detailReply).toContain('https://matcha.example/shoreditch');
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // 2. DM "幫我查一下今天的比特幣價格" returns warm zh-Hant off-topic redirect locally (NOT null)
+    const btcEv = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_btc',
+      text: '幫我查一下今天的比特幣價格',
+    });
+    const btcDec = await routeEvent(btcEv, dmContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(btcDec.shouldReply).toBe(true);
+    expect(btcDec.reason).toBe('dm');
+    const btcReply = await fastRespondSpotted(typedEnv, btcEv, btcDec, emptyMem, dmContext);
+    expect(btcReply).toBe(spottedOffTopicRedirect('zh-Hant'));
+    expect(btcReply).not.toBeNull();
+
+    const weatherEnReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ roomId: dmRoomId, chatType: 'dm', text: 'What is the weather forecast in London?' }),
+      { ...btcDec, detectedLang: 'en' },
+      emptyMem,
+      dmContext,
+    );
+    expect(weatherEnReply).toBe(spottedOffTopicRedirect('en'));
+
+    // 3. DM "謝謝！" returns warm thanks reply locally, whereas unmentioned group active_session returns [NO_REPLY]
+    const thanksEv = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_thanks',
+      text: '謝謝！',
+    });
+    const thanksDec = await routeEvent(thanksEv, dmContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    const thanksReply = await fastRespondSpotted(typedEnv, thanksEv, thanksDec, emptyMem, dmContext);
+    expect(thanksReply).toBe(spottedThanksReply('zh-Hant'));
+
+    const activeThanks = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '謝謝！' }),
+      {
+        shouldReply: true,
+        tier: 0,
+        reason: 'active_session',
+        confidence: 0.95,
+        detectedLang: 'zh-Hant',
+        shouldQuote: false,
+      },
+      emptyMem,
+    );
+    expect(activeThanks).toBe('[NO_REPLY]');
+
+    // 4. DM capability query triggers greeting + weekend highlights locally
+    const capEv = makeEvent({
+      roomId: dmRoomId,
+      chatType: 'dm',
+      eventId: '$dm_cap',
+      text: '你能幫我查什麼？',
+    });
+    const capDec = await routeEvent(capEv, dmContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    const capReply = await fastRespondSpotted(typedEnv, capEv, capDec, emptyMem, dmContext);
+    expect(capReply).toContain('Shoreditch Matcha Pop-up');
+    expect(capReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-matcha-popup');
+
+    // 5. Complex/popup follow-ups ("how do I get there by tube?", "is it kid-friendly?") still return null for A2A
+    const tubeDm = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ roomId: dmRoomId, chatType: 'dm', text: 'how do I get there by tube?' }),
+      { ...btcDec, detectedLang: 'en' },
+      emptyMem,
+      dmContext,
+    );
+    expect(tubeDm).toBeNull();
+
+    const kidFriendlyDm = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ roomId: dmRoomId, chatType: 'dm', text: 'is it kid-friendly?' }),
+      { ...btcDec, detectedLang: 'en' },
+      emptyMem,
+      dmContext,
+    );
+    expect(kidFriendlyDm).toBeNull();
   });
 });
