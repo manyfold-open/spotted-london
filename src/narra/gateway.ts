@@ -1033,7 +1033,7 @@ export async function fastRespondSpotted(
 
   const priorSelfSlugs = extractPriorSelfPopupSlugs(context);
   if (
-    !isUnmentionedGroup &&
+    (!isUnmentionedGroup || decision.reason === 'active_session') &&
     (COMPLEX_FOLLOWUP_RE.test(cleanText) || COMPARATIVE_FOLLOWUP_RE.test(cleanText)) &&
     priorSelfSlugs.length > 0
   ) {
