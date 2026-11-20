@@ -829,6 +829,22 @@ export async function resolveSpottedA2ACredential(
   }
 }
 
+/** Localized intro line when a pop-up search returns results only after relaxing filters. */
+function relaxedFilterIntro(
+  kind: 'dropArea' | 'dropFilters',
+  area: string,
+  lang: LangCode,
+): string {
+  if (kind === 'dropArea') {
+    if (lang === 'zh-Hant') return `${area} 暫時沒有完全符合條件的活動，以下是倫敦其他區域符合條件的快閃精選：`;
+    if (lang === 'zh-Hans') return `${area} 暂时没有完全符合条件的活动，以下是伦敦其他区域符合条件的快闪精选：`;
+    return `No exact match in ${area} right now — here are matching London pop-ups nearby:`;
+  }
+  if (lang === 'zh-Hant') return `${area} 暫時沒有完全符合全部篩選條件的活動，但 ${area} 附近還有這些快閃可以逛：`;
+  if (lang === 'zh-Hans') return `${area} 暂时没有完全符合全部筛选条件的活动，但 ${area} 附近还有这些快闪可以逛：`;
+  return `No exact match for every filter in ${area}, but here is what else is on around ${area}:`;
+}
+
 export async function fastRespondSpotted(
   env: Bindings,
   event: InboundEvent,
@@ -977,19 +993,54 @@ export async function fastRespondSpotted(
   };
 
   let items: PublicPopup[] = [];
+  let relaxedIntro: string | undefined;
+  const queryNonExamplePopups = async (params: Record<string, string>): Promise<PublicPopup[]> => {
+    const result = await listPopups(env.DB, params, nowMs);
+    return result.items.filter((i) => !i.example);
+  };
   try {
-    const result = await listPopups(env.DB, queryParams, nowMs);
-    items = result.items.filter((i) => !i.example);
+    items = await queryNonExamplePopups(queryParams);
+    if (items.length === 0 && filter.q && (filter.category || filter.free)) {
+      items = await queryNonExamplePopups({
+        when: filter.when,
+        limit: '10',
+        ...(filter.category ? { category: filter.category } : {}),
+        ...(filter.free ? { free: filter.free } : {}),
+      });
+      if (items.length > 0) {
+        relaxedIntro = relaxedFilterIntro('dropArea', filter.q, lang);
+      }
+    }
+    if (items.length === 0 && filter.q) {
+      const bWhen = filter.when === 'today' ? 'week' : filter.when;
+      items = await queryNonExamplePopups({
+        when: bWhen,
+        limit: '10',
+        q: filter.q,
+      });
+      if (items.length === 0 && bWhen !== 'week') {
+        items = await queryNonExamplePopups({
+          when: 'week',
+          limit: '10',
+          q: filter.q,
+        });
+      }
+      if (items.length > 0) {
+        relaxedIntro = relaxedFilterIntro('dropFilters', filter.q, lang);
+      }
+    }
     if (items.length === 0 && filter.when !== 'week' && !filter.q && !filter.category) {
-      const wider = await listPopups(env.DB, { ...queryParams, when: 'week' }, nowMs);
-      items = wider.items.filter((i) => !i.example);
+      items = await queryNonExamplePopups({ ...queryParams, when: 'week' });
     }
   } catch {
     return null;
   }
 
   if (items.length > 0) {
-    return formatPopupsReply(items, lang, baseUrl, { voice: Boolean(event.isVoice) });
+    return formatPopupsReply(items, lang, baseUrl, {
+      voice: Boolean(event.isVoice),
+      ...(relaxedIntro ? { intro: relaxedIntro } : {}),
+    });
   }
 
   // If A2A is configured, fall back so Concierge can widen search with geo/fuzzy tools.

@@ -1155,4 +1155,174 @@ describe('spotted-london Narra Gateway', () => {
     expect(withPopupsReply).toContain('Shoreditch Print Fair');
     expect(withPopupsReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-print-fair');
   });
+
+  it('relaxes neighborhood filter (Relaxation A) when area + category/free has no exact D1 match', async () => {
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_relax_a_soho', {
+      slug: 'soho-free-weekend-market',
+      title: 'Soho Free Weekend Market',
+      category: 'market',
+      borough: 'Soho',
+      priceType: 'free',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+    // Example pop-ups in the target area remain excluded and must not block relaxation
+    await seedPopup('ng_relax_a_ex', {
+      slug: 'shoreditch-example-market',
+      title: 'Shoreditch Example Market',
+      category: 'market',
+      borough: 'Shoreditch',
+      priceType: 'free',
+      isExample: 1,
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      MANYFOLD_A2A_URL: 'https://a2a.spotted.test/rpc',
+      MANYFOLD_A2A_TOKEN: 'a2a_spotted_test_tok',
+    };
+    const grpContext: RoomContext = {
+      roomId: '!spotted_relax_a:matrix.netmind.chat',
+      chatType: 'group',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+
+    const hantText = '這週末倫敦 Shoreditch 有什麼免費快閃市集？';
+    const hantDecision = await routeEvent(makeEvent({ text: hantText }), grpContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(hantDecision.shouldReply).toBe(true);
+    expect(hantDecision.detectedLang).toBe('zh-Hant');
+
+    const hantReply = await fastRespondSpotted(typedEnv, makeEvent({ text: hantText }), hantDecision, emptyMem, grpContext);
+    expect(hantReply).not.toBeNull();
+    expect(hantReply).not.toBe('[NO_REPLY]');
+    expect(hantReply).toContain('Shoreditch 暫時沒有完全符合條件的活動，以下是倫敦其他區域符合條件的快閃精選：');
+    expect(hantReply).toContain('Soho Free Weekend Market');
+    expect(hantReply).toContain('https://app.manyfold.ai/spotted-london/p/soho-free-weekend-market');
+    expect(hantReply).not.toMatch(/\]\(https?:\/\//);
+
+    const hansReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: '这周末伦敦 Shoreditch 有什么免费快闪市集？' }),
+      { ...hantDecision, detectedLang: 'zh-Hans' },
+      emptyMem,
+      grpContext,
+    );
+    expect(hansReply).toContain('Shoreditch 暂时没有完全符合条件的活动，以下是伦敦其他区域符合条件的快闪精选：');
+    expect(hansReply).toContain('https://app.manyfold.ai/spotted-london/p/soho-free-weekend-market');
+
+    const enReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: 'Any free markets in Shoreditch this weekend?' }),
+      { ...hantDecision, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(enReply).toContain('No exact match in Shoreditch right now — here are matching London pop-ups nearby:');
+    expect(enReply).toContain('https://app.manyfold.ai/spotted-london/p/soho-free-weekend-market');
+  });
+
+  it('relaxes category/free/time filters while keeping neighborhood (Relaxation B) and falls back to A2A only when all relaxations miss', async () => {
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_relax_b_shoreditch', {
+      slug: 'shoreditch-paid-gallery',
+      title: 'Shoreditch Paid Gallery',
+      category: 'exhibition',
+      borough: 'Shoreditch',
+      priceType: 'paid',
+      status: 'verified_admin',
+      startAt: Date.now() - HOUR,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_relax_b_hackney_week', {
+      slug: 'hackney-upcoming-print-show',
+      title: 'Hackney Upcoming Print Show',
+      category: 'exhibition',
+      borough: 'Hackney',
+      priceType: 'paid',
+      status: 'verified_admin',
+      startAt: Date.now() + 2 * DAY,
+      endAt: Date.now() + 5 * DAY,
+    });
+
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      MANYFOLD_A2A_URL: 'https://a2a.spotted.test/rpc',
+      MANYFOLD_A2A_TOKEN: 'a2a_spotted_test_tok',
+    };
+    const grpContext: RoomContext = {
+      roomId: '!spotted_relax_b:matrix.netmind.chat',
+      chatType: 'group',
+      members: [
+        { matrixId: '@alice:matrix.netmind.chat', displayName: 'Alice', isAgent: false },
+        { matrixId: SPOTTED_MATRIX_ID, displayName: 'Spotted London', isAgent: true },
+      ],
+      recentHistory: [],
+    };
+
+    const hantText = '這週末倫敦 Shoreditch 有什麼免費快閃市集？';
+    const hantDecision = await routeEvent(makeEvent({ text: hantText }), grpContext, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+    expect(hantDecision.shouldReply).toBe(true);
+
+    const hantReply = await fastRespondSpotted(typedEnv, makeEvent({ text: hantText }), hantDecision, emptyMem, grpContext);
+    expect(hantReply).not.toBeNull();
+    expect(hantReply).not.toBe('[NO_REPLY]');
+    expect(hantReply).toContain('Shoreditch 暫時沒有完全符合全部篩選條件的活動，但 Shoreditch 附近還有這些快閃可以逛：');
+    expect(hantReply).toContain('Shoreditch Paid Gallery');
+    expect(hantReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-paid-gallery');
+    expect(hantReply).not.toMatch(/\]\(https?:\/\//);
+
+    const hansReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: '这周末伦敦 Shoreditch 有什么免费快闪市集？' }),
+      { ...hantDecision, detectedLang: 'zh-Hans' },
+      emptyMem,
+      grpContext,
+    );
+    expect(hansReply).toContain('Shoreditch 暂时没有完全符合全部筛选条件的活动，但 Shoreditch 附近还有这些快闪可以逛：');
+    expect(hansReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-paid-gallery');
+
+    const enReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: 'Any free markets in Shoreditch this weekend?' }),
+      { ...hantDecision, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(enReply).toContain('No exact match for every filter in Shoreditch, but here is what else is on around Shoreditch:');
+    expect(enReply).toContain('https://app.manyfold.ai/spotted-london/p/shoreditch-paid-gallery');
+
+    // Also widens today -> week in Relaxation B when matching borough only has upcoming events later this week
+    const todayHackneyReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: 'Any free markets in Hackney today?' }),
+      { ...hantDecision, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(todayHackneyReply).toContain('No exact match for every filter in Hackney, but here is what else is on around Hackney:');
+    expect(todayHackneyReply).toContain('Hackney Upcoming Print Show');
+    expect(todayHackneyReply).toContain('https://app.manyfold.ai/spotted-london/p/hackney-upcoming-print-show');
+
+    // When all relaxations still return 0 results and A2A is configured, falls back to null
+    const missAllReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: 'Any free markets in Camden this weekend?' }),
+      { ...hantDecision, detectedLang: 'en' },
+      emptyMem,
+      grpContext,
+    );
+    expect(missAllReply).toBeNull();
+  });
 });
