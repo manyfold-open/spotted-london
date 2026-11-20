@@ -6,6 +6,7 @@ import {
   type InboundEvent,
   type LangCode,
   type RecallTurnResult,
+  type RoomContext,
   type TriageDecision,
 } from '@manyfold/narra-agent-kit';
 import type {
@@ -343,6 +344,131 @@ export function formatPopupsReply(
   return sanitizeMobileLinks(lines.join('\n'));
 }
 
+function extractPopupSlugs(text: string): string[] {
+  const seen = new Set<string>();
+  const slugs: string[] = [];
+  for (const match of (text ?? '').matchAll(/\/p\/([a-z0-9_-]+)/gi)) {
+    const slug = match[1]?.trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    slugs.push(slug);
+    if (slugs.length >= 3) break;
+  }
+  return slugs;
+}
+
+function validHttpsUrl(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+function excerptDescription(description: string | null | undefined, maxLen = 220): string {
+  const clean = (description ?? '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const sentences = clean.match(/[^.!?。！？]+(?:[.!?。！？]+(?=\s|$)|[。！？]+)/g);
+  if (sentences && sentences.length > 0) {
+    let out = sentences[0].trim();
+    if (sentences.length > 1) {
+      const second = sentences[1].trim();
+      const sep = /[。！？]$/.test(out) ? '' : ' ';
+      if (out.length + sep.length + second.length <= maxLen) {
+        out = `${out}${sep}${second}`;
+      }
+    }
+    if (out.length <= maxLen) return out;
+    return `${out.slice(0, maxLen - 1).trimEnd()}…`;
+  }
+  if (clean.length <= maxLen) return clean;
+  return `${clean.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+export function formatPopupDetailsReply(
+  items: PublicPopup[],
+  lang: LangCode,
+  baseUrl: string,
+  options: { voice?: boolean } = {},
+): string {
+  const top = items.slice(0, 3);
+  if (options.voice) {
+    const spoken = top.map((item) => {
+      const area = item.location.borough?.trim() || '';
+      const addr = item.location.address?.trim() || '';
+      const where =
+        area && addr && !addr.toLowerCase().includes(area.toLowerCase())
+          ? `${addr}, ${area}`
+          : addr || area || 'London';
+      const dates = formatPopupDates(item, lang);
+      const hours = item.hours_text?.trim() || '';
+      const price = priceLabel(item.price?.type, item.price?.text, lang);
+      const excerpt = excerptDescription(item.description, 140);
+      if (lang === 'zh-Hant') {
+        return [item.title, `地點在 ${where}`, `日期 ${dates}`, hours ? `時間 ${hours}` : '', price ? `費用 ${price}` : '', excerpt]
+          .filter(Boolean)
+          .join('，');
+      }
+      if (lang === 'zh-Hans') {
+        return [item.title, `地点在 ${where}`, `日期 ${dates}`, hours ? `时间 ${hours}` : '', price ? `费用 ${price}` : '', excerpt]
+          .filter(Boolean)
+          .join('，');
+      }
+      return [item.title, `at ${where}`, dates, hours, price, excerpt].filter(Boolean).join(', ');
+    });
+    return spoken.join('； ');
+  }
+
+  const lines: string[] = [];
+  if (lang === 'zh-Hant') lines.push(top.length > 1 ? '這幾個活動的詳細資訊如下：' : '活動詳細資訊如下：');
+  else if (lang === 'zh-Hans') lines.push(top.length > 1 ? '这几个活动的详细信息如下：' : '活动详细信息如下：');
+  else lines.push('Here are the full details:');
+
+  for (const item of top) {
+    const area = item.location.borough?.trim() || '';
+    const addr = item.location.address?.trim() || '';
+    const locationText =
+      area && addr
+        ? addr.toLowerCase().includes(area.toLowerCase())
+          ? addr
+          : `${area} · ${addr}`
+        : addr || area || (lang === 'zh-Hant' ? '倫敦' : lang === 'zh-Hans' ? '伦敦' : 'London');
+    const dates = formatPopupDates(item, lang);
+    const hours = item.hours_text?.trim() || '';
+    const price = priceLabel(item.price?.type, item.price?.text, lang);
+    const ver = verificationLabel(item.status, Boolean(item.source_checked), lang);
+    const excerpt = excerptDescription(item.description);
+    const sourceUrl = validHttpsUrl(item.source_url);
+
+    lines.push(`• ${item.title}`);
+    if (lang === 'zh-Hant') {
+      lines.push(`地點：${locationText}`);
+      lines.push(`時間：${[dates, hours].filter(Boolean).join(' · ')}`);
+      lines.push(`費用：${[price, ver].filter(Boolean).join(' · ')}`);
+    } else if (lang === 'zh-Hans') {
+      lines.push(`地点：${locationText}`);
+      lines.push(`时间：${[dates, hours].filter(Boolean).join(' · ')}`);
+      lines.push(`费用：${[price, ver].filter(Boolean).join(' · ')}`);
+    } else {
+      lines.push(`Where: ${locationText}`);
+      lines.push(`When: ${[dates, hours].filter(Boolean).join(' · ')}`);
+      lines.push(`Entry: ${[price, ver].filter(Boolean).join(' · ')}`);
+    }
+    if (excerpt) lines.push(excerpt);
+    lines.push(`${baseUrl}/p/${item.slug}`);
+    if (sourceUrl) {
+      if (lang === 'zh-Hant') lines.push(`官方來源： ${sourceUrl}`);
+      else if (lang === 'zh-Hans') lines.push(`官方来源： ${sourceUrl}`);
+      else lines.push(`Source: ${sourceUrl}`);
+    }
+  }
+
+  return sanitizeMobileLinks(lines.join('\n'));
+}
+
 async function discoverGroupRooms(env: Bindings): Promise<string[]> {
   const rooms = new Set<string>();
 
@@ -478,6 +604,9 @@ const BARE_GREETING_RE =
 
 const COMPLEX_FOLLOWUP_RE =
   /remember|forget|記得|记得|忘掉|忘記|忘记|how\s+(?:do|to)\s+get|tube|bus|station|walk|from\s+|which\s+one|better\s+for|date\s+night|compare|為什麼|为什么|怎麼去|怎么去|坐地鐵|坐地铁|哪一個更好|哪一个更好/i;
+
+const DETAIL_FOLLOWUP_RE =
+  /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|要預約|要预约|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|booking|where\s+is\s+it|tell\s+me\s+more)\b/i;
 
 const CJK_CHAR_RE = /[\u3400-\u9FFF\uF900-\uFAFF]/;
 const escapeKeywordRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -705,6 +834,7 @@ export async function fastRespondSpotted(
   event: InboundEvent,
   decision: TriageDecision,
   _memories: RecallTurnResult,
+  context?: RoomContext,
 ): Promise<string | null> {
   if (!env.DB) return null;
   const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
@@ -727,7 +857,10 @@ export async function fastRespondSpotted(
   const nowMs = Date.now();
   const baseUrl = appBase(env);
 
-  if ((event.chatType === 'dm' || decision.reason === 'dm') && BARE_GREETING_RE.test(cleanText)) {
+  if (
+    (event.chatType === 'dm' || decision.reason === 'dm' || decision.reason === 'explicit_mention') &&
+    (!cleanText || BARE_GREETING_RE.test(cleanText))
+  ) {
     const list = await listPopups(env.DB, { when: 'weekend', limit: '5' }, nowMs).catch(() => null);
     const real = (list?.items ?? []).filter((i) => !i.example);
     const fallbackList =
@@ -736,7 +869,20 @@ export async function fastRespondSpotted(
         : ((await listPopups(env.DB, { when: 'week', limit: '5' }, nowMs).catch(() => null))?.items ?? []).filter(
             (i) => !i.example,
           );
-    if (fallbackList.length === 0) return null;
+    if (fallbackList.length === 0) {
+      if (event.isVoice) {
+        if (lang === 'zh-Hant') return '你好！我是 Spotted London，想找倫敦這週末的快閃活動、市集或展覽嗎？跟我說區域或想逛的類型就行。';
+        if (lang === 'zh-Hans') return '你好！我是 Spotted London，想找伦敦这周末的快闪活动、市集或展览吗？跟我说区域或想逛的类型就行。';
+        return 'Hi! I am Spotted London. Ask me about pop-ups, markets, or exhibitions in any London neighbourhood.';
+      }
+      if (lang === 'zh-Hant') {
+        return sanitizeMobileLinks(`你好！我是 Spotted London，想找倫敦哪一區或這週末的快閃活動、市集、展覽？也可以逛逛清單： ${baseUrl}`);
+      }
+      if (lang === 'zh-Hans') {
+        return sanitizeMobileLinks(`你好！我是 Spotted London，想找伦敦哪一区或这周末的快闪活动、市集、展览？也可以逛逛列表： ${baseUrl}`);
+      }
+      return sanitizeMobileLinks(`Hi! I am Spotted London. Ask me about London pop-ups, markets, or exhibitions, or browse all listings here: ${baseUrl}`);
+    }
 
     const intro =
       lang === 'zh-Hant'
@@ -748,6 +894,46 @@ export async function fastRespondSpotted(
       voice: Boolean(event.isVoice),
       intro,
     });
+  }
+
+  if (
+    ['reply_to_self', 'explicit_mention', 'active_session'].includes(decision.reason) &&
+    DETAIL_FOLLOWUP_RE.test(cleanText) &&
+    !COMPLEX_FOLLOWUP_RE.test(cleanText)
+  ) {
+    const replySlugs = context?.replyToTarget?.isSelf
+      ? extractPopupSlugs(context.replyToTarget.text)
+      : [];
+    const lastSelfTurn =
+      replySlugs.length === 0
+        ? [...(context?.recentHistory ?? [])]
+            .reverse()
+            .find((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID)
+        : undefined;
+    const slugs = replySlugs.length > 0 ? replySlugs : extractPopupSlugs(lastSelfTurn?.text ?? '');
+    if (slugs.length > 0) {
+      try {
+        const placeholders = slugs.map(() => '?').join(', ');
+        const { results } = await env.DB.prepare(
+          `SELECT *, (SELECT COALESCE(i.thumb_key, i.r2_key) FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
+              ${SOURCE_CHECKED_SQL}
+           FROM popups
+           WHERE slug IN (${placeholders})
+             AND is_example = 0
+           LIMIT 3`,
+        )
+          .bind(...slugs)
+          .all<PopupRow & { cover_key?: string | null; source_checked?: number | null }>();
+        const rows = [...(results ?? [])].sort((a, b) => slugs.indexOf(a.slug) - slugs.indexOf(b.slug));
+        if (rows.length > 0) {
+          return formatPopupDetailsReply(rows.map((r) => toPublic(r)), lang, baseUrl, {
+            voice: Boolean(event.isVoice),
+          });
+        }
+      } catch {
+        // Fall through to query / A2A if detail lookup fails unexpectedly.
+      }
+    }
   }
 
   let filter = extractPopupQueryFilter(cleanText);
