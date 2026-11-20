@@ -22,7 +22,7 @@
     "pretest": "npm run build:web"
   },
   "dependencies": {
-    "@manyfold/narra-agent-kit": "github:manyfold-open/narra-agent-kit#c9c22bae60c5271c823e83f5b58057eb9a5681e0",
+    "@manyfold/narra-agent-kit": "github:manyfold-open/narra-agent-kit#289b02eaa261f498c788202df1c271b34113afa3",
     "hono": "^4.13.12"
   },
   "devDependencies": {
