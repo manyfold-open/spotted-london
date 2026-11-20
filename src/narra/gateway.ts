@@ -1118,9 +1118,112 @@ export async function fastRespondSpotted(
   return `No exact matches on Spotted London right now. Browse all upcoming pop-ups here: ${baseUrl}`;
 }
 
-export const spottedGatewayConfig: NarraGatewayConfig<Bindings> = {
-  spec: SPOTTED_AGENT_SPEC,
-  fetchUpdates: fetchSpottedUpdates,
-  fastRespond: fastRespondSpotted,
-  resolveA2ACredential: resolveSpottedA2ACredential,
-};
+const MAX_PREFETCH_CHARS = 1_400;
+
+function formatPrefetchedPopup(item: PublicPopup, lang: LangCode, baseUrl: string): string {
+  const area = item.location.borough?.trim() || '';
+  const addr = item.location.address?.trim() || '';
+  const dates = formatPopupDates(item, lang);
+  const hours = item.hours_text?.trim() || '';
+  const price = priceLabel(item.price?.type, item.price?.text, lang);
+  const excerpt = excerptDescription(item.description, 160);
+  const officialUrl = validHttpsUrl(item.source_url);
+  const pageUrl = `${baseUrl}/p/${item.slug}`;
+
+  return [
+    `[${item.slug}] ${item.title}`,
+    area ? `Area: ${area}` : '',
+    addr ? `Address: ${addr}` : '',
+    dates ? `Dates: ${dates}` : '',
+    hours ? `Hours: ${hours}` : '',
+    price ? `Price: ${price}` : '',
+    excerpt ? `Info: ${excerpt}` : '',
+    `Page: ${pageUrl}`,
+    officialUrl ? `Official: ${officialUrl}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
+
+export async function buildSpottedExtraEnvelopeFields(
+  env: Bindings,
+  _event: InboundEvent,
+  decision: TriageDecision,
+  _memories: RecallTurnResult,
+  context: RoomContext,
+): Promise<Record<string, string> | null> {
+  if (!env.DB) return null;
+
+  const replySlugs = context?.replyToTarget?.text
+    ? extractPopupSlugs(context.replyToTarget.text)
+    : [];
+  const lastSelfTurn =
+    replySlugs.length === 0
+      ? [...(context?.recentHistory ?? [])]
+          .reverse()
+          .find((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID)
+      : undefined;
+  const slugs = replySlugs.length > 0 ? replySlugs : extractPopupSlugs(lastSelfTurn?.text ?? '');
+
+  let items: PublicPopup[] = [];
+  if (slugs.length > 0) {
+    try {
+      const placeholders = slugs.map(() => '?').join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT *, (SELECT COALESCE(i.thumb_key, i.r2_key) FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
+            ${SOURCE_CHECKED_SQL}
+         FROM popups
+         WHERE slug IN (${placeholders})
+           AND is_example = 0
+         LIMIT 3`,
+      )
+        .bind(...slugs)
+        .all<PopupRow & { cover_key?: string | null; source_checked?: number | null }>();
+      const sorted = [...(results ?? [])].sort((a, b) => slugs.indexOf(a.slug) - slugs.indexOf(b.slug));
+      items = sorted.map((r) => toPublic(r));
+    } catch {
+      items = [];
+    }
+  }
+
+  if (items.length === 0) {
+    const weekend = await listPopups(env.DB, { when: 'weekend', limit: '5' }, Date.now()).catch(() => null);
+    items = (weekend?.items ?? []).filter((i) => !i.example).slice(0, 3);
+  }
+
+  if (items.length === 0) return null;
+
+  const baseUrl = appBase(env);
+  const combined = items
+    .map((item) => formatPrefetchedPopup(item, decision.detectedLang, baseUrl))
+    .join('\n');
+  const trimmed =
+    combined.length <= MAX_PREFETCH_CHARS
+      ? combined
+      : `${combined.slice(0, MAX_PREFETCH_CHARS - 1).trimEnd()}…`;
+  return { d1_prefetched_records: trimmed };
+}
+
+export const spottedThinkingMessage = (lang: LangCode): string =>
+  lang === 'zh-Hant'
+    ? '📍 正在幫你查詢倫敦最新快閃活動與細節，稍等一下…'
+    : lang === 'zh-Hans'
+      ? '📍 正在帮你查询伦敦最新快闪活动与细节，稍等一下…'
+      : '📍 Looking up London pop-up details for you, one moment…';
+
+export function createSpottedGatewayConfig(
+  overrides: Partial<NarraGatewayConfig<Bindings>> = {},
+): NarraGatewayConfig<Bindings> {
+  return {
+    spec: SPOTTED_AGENT_SPEC,
+    fetchUpdates: fetchSpottedUpdates,
+    fastRespond: fastRespondSpotted,
+    resolveA2ACredential: resolveSpottedA2ACredential,
+    buildExtraEnvelopeFields: buildSpottedExtraEnvelopeFields,
+    thinkingMessage: spottedThinkingMessage,
+    enableA2AFailureReply: true,
+    ...overrides,
+  };
+}
+
+export const spottedGatewayConfig: NarraGatewayConfig<Bindings> = createSpottedGatewayConfig();
