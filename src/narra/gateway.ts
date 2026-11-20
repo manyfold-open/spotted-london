@@ -111,8 +111,8 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     LONDON_OUTING_RE,
     /\blondon\b.{0,20}(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|things\s+to\s+do|this\s+weekend)/i,
     /(?:this\s+weekend|today|tonight|what'?s\s+on).{0,20}\blondon\b/i,
-    /\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill)\b.{0,24}(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动)/i,
-    /(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动).{0,24}\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill)\b/i,
+    /\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill|king'?s\s*cross|euston|holborn|waterloo|southbank|london\s*bridge|canary\s*wharf|stratford|kensington|angel|battersea)\b.{0,24}(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动|逛逛|逛一逛|好去處|好去处)/i,
+    /(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动|逛逛|逛一逛|好去處|好去处).{0,24}\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill|king'?s\s*cross|euston|holborn|waterloo|southbank|london\s*bridge|canary\s*wharf|stratford|kensington|angel|battersea)\b/i,
   ],
   antiKeywords: [
     'dim sum',
@@ -738,6 +738,20 @@ const LONDON_AREAS = [
   'Westminster',
   'Southwark',
   'Tower Hamlets',
+  "King's Cross",
+  'Kings Cross',
+  'Coal Drops Yard',
+  'Euston',
+  'Holborn',
+  'Waterloo',
+  'Southbank',
+  'London Bridge',
+  'Borough',
+  'Angel',
+  'Brick Lane',
+  'Clerkenwell',
+  'Spitalfields',
+  'Battersea',
 ];
 
 const TAG_HINTS: Array<{ tag: string; pattern: RegExp }> = [
@@ -769,7 +783,7 @@ const TIME_WEEKEND_RE =
   /\b(?:weekend|sat(?:urday)?|sun(?:day)?)\b|這?週末|这?周末|週六|周六|週日|周日|禮拜六|礼拜六/i;
 const TIME_WEEK_RE = /\b(?:this\s+week|upcoming)\b|這週|这周|本週|本周|最近|近期/i;
 const POPUP_ACTIVITY_RE =
-  /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的/i;
+  /\b(?:what'?s\s+on|anything\s+(?:fun|on)|pop[- ]?ups?)\b|快閃|快闪|市集|展覽|展览|看展|活動|活动|特賣|特卖|期間限定|期间限定|有什麼好玩的|有什么好玩的|逛逛|逛一逛|好去處|好去处|去哪逛|哪裡逛|哪里逛/i;
 
 export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   const text = stripAgentMentions(rawText ?? '', [...ALL_KNOWN_MENTION_NAMES]);
@@ -947,6 +961,7 @@ export async function fastRespondSpotted(
     event.chatType === 'group' &&
     decision.reason !== 'dm' &&
     decision.reason !== 'explicit_mention' &&
+    decision.reason !== 'multi_mention_domain_match' &&
     decision.reason !== 'reply_to_self';
 
   if (isUnmentionedGroup) {
