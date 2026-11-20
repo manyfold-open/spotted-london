@@ -600,7 +600,16 @@ export async function fetchSpottedUpdates(
 }
 
 const BARE_GREETING_RE =
-  /^(?:hi|hello|hey|yo|good\s*(?:morning|afternoon|evening)|早安|早上好|你好|您好|哈囉|哈啰|嗨|在嗎|在吗)[!！?？。\s]*$/i;
+  /^(?:hi|hello|hey|yo|good\s*(?:morning|afternoon|evening)|早安|早上好|你好|您好|哈囉|哈啰|嗨|在嗎|在吗|你是誰|你是谁|who\s+are\s+you)[!！?？。\s]*$/i;
+
+const CAPABILITY_QUERY_RE =
+  /^(?:請問|请问)?(?:你(?:能|可以)(?:幫我|帮我)?(?:查|做)(?:什麼|什么|哪些)(?:呢|嗎|吗)?|what\s+can\s+you\s+(?:do|help(?:\s+(?:me\s+)?with)?|find))[!！?？。\s]*$/i;
+
+const THANKS_RE =
+  /^(?:(?:好的|ok|okay)[,，!！.\s]*)?(?:(?:非常|真的|太|很)?(?:謝謝|谢谢|謝啦|谢啦|感謝|感谢|多謝|多谢)(?:你|您)?(?:啦|喔|哦|呀)?|thanks?(?:\s+(?:a\s+lot|so\s+much))?|thank\s+you(?:\s+(?:so\s+much|very\s+much))?|thx|tysm|cheers)[!！。.?？~～\s]*$/i;
+
+const DM_OFF_TOPIC_RE =
+  /比特幣|比特币|\bbitcoin\b|\bbtc\b|以太幣|以太坊|\bethereum\b|股價|股价|匯率|汇率|股票|股市|財經|财经|外匯|外汇|\bstock\s+price\b|\bcrypto(?:currency)?\b|\bexchange\s+rate\b|天氣|天气|會下雨|会下雨|下不下雨|\bweather(?:\s+forecast)?\b|\bwill\s+it\s+rain\b|塔羅|塔罗|求籤|求签|抽籤|抽签|算命|占卜|\btarot\b|\bfortune\s+stick\b|食譜|食谱|怎麼煮|怎么煮|怎麼炒|怎么炒|寫程式|写程式|寫代碼|写代码|寫程式碼|写程序|\brecipes?\b|\bhow\s+to\s+cook\b|\b(?:python|javascript|typescript|coding|debug)\b|\bwrite\s+(?:a\s+)?(?:code|script|function|program)\b/i;
 
 const COMPLEX_FOLLOWUP_RE =
   /remember|forget|記得|记得|忘掉|忘記|忘记|how\s+(?:do|to)\s+get|tube|bus|station|walk|from\s+|which\s+one|better\s+for|date\s+night|compare|為什麼|为什么|怎麼去|怎么去|坐地鐵|坐地铁|哪一個更好|哪一个更好/i;
@@ -845,6 +854,22 @@ function relaxedFilterIntro(
   return `No exact match for every filter in ${area}, but here is what else is on around ${area}:`;
 }
 
+export function spottedThanksReply(lang: LangCode): string {
+  if (lang === 'zh-Hant') return '不客氣！有想找倫敦哪一區或這週末的快閃活動、市集或展覽，隨時問我。';
+  if (lang === 'zh-Hans') return '不客气！有想找伦敦哪一区或这周末的快闪活动、市集或展览，随时问我。';
+  return "You're welcome! Ask anytime if you'd like to find London pop-ups, markets, or exhibitions.";
+}
+
+export function spottedOffTopicRedirect(lang: LangCode): string {
+  if (lang === 'zh-Hant') {
+    return '我主要是幫你找倫敦的快閃活動、市集、展覽與免費好去處，這題比較不在我的專長範圍喔！想看看這週末倫敦有什麼好玩活動嗎？';
+  }
+  if (lang === 'zh-Hans') {
+    return '我主要是帮你找伦敦的快闪活动、市集、展览与免费好去处，这题比较不在我的专长范围哦！想看看这周末伦敦有什么好玩活动吗？';
+  }
+  return "I focus on London pop-ups, markets, exhibitions, and free things to do — that one is outside my lane! Want to see what's on around London this weekend?";
+}
+
 export async function fastRespondSpotted(
   env: Bindings,
   event: InboundEvent,
@@ -866,7 +891,13 @@ export async function fastRespondSpotted(
     const hasAntiHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.antiKeywords);
     const hasDomainHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.domainKeywords);
     if (hasAntiHit && !hasDomainHit) return '[NO_REPLY]';
-    if (BARE_GREETING_RE.test(cleanText)) return '[NO_REPLY]';
+    if (
+      BARE_GREETING_RE.test(cleanText) ||
+      (decision.reason === 'active_session' &&
+        (THANKS_RE.test(cleanText) || CAPABILITY_QUERY_RE.test(cleanText)))
+    ) {
+      return '[NO_REPLY]';
+    }
   }
 
   const lang = decision.detectedLang;
@@ -874,8 +905,19 @@ export async function fastRespondSpotted(
   const baseUrl = appBase(env);
 
   if (
+    !isUnmentionedGroup &&
+    (event.chatType === 'dm' ||
+      decision.reason === 'dm' ||
+      decision.reason === 'explicit_mention' ||
+      decision.reason === 'reply_to_self') &&
+    THANKS_RE.test(cleanText)
+  ) {
+    return spottedThanksReply(lang);
+  }
+
+  if (
     (event.chatType === 'dm' || decision.reason === 'dm' || decision.reason === 'explicit_mention') &&
-    (!cleanText || BARE_GREETING_RE.test(cleanText))
+    (!cleanText || BARE_GREETING_RE.test(cleanText) || CAPABILITY_QUERY_RE.test(cleanText))
   ) {
     const list = await listPopups(env.DB, { when: 'weekend', limit: '5' }, nowMs).catch(() => null);
     const real = (list?.items ?? []).filter((i) => !i.example);
@@ -913,7 +955,8 @@ export async function fastRespondSpotted(
   }
 
   if (
-    ['reply_to_self', 'explicit_mention', 'active_session'].includes(decision.reason) &&
+    (['dm', 'reply_to_self', 'explicit_mention', 'active_session'].includes(decision.reason) ||
+      event.chatType === 'dm') &&
     DETAIL_FOLLOWUP_RE.test(cleanText) &&
     !COMPLEX_FOLLOWUP_RE.test(cleanText)
   ) {
@@ -953,6 +996,17 @@ export async function fastRespondSpotted(
   }
 
   let filter = extractPopupQueryFilter(cleanText);
+  const isDm = event.chatType === 'dm' || decision.reason === 'dm';
+  if (
+    isDm &&
+    (DM_OFF_TOPIC_RE.test(cleanText) || hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.antiKeywords)) &&
+    !POPUP_ACTIVITY_RE.test(cleanText) &&
+    !LONDON_OUTING_RE.test(cleanText) &&
+    !filter.category &&
+    !filter.tag
+  ) {
+    return spottedOffTopicRedirect(lang);
+  }
   if (
     isUnmentionedGroup &&
     filter.isClearSearch &&
