@@ -1958,4 +1958,125 @@ describe('spotted-london Narra Gateway', () => {
     expect(reply!.match(/^• /gm)).toHaveLength(1);
     expect(reply).not.toMatch(/\]\(https?:\/\//);
   });
+
+  it('scopes buildSpottedExtraEnvelopeFields prefetch to latest self turn with popup slugs (and replyToTarget) without mixing older self turns', async () => {
+    const liveStart = Date.now() - HOUR;
+    const liveEnd = Date.now() + 7 * DAY;
+    await seedPopup('ng_scope_old', {
+      slug: 'older-topic-sample-sale',
+      title: 'Older Topic Sample Sale',
+      category: 'sample',
+      borough: 'Mayfair',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+    await seedPopup('ng_scope_new', {
+      slug: 'latest-topic-ceramics-market',
+      title: 'Latest Topic Ceramics Market',
+      category: 'market',
+      borough: 'Hackney',
+      status: 'verified_admin',
+      startAt: liveStart,
+      endAt: liveEnd,
+    });
+
+    const typedEnv = {
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+    };
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const dec = {
+      shouldReply: true,
+      tier: 0 as const,
+      reason: 'dm',
+      confidence: 1,
+      detectedLang: 'zh-Hans' as const,
+      shouldQuote: false,
+    };
+
+    const olderTurn = {
+      eventId: '$sp_old_1',
+      senderId: SPOTTED_MATRIX_ID,
+      senderName: 'Spotted London',
+      isAgent: true,
+      isSelf: true,
+      text: '• Older Topic Sample Sale\nhttps://app.manyfold.ai/spotted-london/p/older-topic-sample-sale',
+      timestampMs: NOW - 3_600_000,
+    };
+    const latestTurn = {
+      eventId: '$sp_new_1',
+      senderId: SPOTTED_MATRIX_ID,
+      senderName: 'Spotted London',
+      isAgent: true,
+      isSelf: true,
+      text: '• Latest Topic Ceramics Market\nhttps://app.manyfold.ai/spotted-london/p/latest-topic-ceramics-market',
+      timestampMs: NOW - 30_000,
+    };
+    const nonUrlTurn = {
+      eventId: '$sp_ack_1',
+      senderId: SPOTTED_MATRIX_ID,
+      senderName: 'Spotted London',
+      isAgent: true,
+      isSelf: true,
+      text: '不客气！还有想了解的吗？',
+      timestampMs: NOW - 10_000,
+    };
+
+    // 1. Latest self reply yields popup slug -> older self turn is excluded
+    const latestFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      makeEvent({ chatType: 'dm', text: '这几个里面哪一个最值得去？' }),
+      dec,
+      emptyMem,
+      {
+        roomId: '!spotted_scope:matrix.netmind.chat',
+        chatType: 'dm',
+        members: [],
+        recentHistory: [olderTurn, latestTurn],
+      },
+    );
+    expect(latestFields?.d1_prefetched_records).toContain('Latest Topic Ceramics Market');
+    expect(latestFields?.d1_prefetched_records).not.toContain('Older Topic Sample Sale');
+
+    // 2. Non-URL follow-up self reply falls back to most recent self turn with URLs, still excluding older turns
+    const afterAckFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      makeEvent({ chatType: 'dm', text: '怎么搭地铁去？' }),
+      dec,
+      emptyMem,
+      {
+        roomId: '!spotted_scope:matrix.netmind.chat',
+        chatType: 'dm',
+        members: [],
+        recentHistory: [olderTurn, latestTurn, nonUrlTurn],
+      },
+    );
+    expect(afterAckFields?.d1_prefetched_records).toContain('Latest Topic Ceramics Market');
+    expect(afterAckFields?.d1_prefetched_records).not.toContain('Older Topic Sample Sale');
+
+    // 3. replyToTarget takes priority without mixing recentHistory
+    const replyFields = await buildSpottedExtraEnvelopeFields(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '这个要预约吗？' }),
+      dec,
+      emptyMem,
+      {
+        roomId: '!spotted_scope:matrix.netmind.chat',
+        chatType: 'group',
+        members: [],
+        recentHistory: [olderTurn, latestTurn],
+        replyToTarget: {
+          eventId: '$sp_old_1',
+          senderId: SPOTTED_MATRIX_ID,
+          senderName: 'Spotted London',
+          isAgent: true,
+          isSelf: true,
+          text: olderTurn.text,
+        },
+      },
+    );
+    expect(replyFields?.d1_prefetched_records).toContain('Older Topic Sample Sale');
+    expect(replyFields?.d1_prefetched_records).not.toContain('Latest Topic Ceramics Market');
+  });
 });
