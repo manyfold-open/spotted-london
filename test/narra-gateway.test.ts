@@ -1333,6 +1333,34 @@ describe('spotted-london Narra Gateway', () => {
     expect(missAllReply).toBeNull();
   });
 
+  it('leaves a time-only refinement with the agent that just answered', async () => {
+    const event = makeEvent({ text: '只要週末的呢？' });
+    const decision = { shouldReply: true, tier: 1 as const, reason: 'active_session' as const, confidence: 1, detectedLang: 'zh-Hant' as const, shouldQuote: false };
+    const context: RoomContext = {
+      roomId: event.roomId,
+      chatType: 'group',
+      members: [],
+      recentHistory: [{
+        eventId: '$hackathon-results',
+        senderId: '@agent-data:matrix.netmind.chat',
+        isAgent: true,
+        text: 'Manyfold Data found verified AI hackathons in London.',
+        timestampMs: event.timestampMs - 1000,
+      }],
+    };
+    const memories = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context))
+      .toBe('[NO_REPLY]');
+    await seedPopup('weekend-control', {
+      title: 'Weekend Exhibition',
+      startAt: Date.now() - DAY,
+      endAt: Date.now() + 10 * DAY,
+    });
+    const topicSwitch = { ...event, text: '這週末 Soho 有什麼展覽？' };
+    expect(await fastRespondSpotted(env as unknown as Bindings, topicSwitch, decision, memories, context))
+      .toContain('Weekend Exhibition');
+  });
+
   it('answers a booking follow-up for only the requested item in the previous list', async () => {
     await seedPopup('booking-first', { title: 'First Soho exhibition' });
     await seedPopup('booking-second', {
