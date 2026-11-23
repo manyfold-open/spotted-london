@@ -2297,3 +2297,30 @@ it('speaks only on its own topic in mixed group chatter', async () => {
   const directedContext = { roomId: directedEvent.roomId, chatType: 'group' as const, members: [], recentHistory: [] };
   expect((await routeEvent(directedEvent, directedContext, SPOTTED_AGENT_SPEC, { nowMs })).shouldReply).toBe(false);
 });
+
+it('takes its own part of the mixed dinner and exhibition request after a peer answers', async () => {
+  const nowMs = Date.now();
+  const event = makeEvent({
+    text: '那週五在 Soho 先吃個不辣的中餐，飯後附近有免費展嗎？',
+    timestampMs: nowMs,
+    chatType: 'group',
+    mentions: [],
+  });
+  const peer = { matrixId: '@agent-b2b526f3:matrix.netmind.chat', displayName: 'London Chinese Food', isAgent: true };
+  const context = {
+    roomId: event.roomId,
+    chatType: 'group' as const,
+    members: [peer],
+    recentHistory: [{
+      eventId: '$peer-already-answered',
+      senderId: peer.matrixId,
+      isAgent: true,
+      timestampMs: nowMs + 5,
+      text: 'Here are options for my part.',
+    }],
+  };
+  expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: nowMs + 10 }))
+    .toMatchObject({ shouldReply: true, independentGroupReply: true });
+  expect(await routeEvent(event, { ...context, members: [], recentHistory: [] }, SPOTTED_AGENT_SPEC, { nowMs: nowMs + 10 }))
+    .not.toHaveProperty('independentGroupReply');
+});

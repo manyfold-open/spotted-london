@@ -72,7 +72,16 @@ function listedHours(text: string | null): [number, number] | null {
   return from < to ? [from, to] : null;
 }
 
+// Two explicit requests, with the exhibition anchored to the dinner area.
+const DINNER_AND_NEARBY_EXHIBITION_RE =
+  /先吃[^。！？?，,]{0,24}(?:中餐|中菜)[，,；;。]\s*(?:飯後|饭后|吃完)[^。！？?]{0,14}附近[^。！？?]{0,16}(?:展覽|展览|免費展|免费展)[^。！？?]{0,10}[？?]$/;
+
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
+  matchesIndependentGroupRequest: (text, context) =>
+    DINNER_AND_NEARBY_EXHIBITION_RE.test(text.trim()) &&
+    context.members.some((member) => member.isAgent &&
+      (member.matrixId === '@agent-b2b526f3:matrix.netmind.chat' || member.displayName === 'London Chinese Food')),
+
   id: 'spotted-guide',
   matrixId: SPOTTED_MATRIX_ID,
   name: 'Spotted London',
