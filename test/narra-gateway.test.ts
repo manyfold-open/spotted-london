@@ -2261,6 +2261,16 @@ describe('spotted-london Narra Gateway', () => {
     const first = await fastRespondSpotted(typedEnv, question, opening, memories, { ...context, recentHistory: [] });
     expect(first).toContain('週五 18:00');
     expect(first).not.toContain('Six Close');
+    const combined = { ...question, text: '那週五在 Soho 先吃個不辣的中餐，飯後附近有免費展嗎？' };
+    const combinedReply = await fastRespondSpotted(typedEnv, combined, opening, memories, { ...context, recentHistory: [] });
+    expect(combinedReply).toContain('週五 18:00');
+    expect(combinedReply).toContain('Evening Exhibition');
+    expect(combinedReply).not.toContain('Six Close');
+
+    const lunch = { ...combined, text: '那週五中午在 Soho 先吃個不辣的中餐，飯後附近有免費展嗎？' };
+    const lunchReply = await fastRespondSpotted(typedEnv, lunch, opening, memories, { ...context, recentHistory: [] });
+    expect(lunchReply).not.toContain('週五 18:00');
+
     const following = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs });
     expect(following.shouldReply).toBe(true);
     const second = await fastRespondSpotted(typedEnv, event, following, memories, context);

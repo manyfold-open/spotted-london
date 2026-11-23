@@ -1013,7 +1013,9 @@ async function respondForFridayEvening(
   baseUrl: string,
 ): Promise<string | null> {
   const after = AFTER_EVENING_RE.exec(cleanText);
-  const explicitFriday = FRIDAY_EVENING_RE.test(cleanText) || (after && FRIDAY_RE.test(cleanText));
+  const afterDinner = /晚飯後|晚饭后|晚餐後|晚餐后|\bafter dinner\b/i.test(cleanText) ||
+    (DINNER_AND_NEARBY_EXHIBITION_RE.test(cleanText.trim()) && !/中午|午餐|午飯|午饭|\blunch\b/i.test(cleanText));
+  const explicitFriday = FRIDAY_EVENING_RE.test(cleanText) || (FRIDAY_RE.test(cleanText) && (after || afterDinner));
   if (!after && !explicitFriday) return null;
 
   let filter = extractPopupQueryFilter(cleanText);
