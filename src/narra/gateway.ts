@@ -675,6 +675,9 @@ const COMPLEX_FOLLOWUP_RE =
 const COMPARATIVE_FOLLOWUP_RE =
   /(?:這幾個|这几个|這幾間|这几间|裡面哪一?[個个]|里面哪一?[个]|哪一?[個个]最(?:適合|适合|推薦|推荐|好|值得)|比較適合|比较适合|適不適合|适不适合|帶朋友去拍照|带朋友去拍照|怎麼搭地鐵|怎么搭地铁|坐什麼地鐵|坐什么地铁|\b(?:which\s+(?:one\s+)?is\s+(?:best|better|most\s+suitable)|compare\s+(?:them|these)|how\s+(?:do\s+(?:i|we)|to)\s+get\s+there)\b)/i;
 
+const OPEN_CLOSE_FOLLOWUP_RE =
+  /(?:幾點|几点)(?:開門|开门|關門|关门|打烊|結束|结束)|(?:開到|开到)(?:幾點|几点)|\bwhat time\b.{0,40}\b(?:opens?|closes?|ends?)\b/i;
+
 const DETAIL_FOLLOWUP_RE =
   /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|預約|预约|訂票|订票|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|book(?:ing)?|reserv(?:e|ation)|where\s+is\s+it|tell\s+me\s+more)\b/i;
 
@@ -692,6 +695,16 @@ function formatBookingReply(item: PublicPopup, lang: LangCode, baseUrl: string):
     : lang === 'zh-Hans'
       ? `${ticketed ? '活动标注为凭票入场。' : ''}是否需要提前预约，请查看主办方最新信息。`
       : `${ticketed ? 'Entry is listed as ticketed. ' : ''}Check the organiser’s latest information to see if you need to book ahead.`;
+  return sanitizeMobileLinks([item.title, guidance, validHttpsUrl(item.source_url) ?? `${baseUrl}/p/${item.slug}`].join('\n'));
+}
+
+function formatHoursReply(item: PublicPopup, lang: LangCode, baseUrl: string): string {
+  const hours = item.hours_text?.trim();
+  const guidance = lang === 'zh-Hant'
+    ? (hours ? `活動列出的營業時間是 ${hours}。當天時間以主辦方公告為準。` : '活動未列出營業時間，請查看主辦方最新資訊。')
+    : lang === 'zh-Hans'
+      ? (hours ? `活动列出的营业时间是 ${hours}。当天时间以主办方公告为准。` : '活动未列出营业时间，请查看主办方最新信息。')
+      : (hours ? `The listed hours are ${hours}. Check the organiser’s notice for that day.` : 'No hours are listed. Check the organiser’s latest information.');
   return sanitizeMobileLinks([item.title, guidance, validHttpsUrl(item.source_url) ?? `${baseUrl}/p/${item.slug}`].join('\n'));
 }
 
@@ -1182,7 +1195,7 @@ export async function fastRespondSpotted(
   if (
     (['dm', 'reply_to_self', 'explicit_mention', 'active_session'].includes(decision.reason) ||
       event.chatType === 'dm') &&
-    DETAIL_FOLLOWUP_RE.test(cleanText) &&
+    (DETAIL_FOLLOWUP_RE.test(cleanText) || OPEN_CLOSE_FOLLOWUP_RE.test(cleanText)) &&
     !COMPLEX_FOLLOWUP_RE.test(cleanText) &&
     !COMPARATIVE_FOLLOWUP_RE.test(cleanText)
   ) {
@@ -1214,6 +1227,9 @@ export async function fastRespondSpotted(
           const items = rows.map((row) => toPublic(row));
           if (items.length === 1 && BOOKING_FOLLOWUP_RE.test(cleanText)) {
             return formatBookingReply(items[0]!, lang, baseUrl);
+          }
+          if (items.length === 1 && OPEN_CLOSE_FOLLOWUP_RE.test(cleanText)) {
+            return formatHoursReply(items[0]!, lang, baseUrl);
           }
           return formatPopupDetailsReply(items, lang, baseUrl, {
             voice: Boolean(event.isVoice),
