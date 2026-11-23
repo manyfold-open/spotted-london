@@ -605,6 +605,14 @@ describe('spotted-london Narra Gateway', () => {
     );
     expect(fundraisingReply).toBe('[NO_REPLY]');
 
+    const shelvedEventReply = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ chatType: 'group', text: '活動先放著，最近有什麼 AI 模型發布的新聞？有的話挑一則。' }),
+      activeSessionDecision,
+      emptyMem,
+    );
+    expect(shelvedEventReply).toBe('[NO_REPLY]');
+
     // Unmentioned chatter/off-topic must never invoke tryAiExtractFilter
     expect(aiRunSpy).not.toHaveBeenCalled();
 
