@@ -805,6 +805,9 @@ export interface PopupQueryFilter {
   isClearSearch: boolean;
 }
 
+const TIME_ONLY_FOLLOWUP_RE =
+  /^(?:(?:那|只要|只看|只找|有沒有|有没有|那就)?\s*(?:這?週末|这?周末|週六|周六|週日|周日|今天|今晚|明天)(?:的)?(?:呢|嗎|吗)?|(?:what\s+about\s+|how\s+about\s+|only\s+|just\s+)(?:the\s+|this\s+)?(?:weekend|saturday|sunday|today|tonight|tomorrow)(?:\s+ones?)?)[？?。.!！]*$/i;
+
 const TIME_TODAY_RE = /\b(?:today|tonight)\b|今天|今晚|今日/i;
 const TIME_WEEKEND_RE =
   /\b(?:weekend|sat(?:urday)?|sun(?:day)?)\b|這?週末|这?周末|週六|周六|週日|周日|禮拜六|礼拜六/i;
@@ -992,6 +995,17 @@ export async function fastRespondSpotted(
     decision.reason !== 'reply_to_self';
 
   if (isUnmentionedGroup) {
+    if (TIME_ONLY_FOLLOWUP_RE.test(cleanText.trim())) {
+      const previous = context?.recentHistory
+        .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs)
+        .reduce<(typeof context.recentHistory)[number] | undefined>(
+          (latest, turn) => !latest || turn.timestampMs >= latest.timestampMs ? turn : latest,
+          undefined,
+        );
+      if (previous?.isAgent && !previous.isSelf && previous.senderId !== SPOTTED_MATRIX_ID) {
+        return '[NO_REPLY]';
+      }
+    }
     const hasAntiHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.antiKeywords);
     const hasDomainHit = hasSpecKeywordHit(cleanText, SPOTTED_AGENT_SPEC.domainKeywords);
     if (hasAntiHit && !hasDomainHit) return '[NO_REPLY]';
