@@ -54,6 +54,12 @@ export const ALL_KNOWN_MENTION_NAMES = [
 const SHELVED_EVENT_TOPIC_RE =
   /^(?:(?:活動|活动|展覽|展览|市集|快閃|快闪)\s*先\s*(?:放[著着]|放一邊|放一边|不聊|不看|跳過|跳过)|(?:let'?s\s+)?(?:set aside|skip)\s+(?:the\s+)?(?:events?|exhibitions?|markets?)(?:\s+for now)?)[，,。.!！；;\s]+/i;
 
+const AFTER_WORK_OUTING_RE =
+  /(?:下班(?:後|后)?|今晚).{0,8}(?:去哪[兒儿裡里]?玩|哪[裡里]好玩)|\b(?:where (?:can|should) we go|what (?:can|should) we do) after work\b/i;
+
+const OFFICE_DISTANCE_RE =
+  /[離离](?:公司|[辦办]公室)(?:更|最|[較较]|比[較较])?近/;
+
 const LONDON_OUTING_RE =
   /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
@@ -150,6 +156,7 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
     '這週末去哪',
     '这周末去哪',
     LONDON_OUTING_RE,
+    AFTER_WORK_OUTING_RE,
     /\blondon\b.{0,20}(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|things\s+to\s+do|this\s+weekend)/i,
     /(?:this\s+weekend|today|tonight|what'?s\s+on).{0,20}\blondon\b/i,
     /\b(?:shoreditch|soho|hackney|camden|covent\s*garden|brick\s*lane|marylebone|brixton|notting\s*hill|king'?s\s*cross|euston|holborn|waterloo|southbank|london\s*bridge|canary\s*wharf|stratford|kensington|angel|battersea)\b.{0,24}(?:\b(?:pop[- ]?ups?|markets?|exhibitions?|sample\s*sales?|events?|gallery|galleries|what'?s\s+on|things\s+to\s+do)\b|快閃|快闪|市集|展覽|展览|特賣|特卖|活動|活动|逛逛|逛一逛|好去處|好去处)/i,
@@ -453,7 +460,7 @@ export function formatPopupDetailsReply(
   items: PublicPopup[],
   lang: LangCode,
   baseUrl: string,
-  options: { voice?: boolean } = {},
+  options: { voice?: boolean; intro?: string } = {},
 ): string {
   const top = items.slice(0, 3);
   if (options.voice) {
@@ -484,7 +491,8 @@ export function formatPopupDetailsReply(
   }
 
   const lines: string[] = [];
-  if (lang === 'zh-Hant') lines.push(top.length > 1 ? '這幾個活動的詳細資訊如下：' : '活動詳細資訊如下：');
+  if (options.intro) lines.push(options.intro);
+  else if (lang === 'zh-Hant') lines.push(top.length > 1 ? '這幾個活動的詳細資訊如下：' : '活動詳細資訊如下：');
   else if (lang === 'zh-Hans') lines.push(top.length > 1 ? '这几个活动的详细信息如下：' : '活动详细信息如下：');
   else lines.push('Here are the full details:');
 
@@ -1020,7 +1028,7 @@ export function spottedOffTopicRedirect(lang: LangCode): string {
   return "I focus on London pop-ups, markets, exhibitions, and free things to do — that one is outside my lane! Want to see what's on around London this weekend?";
 }
 
-async function respondForFridayEvening(
+async function respondForEvening(
   env: Bindings,
   event: InboundEvent,
   context: RoomContext | undefined,
@@ -1032,10 +1040,11 @@ async function respondForFridayEvening(
   const afterDinner = /晚飯後|晚饭后|晚餐後|晚餐后|\bafter dinner\b/i.test(cleanText) ||
     (DINNER_AND_NEARBY_EXHIBITION_RE.test(cleanText.trim()) && !/中午|午餐|午飯|午饭|\blunch\b/i.test(cleanText));
   const explicitFriday = FRIDAY_EVENING_RE.test(cleanText) || (FRIDAY_RE.test(cleanText) && (after || afterDinner));
-  if (!after && !explicitFriday) return null;
+  const afterWorkToday = AFTER_WORK_OUTING_RE.test(cleanText);
+  if (!after && !explicitFriday && !afterWorkToday) return null;
 
   let filter = extractPopupQueryFilter(cleanText);
-  if (!explicitFriday || !filter.category) {
+  if (!afterWorkToday && (!explicitFriday || !filter.category)) {
     const prior = (context?.recentHistory ?? [])
       .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs)
       .sort((a, b) => b.timestampMs - a.timestampMs);
@@ -1055,11 +1064,11 @@ async function respondForFridayEvening(
   const threshold = (hour % 12 + 12) * 60;
   const now = event.timestampMs;
   const { y, m, d, dow } = londonParts(now);
-  const friday = d + (5 - dow + 7) % 7;
-  const dayStart = londonTime(y, m, friday);
-  const dayEnd = londonTime(y, m, friday + 1);
+  const day = afterWorkToday ? d : d + (5 - dow + 7) % 7;
+  const dayStart = londonTime(y, m, day);
+  const dayEnd = londonTime(y, m, day + 1);
   const options = await listPopups(env.DB, {
-    when: 'week', limit: '50',
+    when: afterWorkToday ? 'today' : 'week', limit: '50',
     ...(filter.category ? { category: filter.category } : {}),
     ...(filter.free ? { free: filter.free } : {}),
     ...(filter.tag ? { tag: filter.tag } : {}),
@@ -1070,12 +1079,23 @@ async function respondForFridayEvening(
     const hours = listedHours(item.hours_text);
     if (item.example || item.date_kind === 'undated' || !hours || hours[1] <= threshold) return false;
     const opens = Math.max(hours[0], threshold);
-    const from = Math.max(now, londonTime(y, m, friday, Math.floor(opens / 60), opens % 60));
-    const to = Math.min(dayEnd, londonTime(y, m, friday, Math.floor(hours[1] / 60), hours[1] % 60));
+    const from = Math.max(now, londonTime(y, m, day, Math.floor(opens / 60), opens % 60));
+    const to = Math.min(dayEnd, londonTime(y, m, day, Math.floor(hours[1] / 60), hours[1] % 60));
     return from >= dayStart && from < to && (item.ranges ?? [[item.start_at, item.end_at]])
       .some(([start, end]) => start < to && end > from);
   });
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
+  if (afterWorkToday) {
+    if (matches.length === 0) {
+      return lang === 'zh-Hant' ? '我目前找不到能確認今晚六點後還開著的活動。你下班後想去哪一帶？'
+        : lang === 'zh-Hans' ? '我目前找不到能确认今晚六点后还开着的活动。你下班后想去哪一带？'
+        : 'I couldn’t confirm any events still open after 6pm tonight. Which area works for you after work?';
+    }
+    const intro = lang === 'zh-Hant' ? '這幾個活動今晚六點後還開著：'
+      : lang === 'zh-Hans' ? '这几个活动今晚六点后还开着：'
+      : 'These events list opening hours after 6pm tonight:';
+    return formatPopupDetailsReply(matches.slice(0, 2), lang, baseUrl, { voice: Boolean(event.isVoice), intro });
+  }
   if (!matches.length) {
     return lang === 'zh-Hant' ? `我目前找不到能確認週五 ${time} 後仍開放、又符合這些條件的活動。`
       : lang === 'zh-Hans' ? `我目前找不到能确认周五 ${time} 后仍开放、又符合这些条件的活动。`
@@ -1186,10 +1206,14 @@ export async function fastRespondSpotted(
     });
   }
 
-  const eveningReply = await respondForFridayEvening(env, event, context, cleanText, lang, baseUrl);
+  const eveningReply = await respondForEvening(env, event, context, cleanText, lang, baseUrl);
   if (eveningReply !== null) return eveningReply;
 
   const priorSelfSlugs = extractPriorSelfPopupSlugs(context, 5);
+  if (priorSelfSlugs.length > 0 && OFFICE_DISTANCE_RE.test(cleanText)) {
+    return null;
+  }
+
   if (
     (!isUnmentionedGroup || decision.reason === 'active_session') &&
     (COMPLEX_FOLLOWUP_RE.test(cleanText) || COMPARATIVE_FOLLOWUP_RE.test(cleanText)) &&

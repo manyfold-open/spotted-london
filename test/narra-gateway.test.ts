@@ -2251,6 +2251,22 @@ describe('spotted-london Narra Gateway', () => {
     expect(reply).not.toContain('Paid Sculpture Exhibition');
   });
 
+  it('answers an unmentioned after-work outing using only events open in the evening', async () => {
+    const startAt = Date.parse('2026-11-23T00:00:00Z');
+    const endAt = Date.parse('2026-11-24T00:00:00Z');
+    await seedPopup('daytime', { title: 'Daytime Exhibit', hoursText: '11am-6pm', startAt, endAt });
+    await seedPopup('after-work', { title: 'After Work Exhibit', hoursText: '12:00-21:00', startAt, endAt });
+    const event = makeEvent({ text: '今天下班去哪儿玩', timestampMs: startAt + 15 * 3_600_000 });
+    const context: RoomContext = { roomId: event.roomId, chatType: 'group', members: [], recentHistory: [] };
+    const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: event.timestampMs });
+    expect(decision.shouldReply).toBe(true);
+    const answer = await fastRespondSpotted(env as unknown as Bindings, event, decision,
+      { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
+    expect(answer).toContain('After Work Exhibit');
+    expect(answer).toContain('21:00');
+    expect(answer).not.toContain('Daytime Exhibit');
+  });
+
   it('keeps the Friday, Soho, exhibition and free constraints through a later-hours follow-up', async () => {
     const nowMs = Date.parse('2026-11-23T12:00:00Z');
     const startAt = Date.parse('2026-11-27T00:00:00Z');
