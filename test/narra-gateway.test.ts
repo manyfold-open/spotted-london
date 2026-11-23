@@ -86,6 +86,7 @@ describe('spotted-london Narra Gateway', () => {
     category?: string;
     borough?: string;
     priceType?: 'free' | 'paid' | 'unknown';
+    priceText?: string;
     status?: string;
     startAt?: number;
     endAt?: number;
@@ -104,7 +105,7 @@ describe('spotted-london Narra Gateway', () => {
         overrides.description ?? 'Pop-up description',
         overrides.category ?? 'exhibition',
         overrides.priceType ?? 'free',
-        overrides.priceType === 'paid' ? '£15' : null,
+        overrides.priceText ?? (overrides.priceType === 'paid' ? '£15' : null),
         overrides.address ?? '10 Berwick St, W1F',
         overrides.borough ?? 'Soho',
         overrides.startAt ?? NOW - HOUR,
@@ -1332,6 +1333,40 @@ describe('spotted-london Narra Gateway', () => {
     expect(missAllReply).toBeNull();
   });
 
+  it('answers a booking follow-up for only the requested item in the previous list', async () => {
+    await seedPopup('booking-first', { title: 'First Soho exhibition' });
+    await seedPopup('booking-second', {
+      title: 'Second Soho exhibition',
+      priceText: 'Free ticketed entry',
+      sourceUrl: 'https://exhibitions.example/second',
+    });
+    const event = makeEvent({ text: '第二個要預約嗎？' });
+    const context: RoomContext = {
+      roomId: event.roomId,
+      chatType: 'group',
+      members: [],
+      recentHistory: [{
+        eventId: '$exhibition-list',
+        senderId: SPOTTED_MATRIX_ID,
+        isSelf: true,
+        isAgent: true,
+        text: 'https://app.manyfold.ai/spotted-london/p/booking-first\nhttps://app.manyfold.ai/spotted-london/p/booking-second',
+        timestampMs: NOW - 1000,
+      }],
+    };
+    const reply = await fastRespondSpotted(
+      env as unknown as Bindings,
+      event,
+      { shouldReply: true, tier: 1, reason: 'active_session', confidence: 1, detectedLang: 'zh-Hant', shouldQuote: false },
+      { userMemories: [], roomMemories: [], promptSafeLines: [] },
+      context,
+    );
+    expect(reply).toContain('Second Soho exhibition');
+    expect(reply).toContain('活動標示為憑票入場');
+    expect(reply).toContain('https://exhibitions.example/second');
+    expect(reply).not.toContain('First Soho exhibition');
+  });
+
   it('handles 1v1 DM detail follow-up, off-topic redirect, polite thanks, capability queries, and preserves A2A follow-ups', async () => {
     const liveEnd = Date.now() + 7 * DAY;
     await seedPopup('ng_dm_detail_1', {
@@ -2157,4 +2192,32 @@ describe('spotted-london Narra Gateway', () => {
     expect(reply).toContain('https://app.manyfold.ai/spotted-london/p/free-contemporary-art-exhibition');
     expect(reply).not.toContain('Paid Sculpture Exhibition');
   });
+});
+
+it('speaks only on its own topic in mixed group chatter', async () => {
+  const cases = [
+    '晚上能吃啥',
+    '我先去開個會',
+    '今晚倫敦有什麼市集',
+    '今天 AI 圈有啥新消息',
+    '能抽張塔羅看看工作嗎',
+    '幫我求一支籤',
+    '有英國簽證資料可以查嗎',
+    '晚餐 £80 我付的，四個人怎麼分',
+    'Boots 有折扣碼嗎',
+    '昨天吃火鍋超爽',
+  ];
+  const nowMs = Date.now();
+  const replies: string[] = [];
+  for (const text of cases) {
+    const event = makeEvent({ text, timestampMs: nowMs, chatType: 'group', mentions: [] });
+    const context = { roomId: event.roomId, chatType: 'group' as const, members: [], recentHistory: [] };
+    if ((await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs })).shouldReply) replies.push(text);
+  }
+  expect(replies).toEqual(["今晚倫敦有什麼市集"]);
+
+  const text = '今晚倫敦有什麼市集';
+  const directedEvent = makeEvent({ text: `@Ken ${text}`, timestampMs: nowMs, chatType: 'group', mentions: ['@ken:example.com'] });
+  const directedContext = { roomId: directedEvent.roomId, chatType: 'group' as const, members: [], recentHistory: [] };
+  expect((await routeEvent(directedEvent, directedContext, SPOTTED_AGENT_SPEC, { nowMs })).shouldReply).toBe(false);
 });
