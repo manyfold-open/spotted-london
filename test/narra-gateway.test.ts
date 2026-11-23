@@ -1773,6 +1773,15 @@ describe('spotted-london Narra Gateway', () => {
     const oneBullets = onePopupReply!.match(/^• /gm) ?? [];
     expect(oneBullets).toHaveLength(1);
 
+    const conversationalOne = await fastRespondSpotted(
+      typedEnv,
+      makeEvent({ text: '這週末 Soho 有免費展嗎？可以給我一個選擇嗎？' }),
+      { shouldReply: true, tier: 1, reason: 'domain_match', confidence: 1, detectedLang: 'zh-Hant', shouldQuote: false },
+      emptyMem,
+    );
+    expect(conversationalOne?.match(/^• /gm)).toHaveLength(1);
+    expect(parseRequestedLimit('週末 Soho 有免費展嗎？可以給我兩個選擇嗎？')).toBe(2);
+
     // "推 2 個" returns exactly 2 popups
     const twoPopupsReply = await fastRespondSpotted(
       typedEnv,
