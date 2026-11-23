@@ -15,7 +15,7 @@ import type {
 } from '@manyfold/narra-agent-kit/worker';
 import { SOURCE_CHECKED_SQL, toPublic } from '../db/popups';
 import { unseal } from '../lib/seal';
-import { londonParts } from '../lib/time';
+import { londonParts, londonTime } from '../lib/time';
 import { listPopups } from '../routes/popups';
 import { CATEGORIES, type Category } from '../shared/categories';
 import { parseRangesColumn } from '../shared/ranges';
@@ -54,6 +54,24 @@ export const ALL_KNOWN_MENTION_NAMES = [
 const LONDON_OUTING_RE =
   /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
+const FRIDAY_RE = /週五|周五|星期五|禮拜五|礼拜五|\bFriday\b/i;
+const FRIDAY_EVENING_RE = /(?:週五|周五|星期五|禮拜五|礼拜五)\s*(?:晚|傍晚)|\bFriday\s+(?:night|evening)\b/i;
+const AFTER_EVENING_RE = /(?:晚上|晚間|晚间|傍晚)\s*([一二三四五六七八九十]|1[0-2]|[1-9])\s*[點点](?:鐘|钟)?\s*(?:以後|以后|後|后)|\bafter\s+([1-9]|1[0-2])\s*p\.?m\.?\b/i;
+const HOURS_RANGE_RE = /^(?:daily\s+)?(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?\s*[-–—]\s*(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?$/i;
+
+function listedHours(text: string | null): [number, number] | null {
+  const m = HOURS_RANGE_RE.exec(text?.trim() ?? '');
+  if (!m || Boolean(m[3]) !== Boolean(m[6])) return null;
+  const minutes = (hour: string, minute: string | undefined, period: string | undefined) => {
+    const h = Number(hour);
+    if (period ? h < 1 || h > 12 : h > 23) return NaN;
+    return (period ? h % 12 + (period.toLowerCase() === 'pm' ? 12 : 0) : h) * 60 + Number(minute ?? 0);
+  };
+  const from = minutes(m[1]!, m[2], m[3]);
+  const to = minutes(m[4]!, m[5], m[6]);
+  return from < to ? [from, to] : null;
+}
+
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
   id: 'spotted-guide',
   matrixId: SPOTTED_MATRIX_ID,
@@ -62,6 +80,7 @@ export const SPOTTED_AGENT_SPEC: AgentSpec = {
   domainDescription:
     'London pop-ups guide (Spotted London): ONLY limited-time pop-ups, sample sales, art exhibitions, weekend markets, and unique weekend events/outings across London — explicitly NOT everyday restaurants, hunger, or general "where to eat" queries.',
   domainKeywords: [
+    AFTER_EVENING_RE,
     'spotted london',
     'spotted',
     'pop-up',
@@ -976,6 +995,71 @@ export function spottedOffTopicRedirect(lang: LangCode): string {
   return "I focus on London pop-ups, markets, exhibitions, and free things to do — that one is outside my lane! Want to see what's on around London this weekend?";
 }
 
+async function respondForFridayEvening(
+  env: Bindings,
+  event: InboundEvent,
+  context: RoomContext | undefined,
+  cleanText: string,
+  lang: LangCode,
+  baseUrl: string,
+): Promise<string | null> {
+  const after = AFTER_EVENING_RE.exec(cleanText);
+  const explicitFriday = FRIDAY_EVENING_RE.test(cleanText) || (after && FRIDAY_RE.test(cleanText));
+  if (!after && !explicitFriday) return null;
+
+  let filter = extractPopupQueryFilter(cleanText);
+  if (!explicitFriday || !filter.category) {
+    const prior = (context?.recentHistory ?? [])
+      .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs)
+      .sort((a, b) => b.timestampMs - a.timestampMs);
+    const latest = prior[0];
+    const question = prior.slice(1).find((turn) => !turn.isAgent);
+    if (
+      !(latest?.isSelf || latest?.senderId === SPOTTED_MATRIX_ID) ||
+      question?.senderId !== event.senderId || !FRIDAY_RE.test(question.text)
+    ) return after ? '[NO_REPLY]' : null;
+    const previousFilter = extractPopupQueryFilter(question.text);
+    if (!previousFilter.category) return '[NO_REPLY]';
+    filter = { ...previousFilter, ...filter, q: filter.q ?? previousFilter.q, category: filter.category ?? previousFilter.category };
+  }
+
+  const chineseHour = after?.[1] ? '一二三四五六七八九十'.indexOf(after[1]) + 1 : 0;
+  const hour = Number(after?.[2]) || Number(after?.[1]) || chineseHour || 6;
+  const threshold = (hour % 12 + 12) * 60;
+  const now = event.timestampMs;
+  const { y, m, d, dow } = londonParts(now);
+  const friday = d + (5 - dow + 7) % 7;
+  const dayStart = londonTime(y, m, friday);
+  const dayEnd = londonTime(y, m, friday + 1);
+  const options = await listPopups(env.DB, {
+    when: 'week', limit: '50',
+    ...(filter.category ? { category: filter.category } : {}),
+    ...(filter.free ? { free: filter.free } : {}),
+    ...(filter.tag ? { tag: filter.tag } : {}),
+    ...(filter.verified ? { verified: filter.verified } : {}),
+    ...(filter.q ? { q: filter.q } : {}),
+  }, now);
+  const matches = options.items.filter((item) => {
+    const hours = listedHours(item.hours_text);
+    if (item.example || item.date_kind === 'undated' || !hours || hours[1] <= threshold) return false;
+    const opens = Math.max(hours[0], threshold);
+    const from = Math.max(now, londonTime(y, m, friday, Math.floor(opens / 60), opens % 60));
+    const to = Math.min(dayEnd, londonTime(y, m, friday, Math.floor(hours[1] / 60), hours[1] % 60));
+    return from >= dayStart && from < to && (item.ranges ?? [[item.start_at, item.end_at]])
+      .some(([start, end]) => start < to && end > from);
+  });
+  const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
+  if (!matches.length) {
+    return lang === 'zh-Hant' ? `我目前找不到能確認週五 ${time} 後仍開放、又符合這些條件的活動。`
+      : lang === 'zh-Hans' ? `我目前找不到能确认周五 ${time} 后仍开放、又符合这些条件的活动。`
+        : `I couldn’t confirm any matching events open after ${time} on Friday.`;
+  }
+  const intro = lang === 'zh-Hant' ? `這些活動的公告時段涵蓋週五 ${time} 之後：`
+    : lang === 'zh-Hans' ? `这些活动的公告时段涵盖周五 ${time} 之后：`
+      : `These events list hours after ${time} on Friday:`;
+  return formatPopupsReply(matches, lang, baseUrl, { voice: Boolean(event.isVoice), intro });
+}
+
 export async function fastRespondSpotted(
   env: Bindings,
   event: InboundEvent,
@@ -1071,6 +1155,9 @@ export async function fastRespondSpotted(
       intro,
     });
   }
+
+  const eveningReply = await respondForFridayEvening(env, event, context, cleanText, lang, baseUrl);
+  if (eveningReply !== null) return eveningReply;
 
   const priorSelfSlugs = extractPriorSelfPopupSlugs(context, 5);
   if (
