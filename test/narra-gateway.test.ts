@@ -1365,6 +1365,7 @@ describe('spotted-london Narra Gateway', () => {
     await seedPopup('booking-first', { title: 'First Soho exhibition' });
     await seedPopup('booking-second', {
       title: 'Second Soho exhibition',
+      hoursText: '11am-6pm',
       priceText: 'Free ticketed entry',
       sourceUrl: 'https://exhibitions.example/second',
     });
@@ -1393,6 +1394,18 @@ describe('spotted-london Narra Gateway', () => {
     expect(reply).toContain('活動標示為憑票入場');
     expect(reply).toContain('https://exhibitions.example/second');
     expect(reply).not.toContain('First Soho exhibition');
+
+    const hoursReply = await fastRespondSpotted(
+      env as unknown as Bindings,
+      { ...event, text: '第二個星期日幾點關門？' },
+      { shouldReply: true, tier: 1, reason: 'active_session', confidence: 1, detectedLang: 'zh-Hant', shouldQuote: false },
+      { userMemories: [], roomMemories: [], promptSafeLines: [] },
+      context,
+    );
+    expect(hoursReply).toContain('Second Soho exhibition');
+    expect(hoursReply).toContain('11am-6pm');
+    expect(hoursReply).toContain('https://exhibitions.example/second');
+    expect(hoursReply).not.toContain('First Soho exhibition');
   });
 
   it('handles 1v1 DM detail follow-up, off-topic redirect, polite thanks, capability queries, and preserves A2A follow-ups', async () => {
