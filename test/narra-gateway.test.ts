@@ -2220,6 +2220,54 @@ describe('spotted-london Narra Gateway', () => {
     expect(reply).toContain('https://app.manyfold.ai/spotted-london/p/free-contemporary-art-exhibition');
     expect(reply).not.toContain('Paid Sculpture Exhibition');
   });
+
+  it('keeps the Friday, Soho, exhibition and free constraints through a later-hours follow-up', async () => {
+    const nowMs = Date.parse('2026-11-23T12:00:00Z');
+    const startAt = Date.parse('2026-11-27T00:00:00Z');
+    const endAt = Date.parse('2026-11-28T00:00:00Z');
+    for (const [id, title, hoursText, borough, priceType] of [
+      ['close-six', 'Six Close', '11am-6pm', 'Soho', 'free'],
+      ['close-seven', 'Seven Close', '10:00-19:00', 'Soho', 'free'],
+      ['open-late', 'Evening Exhibition', '17:00-21:00', 'Soho', 'free'],
+      ['different-area', 'Other Area', '17:00-21:00', 'Camden', 'free'],
+      ['paid-late', 'Paid Evening', '17:00-21:00', 'Soho', 'paid'],
+      ['unknown-hours', 'Unknown Hours', 'Check opening hours', 'Soho', 'free'],
+    ] as const) {
+      await seedPopup(id, { title, hoursText, borough, priceType, startAt, endAt });
+    }
+    const question = makeEvent({
+      text: 'BAO 先留著。吃完想走去看展，週五晚在 Soho 附近有免費展覽嗎？',
+      timestampMs: nowMs - 2000,
+    });
+    const event = makeEvent({
+      text: '六點關的那間先跳過，有沒有晚上七點後還能去的？',
+      timestampMs: nowMs,
+    });
+    const context: RoomContext = {
+      roomId: event.roomId,
+      chatType: 'group',
+      members: [],
+      activeSession: { active: true },
+      recentHistory: [
+        { eventId: '$friday-query', senderId: event.senderId, isAgent: false,
+          text: question.text, timestampMs: question.timestampMs },
+        { eventId: '$spotted-list', senderId: SPOTTED_MATRIX_ID, isAgent: true, isSelf: true,
+          text: 'Soho 展覽清單', timestampMs: nowMs - 1000 },
+      ],
+    };
+    const memories = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const typedEnv = env as unknown as Bindings;
+    const opening = await routeEvent(question, context, SPOTTED_AGENT_SPEC, { nowMs });
+    const first = await fastRespondSpotted(typedEnv, question, opening, memories, { ...context, recentHistory: [] });
+    expect(first).toContain('週五 18:00');
+    expect(first).not.toContain('Six Close');
+    const following = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs });
+    expect(following.shouldReply).toBe(true);
+    const second = await fastRespondSpotted(typedEnv, event, following, memories, context);
+    expect(second).toContain('週五 19:00');
+    expect(second).toContain('Evening Exhibition');
+    expect(second).not.toMatch(/Six Close|Seven Close|Other Area|Paid Evening|Unknown Hours/);
+  });
 });
 
 it('speaks only on its own topic in mixed group chatter', async () => {
