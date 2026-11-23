@@ -359,7 +359,7 @@ export function formatPopupsReply(
   return sanitizeMobileLinks(lines.join('\n'));
 }
 
-function extractPopupSlugs(text: string): string[] {
+function extractPopupSlugs(text: string, limit = 3): string[] {
   const seen = new Set<string>();
   const slugs: string[] = [];
   for (const match of (text ?? '').matchAll(/\/p\/([a-z0-9_-]+)/gi)) {
@@ -367,21 +367,21 @@ function extractPopupSlugs(text: string): string[] {
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
     slugs.push(slug);
-    if (slugs.length >= 3) break;
+    if (slugs.length >= limit) break;
   }
   return slugs;
 }
 
-function extractPriorSelfPopupSlugs(context?: RoomContext): string[] {
+function extractPriorSelfPopupSlugs(context?: RoomContext, limit = 3): string[] {
   if (context?.replyToTarget?.isSelf || context?.replyToTarget?.senderId === SPOTTED_MATRIX_ID) {
-    const replySlugs = extractPopupSlugs(context.replyToTarget.text);
+    const replySlugs = extractPopupSlugs(context.replyToTarget.text, limit);
     if (replySlugs.length > 0) return replySlugs;
   }
   const selfTurns = [...(context?.recentHistory ?? [])]
     .reverse()
     .filter((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID);
   for (const turn of selfTurns.slice(0, 4)) {
-    const slugs = extractPopupSlugs(turn.text ?? '');
+    const slugs = extractPopupSlugs(turn.text ?? '', limit);
     if (slugs.length > 0) return slugs;
   }
   return [];
@@ -648,7 +648,24 @@ const COMPARATIVE_FOLLOWUP_RE =
   /(?:這幾個|这几个|這幾間|这几间|裡面哪一?[個个]|里面哪一?[个]|哪一?[個个]最(?:適合|适合|推薦|推荐|好|值得)|比較適合|比较适合|適不適合|适不适合|帶朋友去拍照|带朋友去拍照|怎麼搭地鐵|怎么搭地铁|坐什麼地鐵|坐什么地铁|\b(?:which\s+(?:one\s+)?is\s+(?:best|better|most\s+suitable)|compare\s+(?:them|these)|how\s+(?:do\s+(?:i|we)|to)\s+get\s+there)\b)/i;
 
 const DETAIL_FOLLOWUP_RE =
-  /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|要預約|要预约|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|booking|where\s+is\s+it|tell\s+me\s+more)\b/i;
+  /細節|细节|詳細|详细|更多|詳情|详情|地址|時間|时间|門票|门票|預約|预约|訂票|订票|在哪[裡里]?|\b(?:more\s+(?:details?|info)|details?|address|hours?|timing|tickets?|book(?:ing)?|reserv(?:e|ation)|where\s+is\s+it|tell\s+me\s+more)\b/i;
+
+const BOOKING_FOLLOWUP_RE = /預約|预约|訂票|订票|\b(?:book(?:ing)?|reserv(?:e|ation))\b/i;
+const LIST_ORDINAL_RE = /第\s*([一二三四五1-5])\s*[個个項项場场]|\b(?:the\s+)?(first|second|third|fourth|fifth|1st|2nd|3rd|[45]th)\s+(?:one|event|option)\b/i;
+const LIST_ORDINAL_INDEX: Record<string, number> = {
+  一: 0, 二: 1, 三: 2, 四: 3, 五: 4, '1': 0, '2': 1, '3': 2, '4': 3, '5': 4,
+  first: 0, second: 1, third: 2, fourth: 3, fifth: 4, '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4,
+};
+
+function formatBookingReply(item: PublicPopup, lang: LangCode, baseUrl: string): string {
+  const ticketed = /\bticketed\b|憑票|凭票/.test(item.price?.text?.toLowerCase() ?? '');
+  const guidance = lang === 'zh-Hant'
+    ? `${ticketed ? '活動標示為憑票入場。' : ''}是否需要提前預約，請看主辦方最新資訊。`
+    : lang === 'zh-Hans'
+      ? `${ticketed ? '活动标注为凭票入场。' : ''}是否需要提前预约，请查看主办方最新信息。`
+      : `${ticketed ? 'Entry is listed as ticketed. ' : ''}Check the organiser’s latest information to see if you need to book ahead.`;
+  return sanitizeMobileLinks([item.title, guidance, validHttpsUrl(item.source_url) ?? `${baseUrl}/p/${item.slug}`].join('\n'));
+}
 
 const REQUESTED_LIMIT_ZH_RE = /(?:各)?(?:推|推薦|推荐|給|给|挑|找|來|来)\s*([1-5一二兩两三四五])\s*[間家個个]/;
 const REQUESTED_LIMIT_EN_RE = /\b(?:just|only|pick|top)\s+([1-5]|one|two|three|four|five)\b/i;
@@ -1041,7 +1058,7 @@ export async function fastRespondSpotted(
     });
   }
 
-  const priorSelfSlugs = extractPriorSelfPopupSlugs(context);
+  const priorSelfSlugs = extractPriorSelfPopupSlugs(context, 5);
   if (
     (!isUnmentionedGroup || decision.reason === 'active_session') &&
     (COMPLEX_FOLLOWUP_RE.test(cleanText) || COMPARATIVE_FOLLOWUP_RE.test(cleanText)) &&
@@ -1057,7 +1074,16 @@ export async function fastRespondSpotted(
     !COMPLEX_FOLLOWUP_RE.test(cleanText) &&
     !COMPARATIVE_FOLLOWUP_RE.test(cleanText)
   ) {
-    const slugs = priorSelfSlugs;
+    const ordinalMatch = LIST_ORDINAL_RE.exec(cleanText);
+    const ordinal = (ordinalMatch?.[1] ?? ordinalMatch?.[2])?.toLowerCase();
+    if (ordinal && priorSelfSlugs.length > 0 && !priorSelfSlugs[LIST_ORDINAL_INDEX[ordinal]]) {
+      return lang === 'zh-Hant' ? '我剛才的清單沒有這一項。你指的是哪個活動？'
+        : lang === 'zh-Hans' ? '我刚才的列表没有这一项。你指的是哪个活动？'
+          : 'That number isn’t in my last list. Which event did you mean?';
+    }
+    const slugs = ordinal
+      ? priorSelfSlugs.slice(LIST_ORDINAL_INDEX[ordinal], LIST_ORDINAL_INDEX[ordinal] + 1)
+      : priorSelfSlugs.slice(0, 3);
     if (slugs.length > 0) {
       try {
         const placeholders = slugs.map(() => '?').join(', ');
@@ -1073,7 +1099,11 @@ export async function fastRespondSpotted(
           .all<PopupRow & { cover_key?: string | null; source_checked?: number | null }>();
         const rows = [...(results ?? [])].sort((a, b) => slugs.indexOf(a.slug) - slugs.indexOf(b.slug));
         if (rows.length > 0) {
-          return formatPopupDetailsReply(rows.map((r) => toPublic(r)), lang, baseUrl, {
+          const items = rows.map((row) => toPublic(row));
+          if (items.length === 1 && BOOKING_FOLLOWUP_RE.test(cleanText)) {
+            return formatBookingReply(items[0]!, lang, baseUrl);
+          }
+          return formatPopupDetailsReply(items, lang, baseUrl, {
             voice: Boolean(event.isVoice),
           });
         }
