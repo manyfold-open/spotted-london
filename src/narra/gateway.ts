@@ -719,7 +719,7 @@ function formatHoursReply(item: PublicPopup, lang: LangCode, baseUrl: string): s
   return sanitizeMobileLinks([item.title, guidance, validHttpsUrl(item.source_url) ?? `${baseUrl}/p/${item.slug}`].join('\n'));
 }
 
-const REQUESTED_LIMIT_ZH_RE = /(?:各)?(?:推|推薦|推荐|給|给|挑|找|來|来)\s*(?:我(?:們|们)?\s*)?([1-5一二兩两三四五])\s*[間间家個个項项場场]/;
+const REQUESTED_LIMIT_ZH_RE = /(?:各)?(?:推|推薦|推荐|給|给|挑|找|來|来|哪)\s*(?:我(?:們|们)?\s*)?([1-5一二兩两三四五])\s*[間间家個个項项場场]/;
 const REQUESTED_LIMIT_EN_RE = /\b(?:just|only|pick|top)\s+([1-5]|one|two|three|four|five)\b/i;
 
 const REQUESTED_LIMIT_MAP: Record<string, number> = {

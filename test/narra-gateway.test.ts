@@ -1749,6 +1749,7 @@ describe('spotted-london Narra Gateway', () => {
 
     expect(parseRequestedLimit('週末先在 Soho 吃點心再逛展覽，各推 1 個')).toBe(1);
     expect(parseRequestedLimit('推 2 個 Soho 展覽')).toBe(2);
+    expect(parseRequestedLimit('这周末伦敦有哪两个展览可以去？')).toBe(2);
     expect(parseRequestedLimit('just 1 Soho exhibition')).toBe(1);
     expect(parseRequestedLimit('pick two pop-ups')).toBe(2);
     expect(parseRequestedLimit('這週末 Soho 有什麼展覽？')).toBeNull();
