@@ -51,6 +51,9 @@ export const ALL_KNOWN_MENTION_NAMES = [
   'Quidpaw',
 ] as const;
 
+const SHELVED_EVENT_TOPIC_RE =
+  /^(?:(?:活動|活动|展覽|展览|市集|快閃|快闪)\s*先\s*(?:放[著着]|放一邊|放一边|不聊|不看|跳過|跳过)|(?:let'?s\s+)?(?:set aside|skip)\s+(?:the\s+)?(?:events?|exhibitions?|markets?)(?:\s+for now)?)[，,。.!！；;\s]+/i;
+
 const LONDON_OUTING_RE =
   /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
@@ -1103,6 +1106,9 @@ export async function fastRespondSpotted(
     decision.reason !== 'reply_to_self';
 
   if (isUnmentionedGroup) {
+    const afterShelvedTopic = cleanText.replace(SHELVED_EVENT_TOPIC_RE, '');
+    if (afterShelvedTopic !== cleanText && !POPUP_ACTIVITY_RE.test(afterShelvedTopic) &&
+        !LONDON_OUTING_RE.test(afterShelvedTopic)) return '[NO_REPLY]';
     if (TIME_ONLY_FOLLOWUP_RE.test(cleanText.trim())) {
       const previous = context?.recentHistory
         .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs)
