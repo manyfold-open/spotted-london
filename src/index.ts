@@ -5,6 +5,7 @@ import {
   BaseNarraRoomCoordinator,
   getNarraGatewayStatus,
   kickNarraGateway,
+  handleNarraPushRequest,
 } from '@manyfold/narra-agent-kit/worker';
 import type { AppEnv, Bindings } from './types';
 import { requireAdmin, sameOrigin, session } from './middleware';
@@ -97,7 +98,9 @@ export class NarraRoomCoordinator extends BaseNarraRoomCoordinator<Bindings> {
 export default {
   // Pages on the public site name the Google Analytics property (src/analytics.ts). It reads the request as it arrived,
   // with its own host and Cloudflare's country.
-  fetch: async (request, env, ctx) => withAnalytics(await mounted(request, env, ctx), request, env),
+  // Synapse wakes the Narra sync Durable Object at /_matrix/push/v1/notify (push mode).
+  fetch: async (request, env, ctx) =>
+    (await handleNarraPushRequest(request, env)) ?? withAnalytics(await mounted(request, env, ctx), request, env),
   async scheduled(controller, env, ctx) {
     if (controller.cron === '*/5 * * * *') {
       ctx.waitUntil(kickNarraGateway(env, spottedGatewayConfig));
