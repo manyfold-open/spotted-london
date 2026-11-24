@@ -448,6 +448,32 @@ describe('spotted-london Narra Gateway', () => {
     expect(fallback).toBeNull();
   });
 
+
+  it.each(['晚上可以幹嘛', '週末去哪玩', '今晚有什麼活動'])(
+    'claims the bare group ask "%s" without a model call and answers it (zack test, 2026-11-24)',
+    async (text) => {
+      await seedPopup('ng_tonight', {
+        title: 'Late Night Print Fair',
+        category: 'market',
+        borough: 'Soho',
+        priceType: 'free',
+        status: 'verified_admin',
+        startAt: Date.now() - HOUR,
+        endAt: Date.now() + 3 * DAY,
+      });
+      const run = vi.fn();
+      const typedEnv = { ...(env as unknown as Bindings), APP_URL: 'https://app.manyfold.ai/spotted-london' };
+      const triageModel = createSpottedGatewayConfig().triageModel?.({ ...typedEnv, AI: { run } } as unknown as Bindings);
+      const event = makeEvent({ text, chatType: 'group', mentions: [], timestampMs: Date.now(), timeIso: new Date().toISOString() });
+      const context = { roomId: event.roomId, chatType: 'group' as const, members: [], recentHistory: [] };
+      const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { triageModel });
+      expect(decision.shouldReply).toBe(true);
+      expect(run).not.toHaveBeenCalled();
+      const reply = await fastRespondSpotted(typedEnv, event, decision, { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
+      expect(reply).toContain('Late Night Print Fair');
+    },
+  );
+
   it('resolves Manyfold A2A credential from env override or sealed concierge row', async () => {
     const sealed = await seal(env.AGENTS_KEY, 'spotted_a2a_secret_token_999');
     await env.DB.prepare(

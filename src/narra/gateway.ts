@@ -1,4 +1,6 @@
 import {
+  createWorkersAiTriageModel,
+  heuristicDomainScore,
   sanitizeMobileLinks,
   stripAgentMentions,
   type AgentSpec,
@@ -1212,6 +1214,31 @@ export async function fastRespondSpotted(
   const eveningReply = await respondForEvening(env, event, context, cleanText, lang, baseUrl);
   if (eveningReply !== null) return eveningReply;
 
+  // A bare "what can I do tonight / this weekend?" (PLAIN_PLANS_ASK_RE) with nothing more specific
+  // to go on: list what is on, instead of the unmentioned-group silence further down.
+  if (PLAIN_PLANS_ASK_RE.test(cleanText.trim())) {
+    const weekend = /週末|周末|weekend/i.test(cleanText);
+    const today = /今晚|今天|晚上|明晚|下班|tonight|today/i.test(cleanText);
+    const firstWindow: 'today' | 'weekend' | 'week' = weekend ? 'weekend' : today ? 'today' : 'week';
+    const fetchWindow = async (when: 'today' | 'weekend' | 'week') =>
+      ((await listPopups(env.DB, { when, limit: '5' }, nowMs).catch(() => null))?.items ?? []).filter((i) => !i.example);
+    let items = await fetchWindow(firstWindow);
+    let window = firstWindow;
+    if (items.length === 0 && firstWindow !== 'week') {
+      items = await fetchWindow('week');
+      window = 'week';
+    }
+    if (items.length > 0) {
+      const intro =
+        lang === 'zh-Hant'
+          ? window === 'today' ? '今天倫敦有這些可以去：' : window === 'weekend' ? '這週末倫敦有這些可以去：' : '這幾天倫敦有這些可以去：'
+          : lang === 'zh-Hans'
+            ? window === 'today' ? '今天伦敦有这些可以去：' : window === 'weekend' ? '这周末伦敦有这些可以去：' : '这几天伦敦有这些可以去：'
+            : window === 'today' ? 'On in London today:' : window === 'weekend' ? 'On in London this weekend:' : 'On in London this week:';
+      return formatPopupsReply(items, lang, baseUrl, { voice: Boolean(event.isVoice), intro });
+    }
+  }
+
   const priorSelfSlugs = extractPriorSelfPopupSlugs(context, 5);
   if (priorSelfSlugs.length > 0 && OFFICE_DISTANCE_RE.test(cleanText)) {
     return null;
@@ -1487,11 +1514,33 @@ export const spottedThinkingMessage = (lang: LangCode): string =>
       ? '📍 正在帮你查询伦敦最新快闪活动与细节，稍等一下…'
       : '📍 Looking up London pop-up details for you, one moment…';
 
+/**
+ * A bare "what can I do tonight / this weekend?" in a group (晚上可以幹嘛 / 週末去哪玩 /
+ * 今晚有什麼活動). The triage model judged 晚上可以幹嘛 "not London pop-ups" and nobody
+ * answered; things to do in London is exactly what Spotted lists. Anchored to the whole
+ * message: longer sentences still go through normal triage.
+ */
+export const PLAIN_PLANS_ASK_RE =
+  /^(?:今晚|今天晚上|晚上|今天|明天|明晚|週末|周末|這週末|这周末|下班後|下班后)?[ \t]*(?:可以|能|要|有啥|有什麼|有什么|有沒有|有没有)?[ \t]*(?:幹嘛|干嘛|做什麼|做什么|做啥|去哪|去哪裡|去哪里|去哪玩|玩什麼|玩什么|玩啥|好玩的|活動|活动)[ \t]*(?:嗎|吗|呢|啊|呀|好)?[？?！!。]*$|^(?:what\s+(?:can\s+i|to)\s+do|anything\s+(?:fun\s+)?(?:on|to\s+do))\s+(?:tonight|this\s+weekend|today)\??$/i;
+
 export function createSpottedGatewayConfig(
   overrides: Partial<NarraGatewayConfig<Bindings>> = {},
 ): NarraGatewayConfig<Bindings> {
   return {
     spec: SPOTTED_AGENT_SPEC,
+    triageModel: (env) => {
+      const model =
+        env.AI && (env.NARRA_AI_TRIAGE ?? '').trim() !== 'off'
+          ? createWorkersAiTriageModel(env.AI, { model: env.AI_TRIAGE_MODEL })
+          : undefined;
+      return {
+        ...model,
+        score: async (input) => {
+          if (PLAIN_PLANS_ASK_RE.test(input.event.text.trim())) return { score: 0.8, reason: 'plain_plans_ask' };
+          return model?.score(input) ?? { score: heuristicDomainScore(input.event, input.spec, input.context) };
+        },
+      };
+    },
     fetchUpdates: fetchSpottedUpdates,
     fastRespond: fastRespondSpotted,
     resolveA2ACredential: resolveSpottedA2ACredential,
