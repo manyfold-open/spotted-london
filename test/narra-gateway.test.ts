@@ -2431,3 +2431,30 @@ it('asks where the office is when a previous station was only a dining preferenc
   context.recentHistory[0]!.text = '我公司在 Bank 站附近。';
   expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context)).toBeNull();
 });
+
+it('routes a station answer only for the same sender after Spotted asks for their office', async () => {
+  const event = makeEvent({ text: 'Tottenham Court Road 站附近。' });
+  const context: RoomContext = {
+    roomId: event.roomId,
+    chatType: 'group',
+    members: [{ matrixId: '@agent-b2b526f3:matrix.netmind.chat', displayName: 'London Chinese Food', isAgent: true }],
+    latestHumanEventId: event.eventId,
+    activeSession: { active: true },
+    recentHistory: [
+      { eventId: '$distance', senderId: event.senderId, isAgent: false, timestampMs: NOW - 2000, text: '哪个离公司近' },
+      { eventId: '$clarification', senderId: SPOTTED_MATRIX_ID, isSelf: true, isAgent: true, timestampMs: NOW - 1000, text: '你公司在哪一站附近？我可以帮你比一下刚才那几个活动。' },
+      { eventId: event.eventId, senderId: event.senderId, isAgent: false, timestampMs: NOW, text: event.text },
+    ],
+  };
+  const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: NOW });
+  expect(decision).toMatchObject({ shouldReply: true, independentGroupReply: true });
+  const memories = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+  const typedEnv = env as unknown as Bindings;
+  expect(await fastRespondSpotted(typedEnv, event, decision, memories, context)).toBeNull();
+  expect(await buildSpottedExtraEnvelopeFields(typedEnv, event, decision, memories, context))
+    .toEqual({ office_comparison_task: expect.stringContaining('If the prior options cannot be recovered') });
+
+  context.recentHistory[0]!.senderId = '@colleague:matrix.netmind.chat';
+  expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: NOW }))
+    .not.toHaveProperty('independentGroupReply');
+});

@@ -65,6 +65,29 @@ const OFFICE_DISTANCE_RE =
 const STATED_OFFICE_LOCATION_RE =
   /(?:公司|[辦办]公室)\s*(?:就|是)?在\s*[^哪何？?。！？\s]|\b(?:my|our) office is (?:at|in|near|by)\s+\S/i;
 
+const OFFICE_CLARIFICATION: Record<LangCode, string> = {
+  'zh-Hans': '你公司在哪一站附近？我可以帮你比一下刚才那几个活动。',
+  'zh-Hant': '你公司在哪一站附近？我可以幫你比一下剛才那幾個活動。',
+  en: 'Which station is your office near? I can compare the options I just shared.',
+};
+
+function isOfficeLocationAnswer(
+  event: Pick<InboundEvent, 'eventId' | 'text' | 'senderId' | 'timestampMs'>,
+  context?: RoomContext,
+): boolean {
+  const text = event.text.trim();
+  const shortStation = /^(?:[在靠近]\s*|near\s+)?[\p{L}\p{N}][\p{L}\p{N} .’'&-]{0,50}(?:站(?:附近)?|\bstation)[。.!！]?$/iu;
+  if (!STATED_OFFICE_LOCATION_RE.test(text) && !shortStation.test(text)) return false;
+  const [clarification, question] = [...(context?.recentHistory ?? [])]
+    .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs &&
+      event.timestampMs - turn.timestampMs <= 180_000)
+    .sort((a, b) => b.timestampMs - a.timestampMs);
+  return Boolean(clarification && (clarification.isSelf || clarification.senderId === SPOTTED_MATRIX_ID) &&
+    Object.values(OFFICE_CLARIFICATION).includes(clarification.text.trim()) &&
+    question && !question.isAgent && question.senderId === event.senderId &&
+    OFFICE_DISTANCE_RE.test(question.text));
+}
+
 const LONDON_OUTING_RE =
   /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
@@ -91,10 +114,13 @@ const DINNER_AND_NEARBY_EXHIBITION_RE =
   /先吃[^。！？?，,]{0,24}(?:中餐|中菜)[，,；;。]\s*(?:飯後|饭后|吃完)[^。！？?]{0,14}附近[^。！？?]{0,16}(?:展覽|展览|免費展|免费展)[^。！？?]{0,10}[？?]$/;
 
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
-  matchesIndependentGroupRequest: (text, context) =>
-    DINNER_AND_NEARBY_EXHIBITION_RE.test(text.trim()) &&
+  matchesIndependentGroupRequest: (text, context) => {
+    const turn = context.recentHistory.find((item) => item.eventId === context.latestHumanEventId);
+    if (turn?.text === text && isOfficeLocationAnswer(turn, context)) return true;
+    return DINNER_AND_NEARBY_EXHIBITION_RE.test(text.trim()) &&
     context.members.some((member) => member.isAgent &&
-      (member.matrixId === '@agent-b2b526f3:matrix.netmind.chat' || member.displayName === 'London Chinese Food')),
+      (member.matrixId === '@agent-b2b526f3:matrix.netmind.chat' || member.displayName === 'London Chinese Food'));
+  },
 
   id: 'spotted-guide',
   matrixId: SPOTTED_MATRIX_ID,
@@ -1124,7 +1150,7 @@ export async function fastRespondSpotted(
 ): Promise<string | null> {
   if (!env.DB) return null;
   const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
-  if (COMPLEX_FOLLOWUP_RE.test(cleanText)) return null;
+  if (isOfficeLocationAnswer(event, context) || COMPLEX_FOLLOWUP_RE.test(cleanText)) return null;
 
   const isUnmentionedGroup =
     event.chatType === 'group' &&
@@ -1249,9 +1275,7 @@ export async function fastRespondSpotted(
         turn.timestampMs <= event.timestampMs)
       .map((turn) => turn.text)].some((text) => STATED_OFFICE_LOCATION_RE.test(text));
     if (hasOfficeLocation) return null;
-    return lang === 'zh-Hans' ? '你公司在哪一站附近？我可以帮你比一下刚才那几个活动。'
-      : lang === 'zh-Hant' ? '你公司在哪一站附近？我可以幫你比一下剛才那幾個活動。'
-        : 'Which station is your office near? I can compare the options I just shared.';
+    return OFFICE_CLARIFICATION[lang];
   }
 
   if (
@@ -1466,12 +1490,13 @@ function formatPrefetchedPopup(item: PublicPopup, lang: LangCode, baseUrl: strin
 
 export async function buildSpottedExtraEnvelopeFields(
   env: Bindings,
-  _event: InboundEvent,
+  event: InboundEvent,
   decision: TriageDecision,
   _memories: RecallTurnResult,
   context: RoomContext,
 ): Promise<Record<string, string> | null> {
   if (!env.DB) return null;
+  const officeFollowUp = isOfficeLocationAnswer(event, context);
 
   const replySlugs = context?.replyToTarget?.text
     ? extractPopupSlugs(context.replyToTarget.text)
@@ -1499,12 +1524,13 @@ export async function buildSpottedExtraEnvelopeFields(
     }
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && !officeFollowUp) {
     const weekend = await listPopups(env.DB, { when: 'weekend', limit: '5' }, Date.now()).catch(() => null);
     items = (weekend?.items ?? []).filter((i) => !i.example).slice(0, 3);
   }
 
-  if (items.length === 0) return null;
+  const officeTask = 'The latest user message answers your question about the office location. Compare only the previous event options in d1_prefetched_records using that location as the origin. Keep their links. If a distance or route cannot be verified, say so and do not invent a number. If the prior options cannot be recovered, ask which events the user meant.';
+  if (items.length === 0) return officeFollowUp ? { office_comparison_task: officeTask } : null;
 
   const baseUrl = appBase(env);
   const combined = items
@@ -1514,7 +1540,10 @@ export async function buildSpottedExtraEnvelopeFields(
     combined.length <= MAX_PREFETCH_CHARS
       ? combined
       : `${combined.slice(0, MAX_PREFETCH_CHARS - 1).trimEnd()}…`;
-  return { d1_prefetched_records: trimmed };
+  return {
+    d1_prefetched_records: trimmed,
+    ...(officeFollowUp && { office_comparison_task: officeTask }),
+  };
 }
 
 export const spottedThinkingMessage = (lang: LangCode): string =>
@@ -1546,6 +1575,7 @@ export function createSpottedGatewayConfig(
       return {
         ...model,
         score: async (input) => {
+          if (isOfficeLocationAnswer(input.event, input.context)) return { score: 0.95, reason: 'office_location_answer' };
           if (PLAIN_PLANS_ASK_RE.test(input.event.text.trim())) return { score: 0.8, reason: 'plain_plans_ask' };
           return model?.score(input) ?? { score: heuristicDomainScore(input.event, input.spec, input.context) };
         },
