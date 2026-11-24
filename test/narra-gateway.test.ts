@@ -1341,7 +1341,7 @@ describe('spotted-london Narra Gateway', () => {
     expect(missAllReply).toBeNull();
   });
 
-  it('leaves a time-only refinement with the agent that just answered', async () => {
+  it('leaves a time- or location-only refinement with the agent that just answered', async () => {
     const event = makeEvent({ text: '只要週末的呢？' });
     const decision = { shouldReply: true, tier: 1 as const, reason: 'active_session' as const, confidence: 1, detectedLang: 'zh-Hant' as const, shouldQuote: false };
     const context: RoomContext = {
@@ -1358,6 +1358,9 @@ describe('spotted-london Narra Gateway', () => {
     };
     const memories = { userMemories: [], roomMemories: [], promptSafeLines: [] };
     expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context))
+      .toBe('[NO_REPLY]');
+    expect(await fastRespondSpotted(env as unknown as Bindings,
+      { ...event, text: '離 Bank 近一點的有嗎？' }, decision, memories, context))
       .toBe('[NO_REPLY]');
     await seedPopup('weekend-control', {
       title: 'Weekend Exhibition',

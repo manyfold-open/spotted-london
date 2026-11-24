@@ -857,6 +857,9 @@ export interface PopupQueryFilter {
   isClearSearch: boolean;
 }
 
+const LOCATION_ONLY_FOLLOWUP_RE =
+  /^(?:那\s*)?[離离距]\s*[A-Za-z][A-Za-z '&-]{2,25}\s*近(?:一[點点])?(?:的)?(?:有[嗎吗]|呢)?[？?。.!！\s]*$/i;
+
 const TIME_ONLY_FOLLOWUP_RE =
   /^(?:(?:那|只要|只看|只找|有沒有|有没有|那就)?\s*(?:這?週末|这?周末|週六|周六|週日|周日|今天|今晚|明天)(?:的)?(?:呢|嗎|吗)?|(?:what\s+about\s+|how\s+about\s+|only\s+|just\s+)(?:the\s+|this\s+)?(?:weekend|saturday|sunday|today|tonight|tomorrow)(?:\s+ones?)?)[？?。.!！]*$/i;
 
@@ -1129,7 +1132,7 @@ export async function fastRespondSpotted(
     const afterShelvedTopic = cleanText.replace(SHELVED_EVENT_TOPIC_RE, '');
     if (afterShelvedTopic !== cleanText && !POPUP_ACTIVITY_RE.test(afterShelvedTopic) &&
         !LONDON_OUTING_RE.test(afterShelvedTopic)) return '[NO_REPLY]';
-    if (TIME_ONLY_FOLLOWUP_RE.test(cleanText.trim())) {
+    if (TIME_ONLY_FOLLOWUP_RE.test(cleanText.trim()) || LOCATION_ONLY_FOLLOWUP_RE.test(cleanText.trim())) {
       const previous = context?.recentHistory
         .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs)
         .reduce<(typeof context.recentHistory)[number] | undefined>(
