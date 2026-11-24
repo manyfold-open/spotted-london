@@ -62,6 +62,9 @@ const AFTER_WORK_OUTING_RE =
 const OFFICE_DISTANCE_RE =
   /[離离](?:公司|[辦办]公室)(?:更|最|[較较]|比[較较])?近/;
 
+const STATED_OFFICE_LOCATION_RE =
+  /(?:公司|[辦办]公室)\s*(?:就|是)?在\s*[^哪何？?。！？\s]|\b(?:my|our) office is (?:at|in|near|by)\s+\S/i;
+
 const LONDON_OUTING_RE =
   /(?:這週末|这周末|週末|周末|weekend).{0,24}(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛|好玩|去哪|特別|特别|things\s+to\s+do)|(?:倫敦|伦敦|\blondon\b).{0,24}(?:逛逛|好去處|好去处|哪裡好玩|哪里好玩|比較特別|比较特别|things\s+to\s+do)|things\s+to\s+do.{0,16}(?:倫敦|伦敦|\blondon\b)/i;
 
@@ -1241,7 +1244,14 @@ export async function fastRespondSpotted(
 
   const priorSelfSlugs = extractPriorSelfPopupSlugs(context, 5);
   if (priorSelfSlugs.length > 0 && OFFICE_DISTANCE_RE.test(cleanText)) {
-    return null;
+    const hasOfficeLocation = [cleanText, ...(context?.recentHistory ?? [])
+      .filter((turn) => !turn.isAgent && turn.senderId === event.senderId &&
+        turn.timestampMs <= event.timestampMs)
+      .map((turn) => turn.text)].some((text) => STATED_OFFICE_LOCATION_RE.test(text));
+    if (hasOfficeLocation) return null;
+    return lang === 'zh-Hans' ? '你公司在哪一站附近？我可以帮你比一下刚才那几个活动。'
+      : lang === 'zh-Hant' ? '你公司在哪一站附近？我可以幫你比一下剛才那幾個活動。'
+        : 'Which station is your office near? I can compare the options I just shared.';
   }
 
   if (

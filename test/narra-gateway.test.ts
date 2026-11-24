@@ -2410,3 +2410,24 @@ it('takes its own part of the mixed dinner and exhibition request after a peer a
   expect(await routeEvent(event, { ...context, members: [], recentHistory: [] }, SPOTTED_AGENT_SPEC, { nowMs: nowMs + 10 }))
     .not.toHaveProperty('independentGroupReply');
 });
+
+
+it('asks where the office is when a previous station was only a dining preference', async () => {
+  const event = makeEvent({ text: '哪个离公司近' });
+  const decision = { shouldReply: true, tier: 0, confidence: 1, shouldQuote: false, reason: 'active_session', detectedLang: 'zh-Hans' } as const;
+  const context: RoomContext = {
+    roomId: event.roomId,
+    chatType: 'group',
+    members: [],
+    recentHistory: [
+      { eventId: '$dinner', senderId: event.senderId, isAgent: false, timestampMs: NOW - 3000, text: '有没有 Bank 站附近的川菜？' },
+      { eventId: '$peer-office', senderId: '@colleague:matrix.netmind.chat', isAgent: false, timestampMs: NOW - 2000, text: '我公司在 Soho。' },
+      { eventId: '$list', senderId: SPOTTED_MATRIX_ID, isSelf: true, isAgent: true, timestampMs: NOW - 1000, text: 'https://app.manyfold.ai/spotted-london/p/soho-exhibition' },
+    ],
+  };
+  const memories = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+  expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context))
+    .toBe('你公司在哪一站附近？我可以帮你比一下刚才那几个活动。');
+  context.recentHistory[0]!.text = '我公司在 Bank 站附近。';
+  expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context)).toBeNull();
+});
