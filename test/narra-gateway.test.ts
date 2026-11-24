@@ -2430,6 +2430,9 @@ it('asks where the office is when a previous station was only a dining preferenc
     .toBe('你公司在哪一站附近？我可以帮你比一下刚才那几个活动。');
   context.recentHistory[0]!.text = '我公司在 Bank 站附近。';
   expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context)).toBeNull();
+  context.recentHistory[0]!.timestampMs = NOW - 181_000;
+  expect(await fastRespondSpotted(env as unknown as Bindings, event, decision, memories, context))
+    .toBe('你公司在哪一站附近？我可以帮你比一下刚才那几个活动。');
 });
 
 it('routes a station answer only for the same sender after Spotted asks for their office', async () => {

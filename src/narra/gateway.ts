@@ -65,6 +65,8 @@ const OFFICE_DISTANCE_RE =
 const STATED_OFFICE_LOCATION_RE =
   /(?:公司|[辦办]公室)\s*(?:就|是)?在\s*[^哪何？?。！？\s]|\b(?:my|our) office is (?:at|in|near|by)\s+\S/i;
 
+const OFFICE_CONTEXT_WINDOW_MS = 180_000;
+
 const OFFICE_CLARIFICATION: Record<LangCode, string> = {
   'zh-Hans': '你公司在哪一站附近？我可以帮你比一下刚才那几个活动。',
   'zh-Hant': '你公司在哪一站附近？我可以幫你比一下剛才那幾個活動。',
@@ -80,7 +82,7 @@ function isOfficeLocationAnswer(
   if (!STATED_OFFICE_LOCATION_RE.test(text) && !shortStation.test(text)) return false;
   const [clarification, question] = [...(context?.recentHistory ?? [])]
     .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs &&
-      event.timestampMs - turn.timestampMs <= 180_000)
+      event.timestampMs - turn.timestampMs <= OFFICE_CONTEXT_WINDOW_MS)
     .sort((a, b) => b.timestampMs - a.timestampMs);
   return Boolean(clarification && (clarification.isSelf || clarification.senderId === SPOTTED_MATRIX_ID) &&
     Object.values(OFFICE_CLARIFICATION).includes(clarification.text.trim()) &&
@@ -1272,7 +1274,7 @@ export async function fastRespondSpotted(
   if (priorSelfSlugs.length > 0 && OFFICE_DISTANCE_RE.test(cleanText)) {
     const hasOfficeLocation = [cleanText, ...(context?.recentHistory ?? [])
       .filter((turn) => !turn.isAgent && turn.senderId === event.senderId &&
-        turn.timestampMs <= event.timestampMs)
+        turn.timestampMs <= event.timestampMs && event.timestampMs - turn.timestampMs <= OFFICE_CONTEXT_WINDOW_MS)
       .map((turn) => turn.text)].some((text) => STATED_OFFICE_LOCATION_RE.test(text));
     if (hasOfficeLocation) return null;
     return OFFICE_CLARIFICATION[lang];
