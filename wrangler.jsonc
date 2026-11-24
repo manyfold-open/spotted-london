@@ -10,6 +10,9 @@
   // so a plain "app.manyfold.ai/spotted-london" misses ".../spotted-london?fbclid=..." (the Instagram bio link),
   // which then falls through to the shared host's origin and shows error 1033.
   // Keep it in step with BASE_PATH below and "run_worker_first" in `assets`.
+  // workers.dev stays on for the Narra push wake (NARRA_PUSH_URL): Synapse needs
+  // /_matrix/push/v1/notify at a host root, and app.manyfold.ai's root belongs to other apps.
+  "workers_dev": true,
   "routes": [
     { "pattern": "app.manyfold.ai/spotted-london*", "zone_name": "manyfold.ai" }
   ],
@@ -22,7 +25,7 @@
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy", "/sitemap.xml", "/robots.txt", "/spotted-london", "/spotted-london/*"]
+    "run_worker_first": ["/_matrix/*", "/api/*", "/login/*", "/p/*", "/mcp", "/llms.txt", "/privacy", "/sitemap.xml", "/robots.txt", "/spotted-london", "/spotted-london/*"]
   },
 
   // Safe default. Local dev switches to "development" through .dev.vars.
@@ -49,6 +52,13 @@
     // Narra Messenger gateway runtime (enabled with bound Direct Matrix identity).
     "NARRA_GATEWAY_ENABLED": "on",
     "NARRA_SYNC": "on",
+    // Push mode: Synapse wakes the sync Durable Object for each new event instead of it
+    // long-polling /sync around the clock (billed as DO duration). Synapse only accepts a
+    // pusher at exactly /_matrix/push/v1/notify, so this must be a hostname whose root this
+    // Worker serves. Needs the NARRA_PUSH_SECRET secret (>= 16 chars, e.g. `openssl rand -hex 24`
+    // | npx wrangler secret put NARRA_PUSH_SECRET); without it the kit keeps long-polling.
+    "NARRA_SYNC_MODE": "push",
+    "NARRA_PUSH_URL": "https://manyfold-spotted-london.netmind-ai.workers.dev",
     "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
     "NARRA_MATRIX_ID": "@agent-f9388b28:matrix.netmind.chat"
   },
