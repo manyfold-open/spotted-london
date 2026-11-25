@@ -2339,6 +2339,22 @@ describe('spotted-london Narra Gateway', () => {
     expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now })).not.toHaveProperty('independentGroupReply');
   });
 
+  it('only treats a weekday-specific evening schedule as open on that weekday', async () => {
+    const now = Date.parse('2026-11-23T15:00:00Z'); // Monday
+    await env.DB.prepare("DELETE FROM popups WHERE id IN ('address-soho', 'only-tomorrow', 'only-today')").run();
+    const startAt = Date.parse('2026-11-23T00:00:00Z');
+    const endAt = Date.parse('2026-11-29T00:00:00Z');
+    await seedPopup('tuesday-only', { title: 'Tuesday Evening', hoursText: 'Tuesdays 12:00-21:00', startAt, endAt });
+    await seedPopup('saturday-only', { title: 'Saturday Evening', hoursText: 'Saturdays 12:00-21:00', startAt, endAt });
+    const event = makeEvent({ text: '明天下班出去玩吗，可以去哪儿玩', timestampMs: now });
+    const context: RoomContext = { roomId: event.roomId, chatType: 'group', members: [], recentHistory: [] };
+    const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now });
+    const answer = await fastRespondSpotted(env as unknown as Bindings, event, decision,
+      { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
+    expect(answer).toContain('Tuesday Evening');
+    expect(answer).not.toContain('Saturday Evening');
+  });
+
   it('keeps the Friday, Soho, exhibition and free constraints through a later-hours follow-up', async () => {
     const nowMs = Date.parse('2026-11-23T12:00:00Z');
     const startAt = Date.parse('2026-11-27T00:00:00Z');

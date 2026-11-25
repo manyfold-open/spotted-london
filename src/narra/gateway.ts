@@ -115,8 +115,15 @@ const FRIDAY_EVENING_RE = /(?:週五|周五|星期五|禮拜五|礼拜五)\s*(?:
 const AFTER_EVENING_RE = /(?:晚上|晚間|晚间|傍晚)\s*([一二三四五六七八九十]|1[0-2]|[1-9])\s*[點点](?:鐘|钟)?\s*(?:以後|以后|後|后)|\bafter\s+([1-9]|1[0-2])\s*p\.?m\.?\b/i;
 const HOURS_RANGE_RE = /^(?:daily\s+)?(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?\s*[-–—]\s*(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?$/i;
 
-function listedHours(text: string | null): [number, number] | null {
-  const m = HOURS_RANGE_RE.exec(text?.trim() ?? '');
+function listedHours(text: string | null, dayOfWeek: number): [number, number] | null {
+  let hoursText = text?.trim() ?? '';
+  const weekday = /^(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)(?:s)?\s+(.+)$/i.exec(hoursText);
+  if (weekday) {
+    const weekdays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    if (weekdays.indexOf(weekday[1]!.slice(0, 3).toLowerCase()) !== dayOfWeek) return null;
+    hoursText = weekday[2]!;
+  }
+  const m = HOURS_RANGE_RE.exec(hoursText);
   if (!m || Boolean(m[3]) !== Boolean(m[6])) return null;
   const minutes = (hour: string, minute: string | undefined, period: string | undefined) => {
     const h = Number(hour);
@@ -1130,7 +1137,8 @@ async function respondForEvening(
     ...(filter.q ? { q: filter.q } : {}),
   }, now);
   const matches = options.items.filter((item) => {
-    const hours = listedHours(item.hours_text);
+    const targetDayOfWeek = (dow + day - d) % 7;
+    const hours = listedHours(item.hours_text, targetDayOfWeek);
     if (item.example || item.date_kind === 'undated' || !hours || hours[1] <= threshold) return false;
     const opens = Math.max(hours[0], threshold);
     const from = Math.max(now, londonTime(y, m, day, Math.floor(opens / 60), opens % 60));
