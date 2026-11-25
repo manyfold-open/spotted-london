@@ -726,8 +726,15 @@ export async function fetchSpottedUpdates(
   const rooms = await discoverGroupRooms(env);
   if (rooms.length === 0) return [];
 
-  const text = formatPopupsReply(popups, 'en', appBase(env), { isUpdateDigest: true });
+  const base = appBase(env);
+  const text = formatPopupsReply(popups, 'en', base, { isUpdateDigest: true });
   const updateKey = `popups:${popups.map((p) => p.id).sort().join(',')}`;
+  const itemKeys = popups.map((p) => p.id);
+  // The kit posts in the room's language and only the pop-ups that room has not seen yet.
+  const render = (lang: LangCode, fresh: string[]) => {
+    const items = fresh.length > 0 ? popups.filter((p) => fresh.includes(p.id)) : popups;
+    return formatPopupsReply(items, lang, base, { isUpdateDigest: true });
+  };
 
   return rooms.map((roomId) => ({
     updateKey,
@@ -736,6 +743,8 @@ export async function fetchSpottedUpdates(
     title: 'Spotted London verified pop-ups',
     text,
     lang: 'en',
+    itemKeys,
+    render,
     createdAt: new Date(nowMs).toISOString(),
   }));
 }
@@ -1163,6 +1172,9 @@ async function respondForEvening(
   });
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
   if (afterWorkToday) {
+    // Nothing with listed evening hours: let the concierge (A2A) look wider (markets and venues
+    // whose hours are not in the listing) instead of a dead-end "found nothing".
+    if (matches.length === 0 && (await resolveSpottedA2ACredential(env))) return null;
     if (matches.length === 0 && filter.q) {
       if (lang === 'zh-Hant') return `我目前找不到能確認${tomorrow ? '明晚' : '今晚'}六點後在 ${filter.q} 附近還開著的活動。`;
       if (lang === 'zh-Hans') return `我目前找不到能确认${tomorrow ? '明晚' : '今晚'}六点后在 ${filter.q} 附近还开着的活动。`;
@@ -1196,6 +1208,50 @@ async function respondForEvening(
     : lang === 'zh-Hans' ? `这些活动的公告时段涵盖周五 ${time} 之后：`
       : `These events list hours after ${time} on Friday:`;
   return formatPopupsReply(matches, lang, baseUrl, { voice: Boolean(event.isVoice), intro });
+}
+
+/** Words that are part of how people ask, not the name of something they are looking for. */
+const GENERIC_LATIN_WORDS = new Set([
+  'the', 'and', 'for', 'any', 'more', 'what', 'whats', 'where', 'when', 'how', 'which', 'who', 'near', 'nearby',
+  'around', 'there', 'this', 'that', 'with', 'from', 'today', 'tonight', 'tomorrow', 'weekend', 'week', 'london',
+  'pop', 'popup', 'popups', 'ups', 'market', 'markets', 'event', 'events', 'show', 'shows', 'expo', 'fair', 'free',
+  'verified', 'please', 'thanks', 'thank', 'you', 'okay', 'yes', 'hey', 'hello', 'spotted', 'station', 'street',
+  'road', 'christmas', 'xmas', 'food', 'art', 'exhibition', 'exhibitions', 'gallery', 'museum',
+]);
+
+/**
+ * Names in a short message that the list query cannot search for ("Leadenhall Market" -> leadenhall,
+ * "gta快闪在哪里" -> gta). Long English sentences are left to the normal query.
+ */
+export function specificNameTerms(text: string, area?: string): string[] {
+  const words = (text.match(/[A-Za-z0-9][A-Za-z0-9'&-]*/g) ?? [])
+    .filter((w) => /[A-Za-z]/.test(w))
+    .map((w) => w.toLowerCase());
+  if (words.length === 0 || words.length > 3) return [];
+  const areaWords = new Set((area ?? '').toLowerCase().split(/\s+/).filter(Boolean));
+  return words.filter((w) => w.length >= 3 && !GENERIC_LATIN_WORDS.has(w) && !areaWords.has(w) &&
+    !LONDON_AREAS.some((a) => a.toLowerCase() === w));
+}
+
+function popupMentions(item: PublicPopup, terms: string[]): boolean {
+  const hay = [item.title, item.location.borough, item.location.address, item.description]
+    .filter(Boolean).join(' ').toLowerCase();
+  return terms.some((t) => hay.includes(t));
+}
+
+/** Puts pop-ups this agent did not just recommend first, so a repeat question gets new ideas. */
+function preferUnseen(items: PublicPopup[], seenSlugs: string[]): PublicPopup[] {
+  if (seenSlugs.length === 0) return items;
+  const seen = new Set(seenSlugs);
+  return [...items.filter((i) => !seen.has(i.slug)), ...items.filter((i) => seen.has(i.slug))];
+}
+
+/** Slugs this agent linked in its recent messages in this room. */
+function recentlyRecommendedSlugs(context?: RoomContext, turns = 6): string[] {
+  const selfTurns = (context?.recentHistory ?? [])
+    .filter((h) => h.isSelf || h.senderId === SPOTTED_MATRIX_ID)
+    .slice(-turns);
+  return [...new Set(selfTurns.flatMap((t) => extractPopupSlugs(t.text ?? '', 10)))];
 }
 
 export async function fastRespondSpotted(
@@ -1323,7 +1379,10 @@ export async function fastRespondSpotted(
           : lang === 'zh-Hans'
             ? window === 'today' ? '今天伦敦有这些可以去：' : window === 'weekend' ? '这周末伦敦有这些可以去：' : '这几天伦敦有这些可以去：'
             : window === 'today' ? 'On in London today:' : window === 'weekend' ? 'On in London this weekend:' : 'On in London this week:';
-      return formatPopupsReply(items, lang, baseUrl, { voice: Boolean(event.isVoice), intro });
+      return formatPopupsReply(preferUnseen(items, recentlyRecommendedSlugs(context)), lang, baseUrl, {
+        voice: Boolean(event.isVoice),
+        intro,
+      });
     }
   }
 
@@ -1488,6 +1547,14 @@ export async function fastRespondSpotted(
   } catch {
     return null;
   }
+
+  // Asked about something by name and none of the results is it: a generic list would not answer
+  // ("Leadenhall Market" got a King's Cross market), so let the concierge search for it.
+  const named = specificNameTerms(cleanText, filter.q);
+  if (named.length > 0 && !items.some((item) => popupMentions(item, named))) {
+    if (await resolveSpottedA2ACredential(env)) return null;
+  }
+  items = preferUnseen(items, recentlyRecommendedSlugs(context));
 
   if (items.length > 0) {
     const requestedLimit = parseRequestedLimit(cleanText);
