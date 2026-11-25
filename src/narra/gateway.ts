@@ -1217,20 +1217,28 @@ const GENERIC_LATIN_WORDS = new Set([
   'pop', 'popup', 'popups', 'ups', 'market', 'markets', 'event', 'events', 'show', 'shows', 'expo', 'fair', 'free',
   'verified', 'please', 'thanks', 'thank', 'you', 'okay', 'yes', 'hey', 'hello', 'spotted', 'station', 'street',
   'road', 'christmas', 'xmas', 'food', 'art', 'exhibition', 'exhibitions', 'gallery', 'museum',
+  // Everyday English around a question ("any pop up in leadenhall market?").
+  'anything', 'anyone', 'anywhere', 'somewhere', 'place', 'places', 'are', 'can', 'could', 'did', 'does', 'find', 'fun', 'get', 'going', 'good', 'got', 'has', 'have', 'here',
+  'know', 'like', 'look', 'looking', 'new', 'now', 'our', 'recommend', 'should', 'some', 'something', 'stuff',
+  'tell', 'than', 'their', 'them', 'then', 'they', 'things', 'thing', 'try', 'want', 'was', 'were', 'will',
+  'would', 'your', 'friends', 'after', 'work', 'evening', 'night', 'open', 'happening', 'cool', 'nice', 'best',
+  'all', 'also', 'but', 'not', 'one', 'ones', 'out', 'see', 'visit', 'worth', 'shop', 'shops', 'store', 'stores',
 ]);
 
 /**
- * Names in a short message that the list query cannot search for ("Leadenhall Market" -> leadenhall,
- * "gta快闪在哪里" -> gta). Long English sentences are left to the normal query.
+ * Names in a message that the list query cannot search for ("Leadenhall Market" and "any pop up in
+ * leadenhall market?" -> leadenhall, "gta快闪在哪里" -> gta). Ordinary sentences are left to the query.
  */
 export function specificNameTerms(text: string, area?: string): string[] {
   const words = (text.match(/[A-Za-z0-9][A-Za-z0-9'&-]*/g) ?? [])
     .filter((w) => /[A-Za-z]/.test(w))
     .map((w) => w.toLowerCase());
-  if (words.length === 0 || words.length > 3) return [];
+  if (words.length === 0 || words.length > 12) return [];
   const areaWords = new Set((area ?? '').toLowerCase().split(/\s+/).filter(Boolean));
-  return words.filter((w) => w.length >= 3 && !GENERIC_LATIN_WORDS.has(w) && !areaWords.has(w) &&
+  const named = words.filter((w) => w.length >= 3 && !GENERIC_LATIN_WORDS.has(w) && !areaWords.has(w) &&
     !LONDON_AREAS.some((a) => a.toLowerCase() === w));
+  // One or two leftover words are a name ("leadenhall", "gta6"); more means an ordinary sentence.
+  return named.length <= 2 ? named : [];
 }
 
 function popupMentions(item: PublicPopup, terms: string[]): boolean {
