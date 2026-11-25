@@ -69,8 +69,8 @@ export async function listPopups(db: D1Database, q: Record<string, string>, now:
   if (q.free === '1') { where.push("price_type = 'free'"); }
   if (q.q) {
     const like = `%${q.q.replace(/[%_\\]/g, m => '\\' + m).slice(0, 80)}%`;
-    where.push("(title LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR borough LIKE ? ESCAPE '\\')");
-    args.push(like, like, like);
+    where.push("(title LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR borough LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\')");
+    args.push(like, like, like, like);
   }
 
   let near: { lat: number; lng: number; radius: number } | null = null;
