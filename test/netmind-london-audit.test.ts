@@ -58,6 +58,9 @@ describe('Netmind London audit fixes', () => {
 
   it('finds the specific name in a short message', () => {
     expect(specificNameTerms('Leadenhall Market')).toEqual(['leadenhall']);
+    expect(specificNameTerms('any pop up in leadenhall market？')).toEqual(['leadenhall']);
+    expect(specificNameTerms('Is there anything fun at Leadenhall Market this weekend?')).toEqual(['leadenhall']);
+    expect(specificNameTerms('What can we do in London tonight after work?')).toEqual([]);
     expect(specificNameTerms('gta快闪在哪里')).toEqual(['gta']);
     expect(specificNameTerms('有什么popup可以去玩吗')).toEqual([]);
     expect(specificNameTerms('Any more?')).toEqual([]);
@@ -70,6 +73,8 @@ describe('Netmind London audit fixes', () => {
     const context: RoomContext = { roomId: event.roomId, chatType: 'group', members: [], recentHistory: [] };
     const decision = { shouldReply: true, tier: 0, reason: 'explicit_mention', confidence: 1, detectedLang: 'en', shouldQuote: false } as const;
     expect(await fastRespondSpotted(A2A_ENV, event, decision, MEM, context)).toBeNull();
+    // Same question as a sentence (Netmind London, 12:05).
+    expect(await fastRespondSpotted(A2A_ENV, makeEvent('any pop up in leadenhall market？'), decision, MEM, context)).toBeNull();
     // A matching listing is still answered straight from the database.
     await seed('nla_leaden', 'Leadenhall Market Christmas Lights', 'City of London');
     const reply = await fastRespondSpotted(A2A_ENV, event, decision, MEM, context);
