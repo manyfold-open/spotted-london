@@ -1077,6 +1077,7 @@ async function respondForEvening(
     (DINNER_AND_NEARBY_EXHIBITION_RE.test(cleanText.trim()) && !/中午|午餐|午飯|午饭|\blunch\b/i.test(cleanText));
   const explicitFriday = FRIDAY_EVENING_RE.test(cleanText) || (FRIDAY_RE.test(cleanText) && (after || afterDinner));
   const afterWorkToday = AFTER_WORK_OUTING_RE.test(cleanText);
+  const tomorrow = /明天|明晚|\btomorrow\b/i.test(cleanText);
   if (!after && !explicitFriday && !afterWorkToday) return null;
 
   let filter = extractPopupQueryFilter(cleanText);
@@ -1100,11 +1101,11 @@ async function respondForEvening(
   const threshold = (hour % 12 + 12) * 60;
   const now = event.timestampMs;
   const { y, m, d, dow } = londonParts(now);
-  const day = afterWorkToday ? d : d + (5 - dow + 7) % 7;
+  const day = afterWorkToday ? d + (tomorrow ? 1 : 0) : d + (5 - dow + 7) % 7;
   const dayStart = londonTime(y, m, day);
   const dayEnd = londonTime(y, m, day + 1);
   const options = await listPopups(env.DB, {
-    when: afterWorkToday ? 'today' : 'week', limit: '50',
+    when: afterWorkToday && !tomorrow ? 'today' : 'week', limit: '50',
     ...(filter.category ? { category: filter.category } : {}),
     ...(filter.free ? { free: filter.free } : {}),
     ...(filter.tag ? { tag: filter.tag } : {}),
@@ -1122,12 +1123,21 @@ async function respondForEvening(
   });
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
   if (afterWorkToday) {
+    if (tomorrow && matches.length === 0) {
+      return lang === 'zh-Hant' ? '我目前找不到能確認明晚六點後還開著的活動。你下班後想去哪一帶？'
+        : lang === 'zh-Hans' ? '我目前找不到能确认明晚六点后还开着的活动。你下班后想去哪一带？'
+        : 'I couldn’t confirm any events still open after 6pm tomorrow. Which area works for you after work?';
+    }
     if (matches.length === 0) {
       return lang === 'zh-Hant' ? '我目前找不到能確認今晚六點後還開著的活動。你下班後想去哪一帶？'
         : lang === 'zh-Hans' ? '我目前找不到能确认今晚六点后还开着的活动。你下班后想去哪一带？'
         : 'I couldn’t confirm any events still open after 6pm tonight. Which area works for you after work?';
     }
-    const intro = lang === 'zh-Hant' ? '這幾個活動今晚六點後還開著：'
+    const intro = tomorrow
+      ? lang === 'zh-Hant' ? '這幾個活動明晚六點後還開著：'
+        : lang === 'zh-Hans' ? '这几个活动明晚六点后还开着：'
+          : 'These events list opening hours after 6pm tomorrow:'
+      : lang === 'zh-Hant' ? '這幾個活動今晚六點後還開著：'
       : lang === 'zh-Hans' ? '这几个活动今晚六点后还开着：'
       : 'These events list opening hours after 6pm tonight:';
     return formatPopupDetailsReply(matches.slice(0, 2), lang, baseUrl, { voice: Boolean(event.isVoice), intro });
@@ -1247,7 +1257,7 @@ export async function fastRespondSpotted(
 
   // A bare "what can I do tonight / this weekend?" (PLAIN_PLANS_ASK_RE) with nothing more specific
   // to go on: list what is on, instead of the unmentioned-group silence further down.
-  if (PLAIN_PLANS_ASK_RE.test(cleanText.trim())) {
+  if (PLAIN_PLANS_ASK_RE.test(cleanText.trim()) && !/明天|明晚|\btomorrow\b/i.test(cleanText)) {
     const weekend = /週末|周末|weekend/i.test(cleanText);
     const today = /今晚|今天|晚上|明晚|下班|tonight|today/i.test(cleanText);
     const firstWindow: 'today' | 'weekend' | 'week' = weekend ? 'weekend' : today ? 'today' : 'week';
