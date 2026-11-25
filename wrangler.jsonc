@@ -61,6 +61,10 @@
     // Group triage that works in any language, plus the elected fallback so a real question nobody
     // claims still gets one answer (narra-agent-kit README, "Group triage ..."). Unset to go back.
     "NARRA_GROUP_TRIAGE": "ask",
+    // Chat-native (v2) pipeline from narra-agent-kit, only in the "zack test" room. Every other room
+    // (Netmind London included) stays on v1. Roll back: set NARRA_PIPELINE to "v1".
+    "NARRA_PIPELINE": "v2",
+    "NARRA_PIPELINE_ROOMS": "!ttLCzSZsdFiPSEPDyO:matrix.netmind.chat",
     "NARRA_PUSH_URL": "https://manyfold-spotted-london.netmind-ai.workers.dev",
     "NARRA_AGENT_ID": "agt_agq66frxtn7pnajpsidj2qhike",
     "NARRA_MATRIX_ID": "@agent-f9388b28:matrix.netmind.chat"

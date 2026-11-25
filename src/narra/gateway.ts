@@ -1007,7 +1007,10 @@ export function extractPopupQueryFilter(rawText: string): PopupQueryFilter {
   };
 }
 
-async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<PopupQueryFilter> | null> {
+/** What the model read from a pop-up question, beyond the list filter: an evening cut-off and a count. */
+type AiPopupQuery = Partial<PopupQueryFilter> & { afterHour?: number; limit?: number };
+
+async function tryAiExtractFilter(env: Bindings, text: string): Promise<AiPopupQuery | null> {
   if (!env.AI || typeof (env.AI as { run?: unknown }).run !== 'function') return null;
   try {
     const model = (env.AI_TEXT_MODEL ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast') as keyof AiModels;
@@ -1018,7 +1021,9 @@ async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<
           content:
             'Extract JSON filter from a London pop-up query: {"isPopupQuery":boolean,"when":"today|weekend|week|all","category":"optional one of ' +
             CATEGORIES.join(',') +
-            '","free":boolean,"q":"optional neighborhood/keyword"}. Set isPopupQuery=false for casual chatter or unrelated topics. Reply JSON only.',
+            '","free":boolean,"q":"optional neighborhood, venue or name the user asked about, in English as written in London addresses",' +
+            '"after":"optional hour 0-23: the user wants things still open after this time (tonight or after work = 18)","limit":"optional number of picks the user asked for"}. ' +
+            'Set isPopupQuery=false for casual chatter or unrelated topics. Reply JSON only.',
         },
         { role: 'user', content: text.slice(0, 300) },
       ],
@@ -1041,11 +1046,15 @@ async function tryAiExtractFilter(env: Bindings, text: string): Promise<Partial<
         : undefined;
     const q = typeof parsed.q === 'string' && parsed.q.trim() ? parsed.q.trim().slice(0, 60) : undefined;
     if (!cat && parsed.free !== true && !q && parsed.isPopupQuery !== true) return null;
+    const after = Number(parsed.after);
+    const limit = Number(parsed.limit);
     return {
       when,
       ...(cat ? { category: cat } : {}),
       ...(parsed.free === true ? { free: '1' } : {}),
       ...(q ? { q } : {}),
+      ...(parsed.after !== null && parsed.after !== '' && Number.isInteger(after) && after >= 12 && after <= 23 ? { afterHour: after } : {}),
+      ...(Number.isInteger(limit) && limit >= 1 && limit <= 5 ? { limit } : {}),
     };
   } catch {
     // AI binding may be unmocked in local tests or unavailable; fall back seamlessly.
@@ -1115,6 +1124,24 @@ export function spottedOffTopicRedirect(lang: LangCode): string {
   return "I focus on London pop-ups, markets, exhibitions, and free things to do — that one is outside my lane! Want to see what's on around London this weekend?";
 }
 
+/**
+ * Whether a pop-up's listed hours keep it open after `thresholdMin` (minutes after midnight) on the
+ * London day `dayOffset` days from `now`, and it runs that day. Unknown hours count as no.
+ */
+function listedOpenAfter(item: PublicPopup, now: number, dayOffset: number, thresholdMin: number): boolean {
+  const { y, m, d, dow } = londonParts(now);
+  const day = d + dayOffset;
+  const dayStart = londonTime(y, m, day);
+  const dayEnd = londonTime(y, m, day + 1);
+  const hours = listedHours(item.hours_text, (dow + dayOffset) % 7);
+  if (item.example || item.date_kind === 'undated' || !hours || hours[1] <= thresholdMin) return false;
+  const opens = Math.max(hours[0], thresholdMin);
+  const from = Math.max(now, londonTime(y, m, day, Math.floor(opens / 60), opens % 60));
+  const to = Math.min(dayEnd, londonTime(y, m, day, Math.floor(hours[1] / 60), hours[1] % 60));
+  return from >= dayStart && from < to && (item.ranges ?? [[item.start_at, item.end_at]])
+    .some(([start, end]) => start < to && end > from);
+}
+
 async function respondForEvening(
   env: Bindings,
   event: InboundEvent,
@@ -1151,10 +1178,8 @@ async function respondForEvening(
   const hour = Number(after?.[2]) || Number(after?.[1]) || chineseHour || 6;
   const threshold = (hour % 12 + 12) * 60;
   const now = event.timestampMs;
-  const { y, m, d, dow } = londonParts(now);
+  const { d, dow } = londonParts(now);
   const day = afterWorkToday ? d + (tomorrow ? 1 : 0) : d + (5 - dow + 7) % 7;
-  const dayStart = londonTime(y, m, day);
-  const dayEnd = londonTime(y, m, day + 1);
   const options = await listPopups(env.DB, {
     when: afterWorkToday && !tomorrow ? 'today' : 'week', limit: '50',
     ...(filter.category ? { category: filter.category } : {}),
@@ -1163,16 +1188,7 @@ async function respondForEvening(
     ...(filter.verified ? { verified: filter.verified } : {}),
     ...(filter.q ? { q: filter.q } : {}),
   }, now);
-  const matches = options.items.filter((item) => {
-    const targetDayOfWeek = (dow + day - d) % 7;
-    const hours = listedHours(item.hours_text, targetDayOfWeek);
-    if (item.example || item.date_kind === 'undated' || !hours || hours[1] <= threshold) return false;
-    const opens = Math.max(hours[0], threshold);
-    const from = Math.max(now, londonTime(y, m, day, Math.floor(opens / 60), opens % 60));
-    const to = Math.min(dayEnd, londonTime(y, m, day, Math.floor(hours[1] / 60), hours[1] % 60));
-    return from >= dayStart && from < to && (item.ranges ?? [[item.start_at, item.end_at]])
-      .some(([start, end]) => start < to && end > from);
-  });
+  const matches = options.items.filter((item) => listedOpenAfter(item, now, day - d, threshold));
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
   if (afterWorkToday) {
     if (matches.length === 0 && filter.free) {
@@ -1604,8 +1620,21 @@ export async function fastRespondSpotted(
 }
 
 const MAX_PREFETCH_CHARS = 1_400;
+/** Room for more records when the user asked for more than three picks. */
+const PREFETCH_CHARS_PER_ITEM = 450;
+const DEFAULT_PREFETCH_ITEMS = 3;
+const TOMORROW_RE = /明天|明晚|\btomorrow\b/i;
 
-function formatPrefetchedPopup(item: PublicPopup, lang: LangCode, baseUrl: string): string {
+function isVerifiedStatus(status: string): boolean {
+  return status === 'verified_admin' || status === 'verified_community';
+}
+
+function formatPrefetchedPopup(
+  item: PublicPopup,
+  lang: LangCode,
+  baseUrl: string,
+  notes: { index?: number; seen?: boolean; evening?: { label: string; open: boolean } } = {},
+): string {
   const area = item.location.borough?.trim() || '';
   const addr = item.location.address?.trim() || '';
   const dates = formatPopupDates(item, lang);
@@ -1616,18 +1645,168 @@ function formatPrefetchedPopup(item: PublicPopup, lang: LangCode, baseUrl: strin
   const pageUrl = `${baseUrl}/p/${item.slug}`;
 
   return [
-    `[${item.slug}] ${item.title}`,
+    `${notes.index ? `${notes.index}. ` : ''}[${item.slug}] ${item.title}`,
+    `Status: ${isVerifiedStatus(item.status) ? 'verified' : item.source_checked ? 'not confirmed yet (source checked)' : 'not confirmed yet'}`,
     area ? `Area: ${area}` : '',
     addr ? `Address: ${addr}` : '',
     dates ? `Dates: ${dates}` : '',
     hours ? `Hours: ${hours}` : '',
+    notes.evening ? `Open after ${notes.evening.label}: ${notes.evening.open ? 'yes, by listed hours' : 'not confirmed'}` : '',
     price ? `Price: ${price}` : '',
     excerpt ? `Info: ${excerpt}` : '',
+    notes.seen ? 'You already shared this in this room recently' : '',
     `Page: ${pageUrl}`,
     officialUrl ? `Official: ${officialUrl}` : '',
   ]
     .filter(Boolean)
     .join(' | ');
+}
+
+function capRecords(lines: string[], maxChars: number): string {
+  const combined = lines.join('\n');
+  return combined.length <= maxChars ? combined : `${combined.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+async function popupsBySlug(env: Bindings, slugs: string[]): Promise<PublicPopup[]> {
+  if (slugs.length === 0) return [];
+  try {
+    const placeholders = slugs.map(() => '?').join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT *, (SELECT COALESCE(i.thumb_key, i.r2_key) FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
+          ${SOURCE_CHECKED_SQL}
+       FROM popups
+       WHERE slug IN (${placeholders})
+         AND is_example = 0
+       LIMIT ${slugs.length}`,
+    )
+      .bind(...slugs)
+      .all<PopupRow & { cover_key?: string | null; source_checked?: number | null }>();
+    return [...(results ?? [])]
+      .sort((a, b) => slugs.indexOf(a.slug) - slugs.indexOf(b.slug))
+      .map((r) => toPublic(r));
+  } catch {
+    return [];
+  }
+}
+
+/** What the latest message asks Spotted to look up, read by the existing filter extraction (rules, then the model). */
+interface PrefetchQuery {
+  isSearch: boolean;
+  when: PopupQueryFilter['when'];
+  params: Record<string, string>;
+  /** Places or names to find ("Covent Garden", "leadenhall", "gta"). */
+  places: string[];
+  /** The place came from leftover words, not from a known area or the model. */
+  placeIsGuess: boolean;
+  afterHour?: number;
+  dayOffset: number;
+  limit: number;
+}
+
+async function readPrefetchQuery(env: Bindings, text: string, now: number): Promise<PrefetchQuery> {
+  const rules = extractPopupQueryFilter(text);
+  const ai = text.trim() ? await tryAiExtractFilter(env, text) : null;
+  const isSearch = rules.isClearSearch || Boolean(ai);
+  const timeHit = TIME_TODAY_RE.test(text) || TIME_WEEKEND_RE.test(text) || TIME_WEEK_RE.test(text);
+  const when = timeHit ? rules.when : (ai?.when ?? rules.when);
+  const category = rules.category ?? ai?.category;
+  const free = rules.free ?? ai?.free;
+  const aiPlace = ai?.q && (specificNameTerms(ai.q).length > 0 || LONDON_AREAS.some((a) => a.toLowerCase() === ai.q!.toLowerCase()))
+    ? ai.q
+    : undefined;
+  // Names the list filters cannot search ("leadenhall", "gta"); only a guess, used when nothing better names the place.
+  const named = !rules.q && !ai ? specificNameTerms(text, rules.q) : [];
+  const places = [...new Set([rules.q, aiPlace].filter((p): p is string => Boolean(p?.trim())))];
+
+  const evening = AFTER_EVENING_RE.exec(text);
+  const chineseHour = evening?.[1] ? '一二三四五六七八九十'.indexOf(evening[1]) + 1 : 0;
+  const ruleHour = evening ? ((Number(evening[2]) || Number(evening[1]) || chineseHour || 6) % 12) + 12 : undefined;
+  const afterHour = ruleHour ?? (AFTER_WORK_OUTING_RE.test(text) ? 18 : ai?.afterHour);
+  const { dow } = londonParts(now);
+  const dayOffset = TOMORROW_RE.test(text) ? 1 : FRIDAY_RE.test(text) ? (5 - dow + 7) % 7 : 0;
+  const limit = parseRequestedLimit(text) ?? ai?.limit ?? DEFAULT_PREFETCH_ITEMS;
+
+  return {
+    isSearch,
+    when: afterHour !== undefined && dayOffset > 0 && when === 'today' ? 'week' : when,
+    params: {
+      ...(category ? { category } : {}),
+      ...(rules.tag ? { tag: rules.tag } : {}),
+      ...(free ? { free } : {}),
+      ...(rules.verified ? { verified: rules.verified } : {}),
+    },
+    places: places.length > 0 ? places : named.length > 0 ? [named.join(' ')] : [],
+    placeIsGuess: places.length === 0 && named.length > 0,
+    ...(afterHour !== undefined ? { afterHour } : {}),
+    dayOffset,
+    limit: Math.max(1, Math.min(5, limit)),
+  };
+}
+
+/**
+ * Pop-ups for the latest message: the named place first (title, host, area or address, then the
+ * description), then the filters and time window. Records the agent shared here recently go last
+ * and verified ones lead, so a repeat question gets fresh, checked ideas.
+ */
+async function searchForPrefetch(
+  env: Bindings,
+  query: PrefetchQuery,
+  seenSlugs: string[],
+  now: number,
+): Promise<{ items: PublicPopup[]; notes: string[] }> {
+  const notes: string[] = [];
+  const list = async (params: Record<string, string>) =>
+    ((await listPopups(env.DB, { limit: '20', ...params }, now).catch(() => null))?.items ?? []).filter((i) => !i.example);
+  const base = { when: query.when, ...query.params };
+
+  let items: PublicPopup[] = [];
+  if (query.places.length > 0) {
+    const placeLabel = query.places.join(' / ');
+    for (const place of query.places) {
+      items = await list({ ...base, q: place });
+      if (items.length > 0) break;
+    }
+    if (items.length === 0) {
+      for (const place of query.places) {
+        items = await list({ when: 'all', q: place });
+        if (items.length > 0) break;
+      }
+      if (items.length === 0) {
+        const words = query.places.flatMap((p) => p.toLowerCase().split(/\s+/)).filter((w) => w.length >= 3);
+        items = (await list({ when: 'all', limit: '50' })).filter((i) => popupMentions(i, words));
+      }
+      if (items.length > 0) {
+        notes.push(`Found listings for ${placeLabel}, but not for every filter or the asked time; check their dates before recommending.`);
+      } else if (query.placeIsGuess) {
+        // The "place" may just be ordinary words: fall back to the filters, but flag it.
+        items = await list(base);
+        notes.push(`No listing mentions "${placeLabel}". If the user asked about that place or name, say so plainly and do not present these as being there.`);
+      } else {
+        notes.push(`No Spotted listing mentions ${placeLabel}. Say so plainly. Do not present pop-ups elsewhere as being there.`);
+      }
+    }
+  } else {
+    items = await list(base);
+    if (items.length === 0 && query.when !== 'week' && query.when !== 'all') {
+      items = await list({ ...base, when: 'week' });
+      if (items.length > 0) notes.push(`Nothing listed for ${query.when}; these run this week, say which days.`);
+    }
+  }
+
+  const seen = new Set(seenSlugs);
+  const open = (i: PublicPopup) =>
+    query.afterHour !== undefined && listedOpenAfter(i, now, query.dayOffset, query.afterHour * 60);
+  const rank = (i: PublicPopup) =>
+    (open(i) ? 0 : 4) + (seen.has(i.slug) ? 2 : 0) + (isVerifiedStatus(i.status) ? 0 : 1);
+  items = items
+    .map((item, order) => ({ item, order }))
+    .sort((a, b) => rank(a.item) - rank(b.item) || a.order - b.order)
+    .map(({ item }) => item);
+
+  if (query.afterHour !== undefined && items.length > 0 && !items.some(open)) {
+    notes.push(`No listing here can be confirmed open after ${query.afterHour}:00 by its listed hours. Say you could not confirm any; do not recommend these as open then.`);
+  }
+  return { items: items.slice(0, query.limit), notes };
 }
 
 export async function buildSpottedExtraEnvelopeFields(
@@ -1639,53 +1818,97 @@ export async function buildSpottedExtraEnvelopeFields(
 ): Promise<Record<string, string> | null> {
   if (!env.DB) return null;
   const officeFollowUp = isOfficeLocationAnswer(event, context);
-
-  const replySlugs = context?.replyToTarget?.text
-    ? extractPopupSlugs(context.replyToTarget.text)
-    : [];
-  const slugs = replySlugs.length > 0 ? replySlugs : extractPriorSelfPopupSlugs(context);
-
-  let items: PublicPopup[] = [];
-  if (slugs.length > 0) {
-    try {
-      const placeholders = slugs.map(() => '?').join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT *, (SELECT COALESCE(i.thumb_key, i.r2_key) FROM popup_images i WHERE i.popup_id = popups.id ORDER BY position LIMIT 1) AS cover_key,
-            ${SOURCE_CHECKED_SQL}
-         FROM popups
-         WHERE slug IN (${placeholders})
-           AND is_example = 0
-         LIMIT 3`,
-      )
-        .bind(...slugs)
-        .all<PopupRow & { cover_key?: string | null; source_checked?: number | null }>();
-      const sorted = [...(results ?? [])].sort((a, b) => slugs.indexOf(a.slug) - slugs.indexOf(b.slug));
-      items = sorted.map((r) => toPublic(r));
-    } catch {
-      items = [];
-    }
-  }
-
-  if (items.length === 0 && !officeFollowUp) {
-    const weekend = await listPopups(env.DB, { when: 'weekend', limit: '5' }, Date.now()).catch(() => null);
-    items = (weekend?.items ?? []).filter((i) => !i.example).slice(0, 3);
-  }
-
   const officeTask = 'The latest user message answers your question about the office location. Compare only the previous event options in d1_prefetched_records using that location as the origin. Keep their links. If a distance or route cannot be verified, say so and do not invent a number. If the prior options cannot be recovered, ask which events the user meant.';
-  if (items.length === 0) return officeFollowUp ? { office_comparison_task: officeTask } : null;
-
+  const lang = decision.detectedLang;
   const baseUrl = appBase(env);
-  const combined = items
-    .map((item) => formatPrefetchedPopup(item, decision.detectedLang, baseUrl))
-    .join('\n');
-  const trimmed =
-    combined.length <= MAX_PREFETCH_CHARS
-      ? combined
-      : `${combined.slice(0, MAX_PREFETCH_CHARS - 1).trimEnd()}…`;
-  return {
-    d1_prefetched_records: trimmed,
-    ...(officeFollowUp && { office_comparison_task: officeTask }),
-  };
+  const now = Date.now();
+
+  // Pop-ups the message replies to, else the ones in this agent's latest list here: follow-ups
+  // ("the second one", "do I need to book?", "what time does it close?") are about these.
+  const replySlugs = context?.replyToTarget?.text ? extractPopupSlugs(context.replyToTarget.text) : [];
+  const followUp = await popupsBySlug(env, replySlugs.length > 0 ? replySlugs : extractPriorSelfPopupSlugs(context));
+
+  if (officeFollowUp) {
+    if (followUp.length === 0) return { office_comparison_task: officeTask };
+    return {
+      d1_prefetched_records: capRecords(followUp.map((i, n) => formatPrefetchedPopup(i, lang, baseUrl, { index: n + 1 })), MAX_PREFETCH_CHARS),
+      office_comparison_task: officeTask,
+    };
+  }
+
+  // A short answer to Spotted's own question ("Soho", "too expensive, free ones?") carries on the earlier ask.
+  const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
+  const priorAsk = priorAfterWorkAreaQuestion(event, context);
+  const searchText = priorAsk ? `${priorAsk} ${cleanText}` : cleanText;
+  const query = await readPrefetchQuery(env, searchText, now);
+  const seenSlugs = recentlyRecommendedSlugs(context);
+
+  let found: { items: PublicPopup[]; notes: string[] } | null = null;
+  if (query.isSearch) {
+    found = await searchForPrefetch(env, query, seenSlugs, now).catch(() => null);
+  } else if (followUp.length === 0) {
+    // Nothing specific asked and nothing to follow up: a few current picks, fresh ones first.
+    const weekend = ((await listPopups(env.DB, { when: 'weekend', limit: '12' }, now).catch(() => null))?.items ?? [])
+      .filter((i) => !i.example);
+    const seen = new Set(seenSlugs);
+    const rank = (i: PublicPopup) => (seen.has(i.slug) ? 2 : 0) + (isVerifiedStatus(i.status) ? 0 : 1);
+    found = {
+      items: weekend.map((item, order) => ({ item, order }))
+        .sort((a, b) => rank(a.item) - rank(b.item) || a.order - b.order)
+        .map(({ item }) => item)
+        .slice(0, DEFAULT_PREFETCH_ITEMS),
+      notes: [],
+    };
+  }
+
+  const seen = new Set(seenSlugs);
+  const evening = query.afterHour !== undefined
+    ? { label: `${query.afterHour}:00${query.dayOffset === 1 ? ' tomorrow' : query.dayOffset > 1 ? ' on Friday' : ''}` }
+    : undefined;
+  const format = (items: PublicPopup[], withEvening: boolean) =>
+    items.map((i, n) => formatPrefetchedPopup(i, lang, baseUrl, {
+      index: n + 1,
+      seen: seen.has(i.slug),
+      ...(withEvening && evening
+        ? { evening: { ...evening, open: listedOpenAfter(i, now, query.dayOffset, query.afterHour! * 60) } }
+        : {}),
+    }));
+  const maxChars = Math.max(MAX_PREFETCH_CHARS, query.limit * PREFETCH_CHARS_PER_ITEM);
+
+  const fields: Record<string, string> = {};
+  if (followUp.length > 0) {
+    // Earlier list first, as before; a new search in the same message goes alongside it.
+    fields.d1_prefetched_records = capRecords(format(followUp, false), MAX_PREFETCH_CHARS);
+    if (found && query.isSearch) {
+      fields.d1_search_results = found.items.length > 0 ? capRecords(format(found.items, true), maxChars) : '(none)';
+    }
+  } else if (found && found.items.length > 0) {
+    fields.d1_prefetched_records = capRecords(format(found.items, query.isSearch), maxChars);
+  }
+
+  if (found && query.isSearch) {
+    const scope = [
+      query.places.length > 0 ? `place: ${query.places.join(' / ')}` : '',
+      `when: ${query.when}`,
+      query.params.category ? `category: ${query.params.category}` : '',
+      query.params.free ? 'free only' : '',
+      query.params.tag ? `tag: ${query.params.tag}` : '',
+      evening ? `open after ${evening.label}` : '',
+      query.limit !== DEFAULT_PREFETCH_ITEMS ? `asked for ${query.limit}` : '',
+    ].filter(Boolean).join(', ');
+    fields.d1_search_scope = [
+      `Spotted database search for the latest message (${scope}).`,
+      followUp.length > 0
+        ? 'd1_prefetched_records are the pop-ups from your earlier list or the replied-to message; d1_search_results are new matches. Use whichever the message is about.'
+        : '',
+      found.items.length === 0 ? 'No listing matches. Say so; do not invent pop-ups.' : '',
+      ...found.notes,
+      'Only recommend pop-ups from these records, in their order. Prefer ones not marked as already shared. Mention when a pick is not confirmed yet.',
+    ].filter(Boolean).join(' ');
+  } else if (!fields.d1_prefetched_records) {
+    return null;
+  }
+  return fields;
 }
 
 export const spottedThinkingMessage = (lang: LangCode): string =>
@@ -1703,6 +1926,22 @@ export const spottedThinkingMessage = (lang: LangCode): string =>
  */
 export const PLAIN_PLANS_ASK_RE =
   /^(?:今晚|今天晚上|晚上|今天|明天|明晚|週末|周末|這週末|这周末|下班後|下班后)?[ \t]*(?:可以|能|要|有啥|有什麼|有什么|有沒有|有没有)?[ \t]*(?:幹嘛|干嘛|做什麼|做什么|做啥|去哪|去哪裡|去哪里|去哪玩|玩什麼|玩什么|玩啥|好玩的|活動|活动)[ \t]*(?:嗎|吗|呢|啊|呀|好)?[？?！!。]*$|^(?:what\s+(?:can\s+i|to)\s+do|anything\s+(?:fun\s+)?(?:on|to\s+do))\s+(?:tonight|this\s+weekend|today)\??$/i;
+
+/** Example asks for the v2 relevance gate, in the room's three languages. */
+export const SPOTTED_WAKE_EXAMPLES = [
+  '這週末倫敦有什麼快閃活動？',
+  '今晚 Covent Garden 附近有什麼可以逛的？',
+  '倫敦最近有哪些免費的展覽？',
+  '這週末有推薦的市集嗎？',
+  '这周末伦敦有什么快闪店可以去？',
+  '下班后 Shoreditch 有什么好玩的活动？',
+  '伦敦有 GTA 6 的快闪吗？',
+  'Any pop-ups in Leadenhall Market?',
+  'What can we do near Soho tonight?',
+  'Any good weekend markets in London?',
+  'Free art exhibitions on in London this week?',
+  'Any sample sales happening this weekend?',
+];
 
 export function createSpottedGatewayConfig(
   overrides: Partial<NarraGatewayConfig<Bindings>> = {},
@@ -1728,6 +1967,10 @@ export function createSpottedGatewayConfig(
     buildExtraEnvelopeFields: buildSpottedExtraEnvelopeFields,
     thinkingMessage: spottedThinkingMessage,
     enableA2AFailureReply: true,
+    // Chat-native pipeline (rooms in NARRA_PIPELINE_ROOMS): the relevance gate compares each
+    // unaddressed group message with domainDescription and these asks. fastRespond and triageModel
+    // are not used there; the brain gets buildExtraEnvelopeFields' records instead.
+    v2: { wakeExamples: SPOTTED_WAKE_EXAMPLES },
     ...overrides,
   };
 }
