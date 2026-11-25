@@ -2313,6 +2313,27 @@ describe('spotted-london Narra Gateway', () => {
     expect(answer).not.toContain('Today Only');
   });
 
+  it('continues an after-work area clarification for the same speaker', async () => {
+    const now = Date.parse('2026-11-23T15:00:00Z');
+    const event = makeEvent({ text: 'Soho 附近', timestampMs: now });
+    const context: RoomContext = {
+      roomId: event.roomId, chatType: 'group', latestHumanEventId: event.eventId,
+      members: [{ matrixId: '@agent-b2b526f3:matrix.netmind.chat', displayName: 'London Chinese Food', isAgent: true }],
+      recentHistory: [
+        { eventId: '$q', senderId: event.senderId, isAgent: false, timestampMs: now - 2000, text: '明天下班出去玩吗，可以去哪儿玩' },
+        { eventId: '$a', senderId: SPOTTED_MATRIX_ID, isAgent: true, isSelf: true, timestampMs: now - 1000, text: '我目前找不到能确认明晚六点后还开着的活动。你下班后想去哪一带？' },
+        { eventId: event.eventId, senderId: event.senderId, isAgent: false, timestampMs: now, text: event.text },
+      ],
+    };
+    const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now });
+    expect(decision).toMatchObject({ shouldReply: true, independentGroupReply: true });
+    const reply = await fastRespondSpotted(env as unknown as Bindings, event, decision,
+      { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
+    expect(reply).toContain('明晚');
+    context.recentHistory[0]!.senderId = '@other:matrix.netmind.chat';
+    expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now })).not.toHaveProperty('independentGroupReply');
+  });
+
   it('keeps the Friday, Soho, exhibition and free constraints through a later-hours follow-up', async () => {
     const nowMs = Date.parse('2026-11-23T12:00:00Z');
     const startAt = Date.parse('2026-11-27T00:00:00Z');

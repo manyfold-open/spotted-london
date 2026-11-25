@@ -59,6 +59,23 @@ const SHELVED_EVENT_TOPIC_RE =
 const AFTER_WORK_OUTING_RE =
   /(?:下班(?:後|后)?|今晚).{0,8}(?:去哪[兒儿裡里]?玩|哪[裡里]好玩)|\b(?:where (?:can|should) we go|what (?:can|should) we do) after work\b/i;
 
+const SHORT_AREA_REPLY_RE = /^(?:在|去|靠近|near\s+)?[A-Za-z][A-Za-z '\-]{1,40}(?:附近|一帶|一带|周邊|周边)?[。.!！\s]*$/i;
+
+function priorAfterWorkAreaQuestion(event: Pick<InboundEvent, 'eventId' | 'text' | 'senderId' | 'timestampMs'>, context?: RoomContext): string | undefined {
+  if (!SHORT_AREA_REPLY_RE.test(event.text.trim())) return undefined;
+  const prior = [...(context?.recentHistory ?? [])]
+    .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs &&
+      event.timestampMs - turn.timestampMs <= 180_000)
+    .sort((a, b) => b.timestampMs - a.timestampMs);
+  const answer = prior[0];
+  const question = prior[1];
+  if (!answer || !(answer.isSelf || answer.senderId === SPOTTED_MATRIX_ID) ||
+      !/下班後想去哪一帶|下班后想去哪一带|which area works for you after work/i.test(answer.text) ||
+      !question || question.isAgent || question.senderId !== event.senderId ||
+      !AFTER_WORK_OUTING_RE.test(question.text)) return undefined;
+  return question.text;
+}
+
 const OFFICE_DISTANCE_RE =
   /[離离](?:公司|[辦办]公室)(?:更|最|[較较]|比[較较])?近/;
 
@@ -118,7 +135,7 @@ const DINNER_AND_NEARBY_EXHIBITION_RE =
 export const SPOTTED_AGENT_SPEC: AgentSpec = {
   matchesIndependentGroupRequest: (text, context) => {
     const turn = context.recentHistory.find((item) => item.eventId === context.latestHumanEventId);
-    if (turn?.text === text && isOfficeLocationAnswer(turn, context)) return true;
+    if (turn?.text === text && (isOfficeLocationAnswer(turn, context) || priorAfterWorkAreaQuestion(turn, context))) return true;
     return DINNER_AND_NEARBY_EXHIBITION_RE.test(text.trim()) &&
     context.members.some((member) => member.isAgent &&
       (member.matrixId === '@agent-b2b526f3:matrix.netmind.chat' || member.displayName === 'London Chinese Food'));
@@ -1252,7 +1269,9 @@ export async function fastRespondSpotted(
     });
   }
 
-  const eveningReply = await respondForEvening(env, event, context, cleanText, lang, baseUrl);
+  const priorAreaQuestion = priorAfterWorkAreaQuestion(event, context);
+  const eveningText = priorAreaQuestion ? `${priorAreaQuestion} ${cleanText}` : cleanText;
+  const eveningReply = await respondForEvening(env, event, context, eveningText, lang, baseUrl);
   if (eveningReply !== null) return eveningReply;
 
   // A bare "what can I do tonight / this weekend?" (PLAIN_PLANS_ASK_RE) with nothing more specific
@@ -1585,6 +1604,7 @@ export function createSpottedGatewayConfig(
       return {
         ...model,
         score: async (input) => {
+          if (priorAfterWorkAreaQuestion(input.event, input.context)) return { score: 0.95, reason: 'after_work_area_answer' };
           if (isOfficeLocationAnswer(input.event, input.context)) return { score: 0.95, reason: 'office_location_answer' };
           if (PLAIN_PLANS_ASK_RE.test(input.event.text.trim())) return { score: 0.8, reason: 'plain_plans_ask' };
           return model?.score(input) ?? { score: heuristicDomainScore(input.event, input.spec, input.context) };
