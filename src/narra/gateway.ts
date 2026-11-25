@@ -1703,9 +1703,9 @@ interface PrefetchQuery {
   limit: number;
 }
 
-async function readPrefetchQuery(env: Bindings, text: string, now: number): Promise<PrefetchQuery> {
+async function readPrefetchQuery(env: Bindings, text: string, now: number, useModel: boolean): Promise<PrefetchQuery> {
   const rules = extractPopupQueryFilter(text);
-  const ai = text.trim() ? await tryAiExtractFilter(env, text) : null;
+  const ai = useModel && text.trim() ? await tryAiExtractFilter(env, text) : null;
   const isSearch = rules.isClearSearch || Boolean(ai);
   const timeHit = TIME_TODAY_RE.test(text) || TIME_WEEKEND_RE.test(text) || TIME_WEEK_RE.test(text);
   const when = timeHit ? rules.when : (ai?.when ?? rules.when);
@@ -1815,6 +1815,7 @@ export async function buildSpottedExtraEnvelopeFields(
   decision: TriageDecision,
   _memories: RecallTurnResult,
   context: RoomContext,
+  info?: { pipeline: 'v1' | 'v2' },
 ): Promise<Record<string, string> | null> {
   if (!env.DB) return null;
   const officeFollowUp = isOfficeLocationAnswer(event, context);
@@ -1840,7 +1841,8 @@ export async function buildSpottedExtraEnvelopeFields(
   const cleanText = stripAgentMentions(event.text ?? '', [...ALL_KNOWN_MENTION_NAMES]);
   const priorAsk = priorAfterWorkAreaQuestion(event, context);
   const searchText = priorAsk ? `${priorAsk} ${cleanText}` : cleanText;
-  const query = await readPrefetchQuery(env, searchText, now);
+  // The model reading costs a Workers AI call; v1 rooms already ran it in fastRespond, so only v2 turns pay it.
+  const query = await readPrefetchQuery(env, searchText, now, info?.pipeline === 'v2');
   const seenSlugs = recentlyRecommendedSlugs(context);
 
   let found: { items: PublicPopup[]; notes: string[] } | null = null;
@@ -1927,6 +1929,22 @@ export const spottedThinkingMessage = (lang: LangCode): string =>
 export const PLAIN_PLANS_ASK_RE =
   /^(?:今晚|今天晚上|晚上|今天|明天|明晚|週末|周末|這週末|这周末|下班後|下班后)?[ \t]*(?:可以|能|要|有啥|有什麼|有什么|有沒有|有没有)?[ \t]*(?:幹嘛|干嘛|做什麼|做什么|做啥|去哪|去哪裡|去哪里|去哪玩|玩什麼|玩什么|玩啥|好玩的|活動|活动)[ \t]*(?:嗎|吗|呢|啊|呀|好)?[？?！!。]*$|^(?:what\s+(?:can\s+i|to)\s+do|anything\s+(?:fun\s+)?(?:on|to\s+do))\s+(?:tonight|this\s+weekend|today)\??$/i;
 
+/** What Spotted covers, for the v2 relevance gate only (v1 triage keeps reading spec.domainDescription). */
+export const SPOTTED_V2_PROFILE =
+  'Spotted London: limited-time pop-ups, pop-up shops, sample sales, art exhibitions, weekend markets, immersive shows and unique things to do and places to explore around London, by area, date or time of day.';
+
+/** Asks that belong to the other agents in the room (food, AI news, tarot): never wake Spotted. */
+export const SPOTTED_NOT_EXAMPLES = [
+  '晚餐吃啥好？',
+  '肚子餓了，附近有什麼吃的？',
+  'Holborn 附近有好吃的拉麵嗎？',
+  'Any good dim sum near Chinatown?',
+  '今天有什么 AI 新闻？',
+  'What did OpenAI release this week?',
+  '幫我抽一張塔羅牌',
+  '帮我求一支签，看看运势',
+];
+
 /** Example asks for the v2 relevance gate, in the room's three languages. */
 export const SPOTTED_WAKE_EXAMPLES = [
   '這週末倫敦有什麼快閃活動？',
@@ -1970,7 +1988,7 @@ export function createSpottedGatewayConfig(
     // Chat-native pipeline (rooms in NARRA_PIPELINE_ROOMS): the relevance gate compares each
     // unaddressed group message with domainDescription and these asks. fastRespond and triageModel
     // are not used there; the brain gets buildExtraEnvelopeFields' records instead.
-    v2: { wakeExamples: SPOTTED_WAKE_EXAMPLES },
+    v2: { profile: SPOTTED_V2_PROFILE, wakeExamples: SPOTTED_WAKE_EXAMPLES, notExamples: SPOTTED_NOT_EXAMPLES },
     ...overrides,
   };
 }

@@ -2471,6 +2471,8 @@ describe('spotted-london Narra Gateway', () => {
       const cfg = createSpottedGatewayConfig();
       expect(cfg.v2?.wakeExamples?.length).toBeGreaterThanOrEqual(10);
       expect(cfg.v2?.wakeExamples).toEqual(SPOTTED_WAKE_EXAMPLES);
+      expect(cfg.v2?.profile).not.toMatch(/\bNOT\b|restaurant/i);
+      expect(cfg.v2?.notExamples?.length).toBeGreaterThanOrEqual(8);
       expect(cfg.fastRespond).toBe(fastRespondSpotted);
     });
 
@@ -2485,7 +2487,7 @@ describe('spotted-london Narra Gateway', () => {
         aiEnv({ isPopupQuery: true, when: 'week', category: 'market', q: 'Leadenhall Market' }),
       ]) {
         const fields = await buildSpottedExtraEnvelopeFields(
-          typedEnv, makeEvent({ text: 'any pop up in leadenhall market?' }), v2Decision, emptyMem, groupCtx(),
+          typedEnv, makeEvent({ text: 'any pop up in leadenhall market?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v2' },
         );
         expect(fields?.d1_prefetched_records).toContain('Print Pop-up');
         expect(fields?.d1_prefetched_records).not.toContain('Generic Soho Popup');
@@ -2493,11 +2495,20 @@ describe('spotted-london Narra Gateway', () => {
       }
     });
 
+    it('reads the question with the model only on v2 turns', async () => {
+      const typedEnv = aiEnv({ isPopupQuery: true, when: 'week' });
+      const run = (typedEnv.AI as unknown as { run: ReturnType<typeof vi.fn> }).run;
+      await buildSpottedExtraEnvelopeFields(typedEnv, makeEvent({ text: 'anything fun this week?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v1' });
+      expect(run).not.toHaveBeenCalled();
+      await buildSpottedExtraEnvelopeFields(typedEnv, makeEvent({ text: 'anything fun this week?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v2' });
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
     it('says a named area has nothing instead of listing elsewhere', async () => {
       await seedPopup('ng_v2_elsewhere', { slug: 'elsewhere-popup', title: 'Elsewhere Popup', borough: 'Hackney', address: '1 Mare St, E8', ...live() });
       const fields = await buildSpottedExtraEnvelopeFields(
         aiEnv({ isPopupQuery: true, when: 'today', q: 'Covent Garden' }),
-        makeEvent({ text: 'Covent Garden tonight?' }), v2Decision, emptyMem, groupCtx(),
+        makeEvent({ text: 'Covent Garden tonight?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v2' },
       );
       expect(fields?.d1_prefetched_records).toBeUndefined();
       expect(fields?.d1_search_scope).toContain('No Spotted listing mentions Covent Garden');
@@ -2508,7 +2519,7 @@ describe('spotted-london Narra Gateway', () => {
       await seedPopup('ng_v2_late', { slug: 'late-popup', title: 'Late Popup', hoursText: '10:00-23:59', ...live() });
       const fields = await buildSpottedExtraEnvelopeFields(
         aiEnv({ isPopupQuery: true, when: 'today', after: 19 }),
-        makeEvent({ text: 'anything still open after 7pm tonight?' }), v2Decision, emptyMem, groupCtx(),
+        makeEvent({ text: 'anything still open after 7pm tonight?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v2' },
       );
       const records = fields!.d1_prefetched_records!;
       expect(records.indexOf('Late Popup')).toBeLessThan(records.indexOf('Daytime Popup'));
@@ -2518,7 +2529,7 @@ describe('spotted-london Narra Gateway', () => {
       await env.DB.prepare("DELETE FROM popups WHERE id = 'ng_v2_late'").run();
       const none = await buildSpottedExtraEnvelopeFields(
         aiEnv({ isPopupQuery: true, when: 'today', after: 18 }),
-        makeEvent({ text: 'anything open after 6pm?' }), v2Decision, emptyMem, groupCtx(),
+        makeEvent({ text: 'anything open after 6pm?' }), v2Decision, emptyMem, groupCtx(), { pipeline: 'v2' },
       );
       expect(none?.d1_search_scope).toContain('No listing here can be confirmed open after 18:00');
     });
@@ -2533,7 +2544,7 @@ describe('spotted-london Narra Gateway', () => {
       }];
       const fields = await buildSpottedExtraEnvelopeFields(
         { ...(env as unknown as Bindings), APP_URL: 'https://app.manyfold.ai/spotted-london' },
-        makeEvent({ text: 'any other markets this week? just two' }), v2Decision, emptyMem, groupCtx(history),
+        makeEvent({ text: 'any other markets this week? just two' }), v2Decision, emptyMem, groupCtx(history), { pipeline: 'v2' },
       );
       expect(fields?.d1_prefetched_records).toContain('Seen Market');
       const results = fields!.d1_search_results!;
