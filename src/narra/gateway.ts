@@ -1943,6 +1943,12 @@ export const SPOTTED_NOT_EXAMPLES = [
   'What did OpenAI release this week?',
   '幫我抽一張塔羅牌',
   '帮我求一支签，看看运势',
+  // Manyfold Data's datasets: hackathons, conferences, races, funding.
+  '這週末倫敦有什麼 AI 黑客松？',
+  'Any AI hackathons in London this weekend?',
+  '下一個 AI 研討會投稿截止是什麼時候？',
+  '有什么马拉松可以报名？',
+  '哪些 AI 新創拿到了融資？',
 ];
 
 /** Example asks for the v2 relevance gate, in the room's three languages. */
