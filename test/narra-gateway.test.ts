@@ -2315,6 +2315,9 @@ describe('spotted-london Narra Gateway', () => {
 
   it('continues an after-work area clarification for the same speaker', async () => {
     const now = Date.parse('2026-11-23T15:00:00Z');
+    await seedPopup('address-soho', { title: 'Evening Art', borough: 'Westminster',
+      address: '4 Example Street, Soho, London', hoursText: '12:00-21:00',
+      startAt: Date.parse('2026-11-24T00:00:00Z'), endAt: Date.parse('2026-11-25T00:00:00Z') });
     const event = makeEvent({ text: 'Soho 附近', timestampMs: now });
     const context: RoomContext = {
       roomId: event.roomId, chatType: 'group', latestHumanEventId: event.eventId,
@@ -2330,7 +2333,7 @@ describe('spotted-london Narra Gateway', () => {
     const reply = await fastRespondSpotted(env as unknown as Bindings, event, decision,
       { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
     expect(reply).toContain('明晚');
-    expect(reply).toContain('Soho');
+    expect(reply).toContain('Evening Art');
     expect(reply).not.toContain('去哪一带');
     context.recentHistory[0]!.senderId = '@other:matrix.netmind.chat';
     expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now })).not.toHaveProperty('independentGroupReply');
