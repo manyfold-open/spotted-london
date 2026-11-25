@@ -1140,6 +1140,11 @@ async function respondForEvening(
   });
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
   if (afterWorkToday) {
+    if (matches.length === 0 && filter.q) {
+      if (lang === 'zh-Hant') return `我目前找不到能確認${tomorrow ? '明晚' : '今晚'}六點後在 ${filter.q} 附近還開著的活動。`;
+      if (lang === 'zh-Hans') return `我目前找不到能确认${tomorrow ? '明晚' : '今晚'}六点后在 ${filter.q} 附近还开着的活动。`;
+      return `I couldn’t confirm any events near ${filter.q} still open after 6pm ${tomorrow ? 'tomorrow' : 'tonight'}.`;
+    }
     if (tomorrow && matches.length === 0) {
       return lang === 'zh-Hant' ? '我目前找不到能確認明晚六點後還開著的活動。你下班後想去哪一帶？'
         : lang === 'zh-Hans' ? '我目前找不到能确认明晚六点后还开着的活动。你下班后想去哪一带？'
