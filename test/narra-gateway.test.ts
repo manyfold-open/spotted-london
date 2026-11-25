@@ -2344,7 +2344,7 @@ describe('spotted-london Narra Gateway', () => {
     await env.DB.prepare("DELETE FROM popups WHERE id IN ('address-soho', 'only-tomorrow', 'only-today')").run();
     const startAt = Date.parse('2026-11-23T00:00:00Z');
     const endAt = Date.parse('2026-11-29T00:00:00Z');
-    await seedPopup('tuesday-only', { title: 'Tuesday Evening', hoursText: 'Tuesdays 12:00-21:00', startAt, endAt });
+    await seedPopup('tuesday-only', { title: 'Tuesday Evening', hoursText: 'Tue-Wed 12-7pm, Thu-Fri 12-8pm', startAt, endAt });
     await seedPopup('saturday-only', { title: 'Saturday Evening', hoursText: 'Saturdays 12:00-21:00', startAt, endAt });
     const event = makeEvent({ text: '明天下班出去玩吗，可以去哪儿玩', timestampMs: now });
     const context: RoomContext = { roomId: event.roomId, chatType: 'group', members: [], recentHistory: [] };
