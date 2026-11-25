@@ -116,23 +116,38 @@ const AFTER_EVENING_RE = /(?:晚上|晚間|晚间|傍晚)\s*([一二三四五六
 const HOURS_RANGE_RE = /^(?:daily\s+)?(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?\s*[-–—]\s*(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?$/i;
 
 function listedHours(text: string | null, dayOfWeek: number): [number, number] | null {
-  let hoursText = text?.trim() ?? '';
-  const weekday = /^(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)(?:s)?\s+(.+)$/i.exec(hoursText);
-  if (weekday) {
-    const weekdays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    if (weekdays.indexOf(weekday[1]!.slice(0, 3).toLowerCase()) !== dayOfWeek) return null;
-    hoursText = weekday[2]!;
+  const source = text?.trim() ?? '';
+  const dayPattern = '(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)';
+  const clausePattern = new RegExp(`^${dayPattern}s?(?:\\s*[-–—]\\s*${dayPattern}s?)?\\s+(.+)$`, 'i');
+  const weekdays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const clauses = source.split(/\s*[,;]\s*/);
+  let hoursText = source;
+  if (clausePattern.test(clauses[0] ?? '')) {
+    let matched: string | undefined;
+    for (const clause of clauses) {
+      const day = clausePattern.exec(clause);
+      if (!day) return null;
+      const from = weekdays.indexOf(day[1]!.slice(0, 3).toLowerCase());
+      const to = day[2] ? weekdays.indexOf(day[2].slice(0, 3).toLowerCase()) : from;
+      if ((dayOfWeek - from + 7) % 7 <= (to - from + 7) % 7) {
+        if (matched) return null;
+        matched = day[3];
+      }
+    }
+    if (!matched) return null;
+    hoursText = matched;
   }
   const m = HOURS_RANGE_RE.exec(hoursText);
-  if (!m || Boolean(m[3]) !== Boolean(m[6])) return null;
+  if (!m || (m[3] && !m[6])) return null;
   const minutes = (hour: string, minute: string | undefined, period: string | undefined) => {
     const h = Number(hour);
     if (period ? h < 1 || h > 12 : h > 23) return NaN;
     return (period ? h % 12 + (period.toLowerCase() === 'pm' ? 12 : 0) : h) * 60 + Number(minute ?? 0);
   };
-  const from = minutes(m[1]!, m[2], m[3]);
-  const to = minutes(m[4]!, m[5], m[6]);
-  return from < to ? [from, to] : null;
+  const end = minutes(m[4]!, m[5], m[6]);
+  let start = minutes(m[1]!, m[2], m[3] ?? m[6]);
+  if (!m[3] && m[6] && start >= end) start -= 12 * 60;
+  return start >= 0 && start < end ? [start, end] : null;
 }
 
 // Two explicit requests, with the exhibition anchored to the dinner area.
