@@ -2330,6 +2330,8 @@ describe('spotted-london Narra Gateway', () => {
     const reply = await fastRespondSpotted(env as unknown as Bindings, event, decision,
       { userMemories: [], roomMemories: [], promptSafeLines: [] }, context);
     expect(reply).toContain('明晚');
+    expect(reply).toContain('Soho');
+    expect(reply).not.toContain('去哪一带');
     context.recentHistory[0]!.senderId = '@other:matrix.netmind.chat';
     expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now })).not.toHaveProperty('independentGroupReply');
   });
