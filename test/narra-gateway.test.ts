@@ -27,6 +27,7 @@ import {
   spottedOffTopicRedirect,
   spottedThanksReply,
   spottedThinkingMessage,
+  SPOTTED_WAKE_EXAMPLES,
 } from '../src/narra/gateway';
 import worker, { NarraMatrixSync, NarraRoomCoordinator } from '../src/index';
 import type { Bindings } from '../src/types';
@@ -2442,6 +2443,106 @@ describe('spotted-london Narra Gateway', () => {
     expect(second).toContain('Evening Exhibition');
     expect(second).not.toMatch(/Six Close|Seven Close|Other Area|Paid Evening|Unknown Hours/);
   });
+
+  describe('prefetch for the chat-native (v2) brain', () => {
+    const emptyMem = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const v2Decision = {
+      shouldReply: true,
+      tier: 1 as const,
+      reason: 'v2_relevant',
+      confidence: 0.8,
+      detectedLang: 'en' as const,
+      shouldQuote: false,
+    };
+    const groupCtx = (recentHistory: RoomContext['recentHistory'] = []): RoomContext => ({
+      roomId: '!ttLCzSZsdFiPSEPDyO:matrix.netmind.chat',
+      chatType: 'group',
+      members: [],
+      recentHistory,
+    });
+    const aiEnv = (answer: Record<string, unknown>) => ({
+      ...(env as unknown as Bindings),
+      APP_URL: 'https://app.manyfold.ai/spotted-london',
+      AI: { run: vi.fn(async () => ({ response: JSON.stringify(answer) })) } as unknown as Ai,
+    });
+    const live = () => ({ startAt: Date.now() - HOUR, endAt: Date.now() + 7 * DAY });
+
+    it('wires wake examples for the v2 gate and keeps fastRespond for v1 rooms', () => {
+      const cfg = createSpottedGatewayConfig();
+      expect(cfg.v2?.wakeExamples?.length).toBeGreaterThanOrEqual(10);
+      expect(cfg.v2?.wakeExamples).toEqual(SPOTTED_WAKE_EXAMPLES);
+      expect(cfg.fastRespond).toBe(fastRespondSpotted);
+    });
+
+    it('returns the named place, not the general list', async () => {
+      await seedPopup('ng_v2_lead', {
+        slug: 'leadenhall-print-popup', title: 'Print Pop-up', borough: 'City of London',
+        address: 'Leadenhall Market, EC3V 1LT', category: 'exhibition', ...live(),
+      });
+      await seedPopup('ng_v2_generic', { slug: 'generic-soho-popup', title: 'Generic Soho Popup', ...live() });
+      for (const typedEnv of [
+        { ...(env as unknown as Bindings), APP_URL: 'https://app.manyfold.ai/spotted-london' },
+        aiEnv({ isPopupQuery: true, when: 'week', category: 'market', q: 'Leadenhall Market' }),
+      ]) {
+        const fields = await buildSpottedExtraEnvelopeFields(
+          typedEnv, makeEvent({ text: 'any pop up in leadenhall market?' }), v2Decision, emptyMem, groupCtx(),
+        );
+        expect(fields?.d1_prefetched_records).toContain('Print Pop-up');
+        expect(fields?.d1_prefetched_records).not.toContain('Generic Soho Popup');
+        expect(fields?.d1_search_scope).toMatch(/leadenhall/i);
+      }
+    });
+
+    it('says a named area has nothing instead of listing elsewhere', async () => {
+      await seedPopup('ng_v2_elsewhere', { slug: 'elsewhere-popup', title: 'Elsewhere Popup', borough: 'Hackney', address: '1 Mare St, E8', ...live() });
+      const fields = await buildSpottedExtraEnvelopeFields(
+        aiEnv({ isPopupQuery: true, when: 'today', q: 'Covent Garden' }),
+        makeEvent({ text: 'Covent Garden tonight?' }), v2Decision, emptyMem, groupCtx(),
+      );
+      expect(fields?.d1_prefetched_records).toBeUndefined();
+      expect(fields?.d1_search_scope).toContain('No Spotted listing mentions Covent Garden');
+    });
+
+    it('marks which pop-ups are open after the asked evening hour and says when none are', async () => {
+      await seedPopup('ng_v2_day', { slug: 'daytime-popup', title: 'Daytime Popup', hoursText: '10:00-18:00', ...live() });
+      await seedPopup('ng_v2_late', { slug: 'late-popup', title: 'Late Popup', hoursText: '10:00-23:59', ...live() });
+      const fields = await buildSpottedExtraEnvelopeFields(
+        aiEnv({ isPopupQuery: true, when: 'today', after: 19 }),
+        makeEvent({ text: 'anything still open after 7pm tonight?' }), v2Decision, emptyMem, groupCtx(),
+      );
+      const records = fields!.d1_prefetched_records!;
+      expect(records.indexOf('Late Popup')).toBeLessThan(records.indexOf('Daytime Popup'));
+      expect(records).toMatch(/Late Popup[^\n]*Open after 19:00: yes/);
+      expect(records).toMatch(/Daytime Popup[^\n]*Open after 19:00: not confirmed/);
+
+      await env.DB.prepare("DELETE FROM popups WHERE id = 'ng_v2_late'").run();
+      const none = await buildSpottedExtraEnvelopeFields(
+        aiEnv({ isPopupQuery: true, when: 'today', after: 18 }),
+        makeEvent({ text: 'anything open after 6pm?' }), v2Decision, emptyMem, groupCtx(),
+      );
+      expect(none?.d1_search_scope).toContain('No listing here can be confirmed open after 18:00');
+    });
+
+    it('puts verified pop-ups not shared here recently first, keeps the earlier list for follow-ups and honours a requested count', async () => {
+      await seedPopup('ng_v2_seen', { slug: 'seen-market', title: 'Seen Market', category: 'market', ...live() });
+      await seedPopup('ng_v2_pending', { slug: 'pending-market', title: 'Pending Market', category: 'market', status: 'community', ...live() });
+      await seedPopup('ng_v2_fresh', { slug: 'fresh-market', title: 'Fresh Market', category: 'market', ...live() });
+      const history: RoomContext['recentHistory'] = [{
+        eventId: '$v2_prev', senderId: SPOTTED_MATRIX_ID, senderName: 'Spotted London', isAgent: true, isSelf: true,
+        text: '• Seen Market\nhttps://app.manyfold.ai/spotted-london/p/seen-market', timestampMs: NOW - 60_000,
+      }];
+      const fields = await buildSpottedExtraEnvelopeFields(
+        { ...(env as unknown as Bindings), APP_URL: 'https://app.manyfold.ai/spotted-london' },
+        makeEvent({ text: 'any other markets this week? just two' }), v2Decision, emptyMem, groupCtx(history),
+      );
+      expect(fields?.d1_prefetched_records).toContain('Seen Market');
+      const results = fields!.d1_search_results!;
+      expect(results.split('\n').map((l) => l.match(/\] (.+?) \|/)?.[1])).toEqual(['Fresh Market', 'Pending Market']);
+      expect(results).toContain('Status: not confirmed yet');
+      expect(fields?.d1_search_scope).toContain('asked for 2');
+    });
+  });
+
 });
 
 it('speaks only on its own topic in mixed group chatter', async () => {
