@@ -59,10 +59,13 @@ const SHELVED_EVENT_TOPIC_RE =
 const AFTER_WORK_OUTING_RE =
   /(?:下班(?:後|后)?|今晚).{0,8}(?:去哪[兒儿裡里]?玩|哪[裡里]好玩)|\b(?:where (?:can|should) we go|what (?:can|should) we do) after work\b/i;
 
+const FREE_FOLLOWUP_RE = /^(?:太貴了|太贵了|有點貴|有点贵|too expensive)[，,\s]*(?:有)?(?:免費|免费|free)(?:的|嗎|吗|呢|的嗎|的吗|ones?)?[？?。.!！\s]*$/i;
+
 const SHORT_AREA_REPLY_RE = /^(?:在|去|靠近|near\s+)?[A-Za-z][A-Za-z '\-]{1,40}(?:附近|一帶|一带|周邊|周边)?[。.!！\s]*$/i;
 
 function priorAfterWorkAreaQuestion(event: Pick<InboundEvent, 'eventId' | 'text' | 'senderId' | 'timestampMs'>, context?: RoomContext): string | undefined {
-  if (!SHORT_AREA_REPLY_RE.test(event.text.trim())) return undefined;
+  const freeFollowup = FREE_FOLLOWUP_RE.test(event.text.trim());
+  if (!freeFollowup && !SHORT_AREA_REPLY_RE.test(event.text.trim())) return undefined;
   const prior = [...(context?.recentHistory ?? [])]
     .filter((turn) => turn.eventId !== event.eventId && turn.timestampMs <= event.timestampMs &&
       event.timestampMs - turn.timestampMs <= 180_000)
@@ -70,7 +73,7 @@ function priorAfterWorkAreaQuestion(event: Pick<InboundEvent, 'eventId' | 'text'
   const answer = prior[0];
   const question = prior[1];
   if (!answer || !(answer.isSelf || answer.senderId === SPOTTED_MATRIX_ID) ||
-      !/下班後想去哪一帶|下班后想去哪一带|which area works for you after work/i.test(answer.text) ||
+      !(freeFollowup ? /\/spotted-london\/p\//i.test(answer.text) : /下班後想去哪一帶|下班后想去哪一带|which area works for you after work/i.test(answer.text)) ||
       !question || question.isAgent || question.senderId !== event.senderId ||
       !AFTER_WORK_OUTING_RE.test(question.text)) return undefined;
   return question.text;
@@ -1172,8 +1175,13 @@ async function respondForEvening(
   });
   const time = `${String(Math.floor(threshold / 60)).padStart(2, '0')}:00`;
   if (afterWorkToday) {
-    // Nothing with listed evening hours: let the concierge (A2A) look wider (markets and venues
-    // whose hours are not in the listing) instead of a dead-end "found nothing".
+    if (matches.length === 0 && filter.free) {
+      const area = filter.q ? ` ${filter.q}` : '';
+      if (lang === 'zh-Hant') return `我目前找不到能確認${tomorrow ? '明晚' : '今晚'}六點後${area}仍開放的免費活動。`;
+      if (lang === 'zh-Hans') return `我目前找不到能确认${tomorrow ? '明晚' : '今晚'}六点后${area}仍开放的免费活动。`;
+      return `I couldn’t confirm any free events${filter.q ? ` near ${filter.q}` : ''} open after 6pm ${tomorrow ? 'tomorrow' : 'tonight'}.`;
+    }
+    // Allow the concierge to look wider for the original general after-work request.
     if (matches.length === 0 && (await resolveSpottedA2ACredential(env))) return null;
     if (matches.length === 0 && filter.q) {
       if (lang === 'zh-Hant') return `我目前找不到能確認${tomorrow ? '明晚' : '今晚'}六點後在 ${filter.q} 附近還開著的活動。`;

@@ -2339,6 +2339,36 @@ describe('spotted-london Narra Gateway', () => {
     expect(await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now })).not.toHaveProperty('independentGroupReply');
   });
 
+  it('keeps the evening constraint when the same user asks for a free alternative', async () => {
+    const now = Date.parse('2026-11-23T15:00:00Z');
+    await env.DB.prepare("DELETE FROM popups WHERE id IN ('address-soho', 'only-tomorrow', 'only-today')").run();
+    const startAt = Date.parse('2026-11-23T00:00:00Z');
+    const endAt = Date.parse('2026-11-24T00:00:00Z');
+    await seedPopup('free-evening', { title: 'Free Evening', priceType: 'free', hoursText: '12:00-21:00', startAt, endAt });
+    await seedPopup('paid-evening', { title: 'Paid Evening', priceType: 'paid', hoursText: '12:00-21:00', startAt, endAt });
+    await seedPopup('free-daytime', { title: 'Free Daytime', priceType: 'free', hoursText: '10:00-17:00', startAt, endAt });
+    const event = makeEvent({ text: '太贵了，有免费的吗？', timestampMs: now });
+    const context: RoomContext = { roomId: event.roomId, chatType: 'group', latestHumanEventId: event.eventId,
+      members: [{ matrixId: '@agent-b2b526f3:matrix.netmind.chat', displayName: 'London Chinese Food', isAgent: true }],
+      recentHistory: [
+        { eventId: '$q', senderId: event.senderId, isAgent: false, timestampMs: now - 2000, text: '今天下班去哪儿玩？' },
+        { eventId: '$a', senderId: SPOTTED_MATRIX_ID, isSelf: true, isAgent: true, timestampMs: now - 1000,
+          text: 'Tonight: https://app.manyfold.ai/spotted-london/p/paid-evening' },
+        { eventId: event.eventId, senderId: event.senderId, isAgent: false, timestampMs: now, text: event.text },
+      ] };
+    const decision = await routeEvent(event, context, SPOTTED_AGENT_SPEC, { nowMs: now });
+    expect(decision).toMatchObject({ shouldReply: true, independentGroupReply: true });
+    const memory = { userMemories: [], roomMemories: [], promptSafeLines: [] };
+    const answer = await fastRespondSpotted(env as unknown as Bindings, event, decision, memory, context);
+    expect(answer).toContain('Free Evening');
+    expect(answer).not.toContain('Paid Evening');
+    expect(answer).not.toContain('Free Daytime');
+    await env.DB.prepare("DELETE FROM popups WHERE id = 'free-evening'").run();
+    const none = await fastRespondSpotted(env as unknown as Bindings, event, decision, memory, context);
+    expect(none).toContain('免费');
+    expect(none).toContain('今晚');
+  });
+
   it('only treats a weekday-specific evening schedule as open on that weekday', async () => {
     const now = Date.parse('2026-11-23T15:00:00Z'); // Monday
     await env.DB.prepare("DELETE FROM popups WHERE id IN ('address-soho', 'only-tomorrow', 'only-today')").run();
