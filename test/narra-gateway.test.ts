@@ -2515,6 +2515,8 @@ describe('spotted-london Narra Gateway', () => {
     });
 
     it('marks which pop-ups are open after the asked evening hour and says when none are', async () => {
+      // Earlier tests leave live pop-ups whose hours run past 18:00 while London is still in daytime.
+      await env.DB.prepare('DELETE FROM popups').run();
       await seedPopup('ng_v2_day', { slug: 'daytime-popup', title: 'Daytime Popup', hoursText: '10:00-18:00', ...live() });
       await seedPopup('ng_v2_late', { slug: 'late-popup', title: 'Late Popup', hoursText: '10:00-23:59', ...live() });
       const fields = await buildSpottedExtraEnvelopeFields(
