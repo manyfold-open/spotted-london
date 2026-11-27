@@ -1954,6 +1954,8 @@ export const SPOTTED_NOT_EXAMPLES = [
 /** Example asks for the v2 relevance gate, in the room's three languages. */
 export const SPOTTED_WAKE_EXAMPLES = [
   '這週末倫敦有什麼快閃活動？',
+  '那晚上有啥可以玩的嗎',
+  '晚上有什麼好玩的',
   '今晚 Covent Garden 附近有什麼可以逛的？',
   '倫敦最近有哪些免費的展覽？',
   '這週末有推薦的市集嗎？',
